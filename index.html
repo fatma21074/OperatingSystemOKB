@@ -1,0 +1,1948 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operation System OKB</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #071224;
+        color: #edf4ff;
+        padding: 15px; /* تقليل الحشو الخارجي */
+        overflow-x: hidden; /* منع الشريط السفلي */
+    }
+    .container {
+        max-width: 100% !important; /* جعل العرض كامل الشاشة */
+        margin: 0;
+    }
+    table {
+        width: 100% !important;
+        table-layout: auto; /* ترك المتصفح يحدد العرض الأنسب */
+        font-size: 12px !important; /* تصغير الخط لظهور كل الأعمدة */
+    }
+    th, td {
+        padding: 6px 4px !important; /* تقليل المساحات داخل الخلايا */
+        white-space: nowrap; /* منع التفاف النص لتقليل الارتفاع */
+    }
+    .table-wrap {
+        overflow-x: auto; /* السماح بالتمرير داخل الجدول فقط إذا لزم الأمر وليس الصفحة كاملة */
+        max-width: 100%;
+    }
+
+    .container{max-width:1500px;margin:auto}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}
+    .brand{font-size:28px;font-weight:800;display:flex;align-items:center;gap:12px}
+    .badge{background:#6d5dfc;padding:12px;border-radius:14px}
+    .nav{display:flex;gap:10px;flex-wrap:wrap}
+    button{border:0;border-radius:14px;padding:13px 18px;color:white;font-weight:700;cursor:pointer}
+    .primary{background:#4f46e5}.success{background:#15803d}.soft{background:#1f2937}
+    .edit{background:#2563eb}.danger{background:#b91c1c}.yellow{background:#facc15;color:#000}
+    .blue{background:#2563eb}.teal{background:#0f766e}
+    .layout{display:flex;flex-direction:column;gap:18px}
+    .card{background:#101a34;border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:20px;margin-bottom:18px}
+    input,select{width:100%;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:#071020;color:white;padding:14px}
+    .form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .order-actions{display:flex;gap:12px;margin-top:14px;justify-content:flex-start}
+    .wide-btn{min-width:260px;padding:18px 36px;font-size:16px;border-radius:16px}
+    .actions{display:flex;gap:12px;margin-top:14px}.charts-grid,.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+
+    /* ===== DATE FILTER TOOLBAR ===== */
+    .toolbar{
+      display:grid;
+      grid-template-columns: auto auto auto auto 1fr auto auto auto;
+      gap:10px;
+      margin-bottom:16px;
+      align-items:center;
+    }
+    .date-filter-group{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      background:#17213d;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px;
+      padding:8px 14px;
+    }
+    .date-filter-group label{
+      color:#9fb0d6;
+      font-size:13px;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    .date-filter-group input[type="date"]{
+      width:160px;
+      padding:10px 12px;
+      font-size:14px;
+      border-radius:10px;
+    }
+    .date-filter-group input[type="date"]::-webkit-calendar-picker-indicator{
+      filter:invert(1);
+      cursor:pointer;
+    }
+    .btn-filter{background:#4f46e5;padding:11px 20px;border-radius:12px;font-size:14px}
+    .btn-reset-date{background:#374151;padding:11px 16px;border-radius:12px;font-size:14px}
+    .active-filter-badge{
+      background:#4f46e5;
+      color:white;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:700;
+      display:none;
+      white-space:nowrap;
+    }
+    .active-filter-badge.visible{display:inline-block}
+    /* ============================= */
+
+    .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+    .stat,.insight{background:#17213d;border-radius:16px;padding:16px}
+    .stat span,.insight span{color:#9fb0d6}.stat strong,.insight strong{display:block;font-size:24px;margin-top:8px}
+    .stat strong .stat-count{display:block;font-size:24px;line-height:1.1}
+    .stat strong .stat-money{display:block;margin-top:6px;font-size:13px;line-height:1.25;color:#9fb0d6;font-weight:700;white-space:normal}
+    .stat strong .stat-money.good{color:#86efac}
+    .stat strong .stat-money.bad{color:#fca5a5}
+    .stat strong .stat-money.warn{color:#fcd34d}
+    .table-wrap{overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:18px}
+    table{width:100%;border-collapse:collapse;min-width:1400px}
+    th,td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.08);text-align:right;white-space:nowrap;vertical-align:middle}
+    th{background:#17213d;color:#bccbf0}
+    .chip{padding:5px 10px;border-radius:999px;background:#1f2937;display:inline-block;white-space:nowrap;font-size:13px}
+    .empty{text-align:center;color:#9fb0d6;padding:30px}
+    .hidden{display:none!important}
+    h1,h2,h3,p{margin-top:0}
+    .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+    .login-page{min-height:calc(100vh - 56px);display:flex;align-items:center;justify-content:center}
+    .login-box{width:100%;max-width:420px;background:#101a34;border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:28px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+    .login-box input{margin-bottom:12px}
+    .login-error{color:#ff8a8a;margin-top:12px;display:none}
+    .user-tag{background:#17213d;padding:10px 14px;border-radius:12px;color:#9fb0d6;font-weight:600}
+    canvas{max-height:340px}
+    #shippingBarChart{max-height:none!important}
+    .analytics-date-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;background:#17213d;border-radius:16px;margin-bottom:16px}
+    .report-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .report-tabs button{background:#1f2937}
+    .report-tabs button.active{background:#6B2D0E}
+    .report-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+    .report-card{background:#17213d;border-radius:16px;padding:16px;border:1px solid rgba(255,255,255,.08)}
+    .report-card span{color:#9fb0d6}
+    .report-card strong{display:block;font-size:26px;margin-top:8px}
+    .report-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .report-box{background:#101a34;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:18px}
+    .report-box h3{margin-bottom:12px;color:#bccbf0}
+    .report-item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+    .report-item:last-child{border-bottom:0}
+    .report-name{font-weight:700}
+    .report-value{color:#facc15;font-weight:800}
+    @media(max-width:1100px){.report-grid,.report-list{grid-template-columns:1fr}}
+    .analytics-date-bar label{color:#9fb0d6;font-size:13px;font-weight:700;white-space:nowrap}
+    .analytics-date-bar input[type="date"]{width:160px;padding:10px 12px;font-size:14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#071020;color:white}
+    .analytics-date-bar input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);cursor:pointer}
+    .pagination{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px;direction:ltr}
+    .pagination button{padding:8px 12px;border-radius:10px;background:#1f2937;color:#edf4ff;font-size:13px;min-width:38px}
+    .pagination button.active{background:#4f46e5;color:#fff}
+    .pagination button:disabled{opacity:.45;cursor:not-allowed}
+    .pagination-info{color:#9fb0d6;font-size:13px;padding:0 8px;direction:rtl}
+    .rank-search{flex:1;min-width:320px;max-width:700px}
+    .multi-filter{position:relative;min-width:230px}
+    .multi-filter-btn{width:100%;background:#374151;color:#fff;border-radius:14px;padding:13px 18px;text-align:center}
+    .multi-filter-menu{
+      position:absolute;
+      top:52px;
+      right:0;
+      width:280px;
+      max-height:320px;
+      overflow:auto;
+      background:#101a34;
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:16px;
+      padding:12px;
+      z-index:999;
+      box-shadow:0 18px 40px rgba(0,0,0,.35);
+      display:none;
+    }
+    .multi-filter-menu.show{display:block}
+    .multi-filter-item{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:9px 8px;
+      color:#edf4ff;
+      border-radius:10px;
+      cursor:pointer;
+    }
+    .multi-filter-item:hover{background:#17213d}
+    .multi-filter-item input{width:auto}
+    .multi-filter-actions{display:flex;gap:8px;margin-top:10px}
+    .multi-filter-actions button{padding:9px 12px;font-size:12px;border-radius:10px;flex:1}
+    @media(max-width:1100px){.layout,.stats,.toolbar,.form-grid,.actions,.charts-grid,.insight-grid{grid-template-columns:1fr}.date-filter-group{flex-wrap:wrap}.toolbar{display:flex;flex-wrap:wrap}}
+  </style>
+</head>
+
+<body>
+
+<section id="loginPage" class="login-page">
+  <div class="login-box">
+    <h1>Operation System</h1>
+    <p style="color:#9fb0d6">Login to continue</p>
+    <input id="loginUsername" placeholder="Username" onkeypress="handleEnter(event)" />
+    <input id="loginPassword" type="password" placeholder="Password" onkeypress="handleEnter(event)" />
+    <button class="primary" style="width:100%" onclick="login()">Login</button>
+    <div id="loginError" class="login-error">Username أو Password غلط أو الحساب غير مفعل</div>
+  </div>
+</section>
+
+<div id="app" class="container hidden">
+
+  <div class="topbar">
+    <div class="brand"><div class="badge">OKB</div>Operation System</div>
+    <div class="nav">
+      <button class="primary" onclick="showOrdersPage()">📦 Dashboard</button>
+      <button style="background:#6B2D0E;color:white" onclick="showBranchRankPage()">📋 Daily Report</button>
+      <button class="success" onclick="showAnalyticsPage()">📊 Analysis</button>
+      <button style="background:#9ca3af;color:#000" class="admin-manager-only" onclick="showShippingRankPage()">🚚 Shipping Rank</button>
+      <button class="blue admin-manager-only" onclick="showDoctorRankPage()">👨‍⚕️ Doctor Rank</button>
+      <button class="yellow admin-only" onclick="showUsersPage()">👥 Users</button>
+      <button style="background:#000;color:#fff;border:1.5px solid #333" class="admin-only" onclick="showBranchsPage()">⚙️ Settings</button>
+      <button class="danger" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <section id="ordersPage">
+    <div class="layout">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <h1>إضافة أوردر جديد</h1>
+          <span class="user-tag"><span id="userNameHere">User</span> | <span id="userRoleHere">role</span></span>
+        </div>
+
+        
+
+        <form id="orderForm">
+          <div class="form-grid">
+            <input id="employeeName" placeholder="اسم الموظف" required />
+            <select id="doctorName" required>
+              <option value="">اختر اسم الدكتور</option>
+            </select>
+            <input id="customerName" placeholder="اسم العميل" required />
+            <input id="phone" placeholder="رقم الموبايل" required />
+
+            <select id="shippingCompany" required>
+              <option value="">اختر شركة الشحن</option>
+            </select>
+
+            <input id="area" placeholder="المنطقة" required />
+            <input id="price" type="number" placeholder="السعر" required />
+
+            <select id="status" required>
+              <option value="">اختر حالة الأوردر</option>
+              <option value="Transit">Transit</option>
+              <option value="تم التأكيد">تم التأكيد</option>
+              <option value="Returned">Returned</option>
+              <option value="ملغي">ملغي</option>
+              <option value="Fake Doctor">Fake Doctor</option>
+              <option value="Fake Delivery Update">Fake Delivery Update</option>
+            </select>
+          </div>
+
+          <!-- ملاحظات -->
+          <div style="margin-top:12px">
+            <textarea id="orderNotes" placeholder="ملاحظات العميل (اختياري)..." rows="2"
+              style="width:100%;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:#071020;color:white;padding:14px;font-family:Arial,sans-serif;font-size:14px;resize:vertical"></textarea>
+          </div>
+
+          <div class="order-actions">
+            <button class="primary wide-btn" type="submit" id="submitBtn">إضافة الأوردر</button>
+          </div>
+        </form>
+      </div>
+
+      <main class="card">
+        <div class="stats">
+          <div class="stat"><span>Total Orders</span><strong id="totalOrders">0</strong></div>
+          <div class="stat"><span>Total Confirmed</span><strong id="confirmedOrders">0</strong></div>
+          <div class="stat"><span>Total Returned</span><strong id="returnedOrders">0</strong></div>
+          <div class="stat"><span>Total Fake Doctor</span><strong id="fakeDoctorOrders">0</strong></div>
+          <div class="stat"><span>Total Fake Delivery Update</span><strong id="fakeDeliveryUpdateOrders">0</strong></div>
+          <div class="stat"><span>Total Revenue</span><strong id="totalRevenue">0</strong></div>
+        </div>
+
+        <!-- ===== TOOLBAR مع الفيلتر الجديد ===== -->
+        <div class="toolbar">
+
+          <!-- فيلتر التاريخ -->
+          <div class="date-filter-group">
+            <label>من</label>
+            <input type="date" id="fromDate" />
+          </div>
+
+          <div class="date-filter-group">
+            <label>إلى</label>
+            <input type="date" id="toDate" />
+          </div>
+
+          <button class="btn-filter" onclick="applyDateFilter()">🔍 Filter</button>
+          <button class="btn-reset-date" onclick="resetDateFilter()">✕ Reset</button>
+
+          <!-- بادج بيظهر لما الفيلتر شغال -->
+          <span id="activeDateBadge" class="active-filter-badge">📅 فيلتر تاريخ مفعّل</span>
+
+          <!-- سيرش وفيلترات تانية -->
+          <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل..." />
+
+          <select id="filterStatus">
+            <option value="الكل">كل الحالات</option>
+            <option value="Transit">Transit</option>
+            <option value="تم التأكيد">تم التأكيد</option>
+            <option value="Returned">Returned</option>
+            <option value="ملغي">ملغي</option>
+            <option value="Fake Doctor">Fake Doctor</option>
+            <option value="Fake Delivery Update">Fake Delivery Update</option>
+          </select>
+
+          <select id="filterEmployee"></select>
+
+          <button class="success" id="exportBtn">⬇ Export</button>
+
+        </div>
+        <!-- ======================================= -->
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>الموظف</th><th>الدكتور</th><th>العميل</th><th>الموبايل</th>
+                <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody"></tbody>
+          </table>
+        </div>
+        <div id="ordersPagination" class="pagination"></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="analyticsPage" class="hidden">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+        <div><h1 style="margin-bottom:4px">📊 Analytics Dashboard</h1><p style="color:#9fb0d6;margin:0">تحليل عام للأداء — اختر فترة زمنية أو اتركها فاضية لتشوف كل البيانات.</p></div>
+        <div class="analytics-date-bar">
+          <label>من</label>
+          <input type="date" id="analyticsFromDate" onchange="applyAnalyticsFilter()" />
+          <label>إلى</label>
+          <input type="date" id="analyticsToDate" onchange="applyAnalyticsFilter()" />
+          <button class="btn-filter" onclick="applyAnalyticsFilter()">🔍 Filter</button>
+          <button class="btn-reset-date" onclick="resetAnalyticsFilter()">✕ Reset</button>
+          <span id="analyticsFilterBadge" class="active-filter-badge"></span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-head"><h2>🚚 تحليل شركات الشحن</h2><button class="success" onclick="exportShippingAnalysis()">Export Shipping Analysis</button></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>شركة الشحن</th><th>عدد الأوردرات</th><th>تم التأكيد</th><th>Transit</th><th>Returned</th><th>ملغي</th><th>فيك</th><th>نسبة الفيك</th><th>نسبة الراجع</th>
+      </tr></thead><tbody id="shippingAnalyticsBody"></tbody></table></div>
+      <div id="shippingAnalysisPagination" class="pagination"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>👨‍⚕️ تحليل أداء الدكاترة</h2>
+        <input class="rank-search" id="doctorsAnalysisSearch" placeholder="Search doctor..." />
+        <button class="success" onclick="exportDoctorsAnalysis()">Export Doctors Analysis</button>
+      </div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>اسم الدكتور</th><th>عدد الأوردرات</th><th>تم التأكيد</th><th>Transit</th><th>Returned</th><th>ملغي</th><th>فيك</th><th>إجمالي المبيعات</th><th>نسبة الفيك</th><th>نسبة الراجع</th>
+      </tr></thead><tbody id="doctorsAnalyticsBody"></tbody></table></div>
+      <div id="doctorsAnalysisPagination" class="pagination"></div>
+    </div>
+  </section>
+
+  <section id="shippingRankPage" class="hidden">
+
+    <!-- Header -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+        <div>
+          <h1 style="margin-bottom:4px">🚚 Shipping Performance</h1>
+          <p style="color:#9fb0d6;margin:0">مقارنة شركات الشحن — Return Rate و Fake Delivery Update.</p>
+        </div>
+        <div class="analytics-date-bar">
+          <label>من</label>
+          <input type="date" id="shippingFromDate" onchange="onShippingFilterChange()" />
+          <label>إلى</label>
+          <input type="date" id="shippingToDate" onchange="onShippingFilterChange()" />
+          <button class="btn-reset-date" onclick="resetShippingDateFilter()">✕ Reset</button>
+          <span id="shippingDateBadge" class="active-filter-badge"></span>
+        </div>
+        <button class="success" onclick="exportShippingRank()" style="padding:11px 18px">⬇ Export</button>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat" style="border:1px solid rgba(99,102,241,.3)">
+        <span>Best Shipping</span>
+        <strong id="bestShippingInsight" style="color:#6366f1;font-size:18px">—</strong>
+      </div>
+      <div class="stat" style="border:1px solid rgba(239,68,68,.3)">
+        <span>Highest Return Rate</span>
+        <strong id="worstReturnShippingInsight" style="color:#ef4444;font-size:18px">—</strong>
+      </div>
+      <div class="stat" style="border:1px solid rgba(245,158,11,.3)">
+        <span>Highest Fake Rate</span>
+        <strong id="worstFakeShippingInsight" style="color:#f59e0b;font-size:18px">—</strong>
+      </div>
+    </div>
+
+    <!-- Ranking Table + Filter -->
+    <div class="card">
+      <div class="section-head">
+        <h2>Shipping Ranking</h2>
+        <input class="rank-search" id="shippingRankSearch" placeholder="🔍 ابحث في شركات الشحن..." />
+        <div class="multi-filter">
+          <button class="multi-filter-btn" type="button" onclick="toggleShippingCompanyFilter()">Filter ▾</button>
+          <div id="shippingCompanyFilterMenu" class="multi-filter-menu">
+            <div id="shippingCompanyCheckboxes"></div>
+            <div class="multi-filter-actions">
+              <button class="primary" type="button" onclick="applyShippingCompanyFilter()">Apply</button>
+              <button class="soft" type="button" onclick="resetShippingCompanyFilter()">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Rank</th><th>Shipping Company</th><th>Total Orders</th><th>Confirmed</th><th>Returned</th><th>Fake Delivery</th><th>Return Rate</th><th>Fake Rate</th><th>Score</th>
+      </tr></thead><tbody id="shippingRankBody"></tbody></table></div>
+      <div id="shippingRankPagination" class="pagination"></div>
+    </div>
+
+    <!-- Bar Chart -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+        <h2 style="margin:0">📊 توزيع الأوردرات والراجع</h2>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#9fb0d6">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:#378ADD;display:inline-block"></span>Total Orders</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:#E24B4A;display:inline-block"></span>Returned</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:#EF9F27;display:inline-block"></span>Fake Delivery</span>
+        </div>
+      </div>
+      <div style="position:relative;width:100%;height:400px" id="shippingBarChartWrap">
+        <canvas id="shippingBarChart" style="position:absolute;top:0;left:0;width:100%!important;height:100%!important"></canvas>
+      </div>
+    </div>
+
+  </section>
+
+  <section id="doctorRankPage" class="hidden">
+    <div class="card">
+      <h1>👨‍⚕️ Doctor Performance Dashboard</h1>
+      <p style="color:#9fb0d6">تحليل يساعدك تعرف مين الدكتور اللي بيجيب مبيعات ومين محتاج مراجعة بسبب الفيك أو الراجع.</p>
+    </div>
+
+    <div class="insight-grid">
+      <div class="insight"><span>Best Doctor</span><strong id="bestDoctorInsight">-</strong></div>
+      <div class="insight"><span>Highest Revenue</span><strong id="topRevenueDoctorInsight">-</strong></div>
+      <div class="insight"><span>Highest Fake Rate</span><strong id="worstFakeDoctorInsight">-</strong></div>
+      <div class="insight"><span>Highest Return Rate</span><strong id="worstReturnDoctorInsight">-</strong></div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="card"><h2>Revenue by Doctor</h2><canvas id="doctorRevenueChart"></canvas></div>
+      <div class="card"><h2>Fake Rate / Return Rate</h2><canvas id="doctorRiskChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head"><h2>Doctor Ranking</h2><input class="rank-search" id="doctorRankSearch" placeholder="Search doctor..." /><button class="success" onclick="exportDoctorRank()">Export Doctor Rank</button></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Rank</th><th>Doctor</th><th>Total Orders</th><th>Confirmed</th><th>Returned</th><th>Fake</th><th>Total Revenue</th><th>Fake Rate</th><th>Return Rate</th><th>Score</th>
+      </tr></thead><tbody id="doctorRankBody"></tbody></table></div>
+      <div id="doctorRankPagination" class="pagination"></div>
+    </div>
+  </section>
+
+  <section id="branchRankPage" class="hidden">
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+        <div>
+          <h1 style="margin-bottom:4px">📋 Reports Center</h1>
+          <p style="color:#9fb0d6;margin:0">اختار الفترة من / إلى ثم اعرض Daily أو Weekly أو Monthly Report.</p>
+        </div>
+
+        <div class="analytics-date-bar">
+          <label>من</label>
+          <input type="date" id="reportFromDate" />
+          <label>إلى</label>
+          <input type="date" id="reportToDate" />
+          <button class="btn-filter" onclick="applyReportFilter()">🔍 Filter</button>
+          <button class="btn-reset-date" onclick="resetReportFilter()">✕ Reset</button>
+          <button class="success" onclick="exportCurrentReport()" style="padding:11px 16px;border-radius:12px;font-size:14px">⬇ Export</button>
+        </div>
+      </div>
+
+      <div class="report-tabs">
+        <button id="dailyReportBtn" onclick="setReportMode('daily')">Daily Report</button>
+        <button id="weeklyReportBtn" onclick="setReportMode('weekly')">Weekly Report</button>
+        <button id="monthlyReportBtn" onclick="setReportMode('monthly')">Monthly Report</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="reportTitle">Daily Report</h2>
+      <p id="reportRangeText" style="color:#9fb0d6">—</p>
+
+      <div class="report-grid">
+        <div class="report-card"><span>Total Orders</span><strong id="reportTotalOrders">0</strong></div>
+        <div class="report-card"><span>Total Returned</span><strong id="reportReturned">0</strong></div>
+        <div class="report-card"><span>Total Fake Doctor</span><strong id="reportFakeDoctor">0</strong></div>
+        <div class="report-card"><span>Total Fake Delivery Update</span><strong id="reportFakeDelivery">0</strong></div>
+      </div>
+
+      <div class="report-list">
+        <div class="report-box">
+          <h3>🚚 أسوأ شركة شحن</h3>
+          <div id="reportWorstShipping">—</div>
+          <div id="reportWorst3Shipping" style="display:none;margin-top:14px">
+            <h3 style="margin-bottom:10px">🚚 أسوأ 3 شركات شحن خلال الشهر</h3>
+            <div id="reportWorst3ShippingList">—</div>
+          </div>
+        </div>
+
+        <div class="report-box">
+          <h3 id="returnedDoctorsTitle">أكتر دكتور راجع له أوردرات</h3>
+          <div id="reportTopReturnedDoctors">—</div>
+        </div>
+
+        <div class="report-box">
+          <h3 id="fakeDoctorsTitle">أكتر دكتور عامل Fake Doctor</h3>
+          <div id="reportTopFakeDoctors">—</div>
+        </div>
+
+        <div class="report-box">
+          <h3>📌 Decision Summary</h3>
+          <div id="reportDecisionSummary">—</div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <section id="usersPage" class="hidden">
+    <div class="card">
+      <h1>👥 Users Management</h1>
+      <form id="userForm">
+        <div class="form-grid">
+          <input id="newUserName" placeholder="اسم الموظف" required />
+          <input id="newUsername" placeholder="Username" required />
+          <input id="newPassword" placeholder="Password" required />
+          <select id="newRole" required><option value="agent">agent</option><option value="manager">manager</option><option value="admin">admin</option></select>
+        </div>
+        <div class="actions"><button class="success" type="submit">Add User</button><button class="soft" type="button" onclick="userForm.reset()">Clear</button></div>
+      </form>
+    </div>
+    <div class="card"><h2>Current Users</h2><div class="table-wrap"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Active</th></tr></thead><tbody id="usersTableBody"></tbody></table></div></div>
+  </section>
+  <section id="branchsPage" class="hidden">
+    <div class="card">
+      <h1>⚙️ Settings</h1>
+      <p style="color:#9fb0d6">إعدادات النظام: الفروع، الدكاترة، وشركات الشحن.</p>
+    </div>
+
+    <div class="card">
+      <h2>🏢 OKB Branches</h2>
+      <p style="color:#9fb0d6">إدارة فروع OKB وبياناتها.</p>
+      <form id="branchForm">
+        <div class="form-grid">
+          <input id="branchName"    placeholder="اسم الفرع"    required />
+          <input id="branchCity"    placeholder="المدينة"      required />
+          <input id="branchManager" placeholder="اسم المسؤول"  required />
+          <input id="branchPhone"   placeholder="رقم التواصل"  required />
+        </div>
+        <div class="actions">
+          <button class="success" type="submit">➕ إضافة فرع</button>
+          <button class="soft"    type="button" onclick="branchForm.reset()">تفريغ</button>
+        </div>
+      </form>
+
+      <div class="table-wrap" style="margin-top:18px">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>اسم الفرع</th><th>المدينة</th><th>المسؤول</th><th>رقم التواصل</th><th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="branchsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>👨‍⚕️ OKB Doctors</h2>
+      <p style="color:#9fb0d6">أضف أسماء الدكاترة هنا، وستظهر تلقائيًا في قائمة اختيار الدكتور داخل إضافة الأوردر.</p>
+      <form id="doctorSettingsForm">
+        <div class="form-grid" style="grid-template-columns:1fr auto">
+          <input id="settingDoctorName" placeholder="اسم الدكتور" required />
+          <button class="success" type="submit">➕ إضافة دكتور</button>
+        </div>
+      </form>
+
+      <div class="table-wrap" style="margin-top:18px">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>اسم الدكتور</th><th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="doctorsSettingsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🚚 Shipping System</h2>
+      <p style="color:#9fb0d6">أضف شركات الشحن هنا، وستظهر تلقائيًا في قائمة اختيار شركة الشحن داخل إضافة الأوردر.</p>
+      <form id="shippingSettingsForm">
+        <div class="form-grid">
+          <input id="shippingCompanyName" placeholder="اسم الشركة" required />
+          <input id="shippingCity" placeholder="المدينة" required />
+          <input id="shippingManager" placeholder="اسم المسؤول" required />
+          <input id="shippingPhone" placeholder="رقم التلفون" required />
+        </div>
+        <div class="actions">
+          <button class="success" type="submit">➕ إضافة شركة شحن</button>
+          <button class="soft" type="button" onclick="shippingSettingsForm.reset()">تفريغ</button>
+        </div>
+      </form>
+
+      <div class="table-wrap" style="margin-top:18px">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>اسم الشركة</th><th>المدينة</th><th>المسؤول</th><th>رقم التلفون</th><th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="shippingSettingsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script>
+const supabaseClient = window.supabase.createClient(
+  "https://nsynylbqrkdftnyqrgkn.supabase.co",
+  "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv"
+);
+
+let orders=[], users=[], editId=null, currentUser=null;
+let charts={};
+
+// ===== Pagination =====
+const PAGE_SIZE = 20;
+let pageState = {
+  orders: 1,
+  shippingAnalysis: 1,
+  doctorsAnalysis: 1,
+  shippingRank: 1,
+  doctorRank: 1,
+  branchRank: 1
+};
+// ======================
+
+// ===== Shipping Rank Filter =====
+let selectedShippingCompanies = [];
+// ===============================
+
+// ===== متغيرات الفيلتر =====
+let activeDateFrom = null;  // string "YYYY-MM-DD" أو null
+let activeDateTo   = null;  // string "YYYY-MM-DD" أو null
+// ============================
+
+const $=id=>document.getElementById(id);
+const loginPage=$("loginPage"), app=$("app"), loginUsername=$("loginUsername"), loginPassword=$("loginPassword"), loginError=$("loginError");
+const orderForm=$("orderForm"), employeeName=$("employeeName"), doctorName=$("doctorName"), customerName=$("customerName"), phone=$("phone"), shippingCompany=$("shippingCompany"), area=$("area"), price=$("price"), status=$("status");
+const submitBtn=$("submitBtn"), ordersTableBody=$("ordersTableBody");
+const totalOrders=$("totalOrders"), confirmedOrders=$("confirmedOrders"), returnedOrders=$("returnedOrders"), fakeDoctorOrders=$("fakeDoctorOrders"), fakeDeliveryUpdateOrders=$("fakeDeliveryUpdateOrders"), totalRevenue=$("totalRevenue");
+const searchInput=$("searchInput"), filterStatus=$("filterStatus"), filterEmployee=$("filterEmployee"), exportBtn=$("exportBtn");
+const userForm=$("userForm"), newUserName=$("newUserName"), newUsername=$("newUsername"), newPassword=$("newPassword"), newRole=$("newRole"), usersTableBody=$("usersTableBody");
+const shippingRankSearch=$("shippingRankSearch"), doctorRankSearch=$("doctorRankSearch"), doctorsAnalysisSearch=$("doctorsAnalysisSearch"), shippingCompanyFilterMenu=$("shippingCompanyFilterMenu"), shippingCompanyCheckboxes=$("shippingCompanyCheckboxes");
+
+function num(v){return Number(v||0).toLocaleString("en-US")}
+function money(v){return Number(v||0).toLocaleString("en-US")}
+function isAdmin(){return currentUser && String(currentUser.role||"").toLowerCase()==="admin"}
+function isManager(){return currentUser && String(currentUser.role||"").toLowerCase()==="manager"}
+function canViewAdminReports(){return isAdmin() || isManager()}
+function percent(p,t){return t?((p/t)*100).toFixed(1)+"%":"0%"}
+function percentNum(p,t){return t?((p/t)*100):0}
+function isFakeDoctorOrder(o){return o.fake_doctor===true || o.status==="Fake Doctor"}
+function isFakeDeliveryUpdateOrder(o){return o.fake_delivery_update===true || o.status==="Fake Delivery Update"}
+function getFakeCount(list){return list.filter(o=>isFakeDoctorOrder(o)||isFakeDeliveryUpdateOrder(o)).length}
+function getFakeDoctorCount(list){return list.filter(o=>isFakeDoctorOrder(o)).length}
+function getFakeDeliveryUpdateCount(list){return list.filter(o=>isFakeDeliveryUpdateOrder(o)).length}
+function calcRevenueBreakdown(list){
+  const total = list.reduce((s,o)=>s+Number(o.price||0),0);
+  const confirmedList = list.filter(o=>o.status==="تم التأكيد");
+  const returnedList = list.filter(o=>o.status==="Returned");
+  const cancelledList = list.filter(o=>o.status==="ملغي");
+  const transitList = list.filter(o=>o.status==="Transit");
+  const fakeDoctorList = list.filter(o=>isFakeDoctorOrder(o));
+  const fakeDeliveryList = list.filter(o=>isFakeDeliveryUpdateOrder(o));
+  const sum = arr => arr.reduce((s,o)=>s+Number(o.price||0),0);
+  return {
+    total,
+    confirmed: sum(confirmedList),
+    returned: sum(returnedList),
+    cancelled: sum(cancelledList),
+    transit: sum(transitList),
+    fakeDoctor: sum(fakeDoctorList),
+    fakeDelivery: sum(fakeDeliveryList)
+  };
+}
+function statHTML(count, amount, label, tone=""){
+  return `<span class="stat-count">${num(count)}</span><small class="stat-money ${tone}">${label}: ${money(amount)}</small>`;
+}
+function handleEnter(e){if(e.key==="Enter") login()}
+
+// ============================================================
+// ===== Pagination helpers =====
+// ============================================================
+function getPaginatedRows(list, scope){
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  if(pageState[scope] > totalPages) pageState[scope] = totalPages;
+  if(pageState[scope] < 1) pageState[scope] = 1;
+  const start = (pageState[scope] - 1) * PAGE_SIZE;
+  return { rows: list.slice(start, start + PAGE_SIZE), start, totalPages };
+}
+
+function renderPagination(containerId, total, scope){
+  const container = $(containerId);
+  if(!container) return;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = pageState[scope];
+
+  if(total <= PAGE_SIZE){
+    container.innerHTML = "";
+    return;
+  }
+
+  let html = "";
+  html += `<button onclick="changePage('${scope}', ${current - 1})" ${current===1?"disabled":""}>Prev</button>`;
+
+  const startPage = Math.max(1, current - 2);
+  const endPage = Math.min(totalPages, current + 2);
+
+  if(startPage > 1){
+    html += `<button onclick="changePage('${scope}', 1)">1</button>`;
+    if(startPage > 2) html += `<span class="pagination-info">...</span>`;
+  }
+
+  for(let p=startPage; p<=endPage; p++){
+    html += `<button class="${p===current?"active":""}" onclick="changePage('${scope}', ${p})">${p}</button>`;
+  }
+
+  if(endPage < totalPages){
+    if(endPage < totalPages - 1) html += `<span class="pagination-info">...</span>`;
+    html += `<button onclick="changePage('${scope}', ${totalPages})">${totalPages}</button>`;
+  }
+
+  html += `<button onclick="changePage('${scope}', ${current + 1})" ${current===totalPages?"disabled":""}>Next</button>`;
+  html += `<span class="pagination-info">Page ${current} of ${totalPages} | Total ${num(total)}</span>`;
+  container.innerHTML = html;
+}
+
+function changePage(scope, page){
+  pageState[scope] = page;
+  if(scope === "orders") renderOrders();
+  if(scope === "shippingAnalysis" || scope === "doctorsAnalysis") renderAnalytics();
+  if(scope === "shippingRank") renderShippingRank();
+  if(scope === "doctorRank") renderDoctorRank();
+  if(scope === "branchRank") renderBranchRank();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+function resetAllPages(){
+  Object.keys(pageState).forEach(k=>pageState[k]=1);
+}
+// ============================================================
+
+
+// ============================================================
+// ===== فانكشنز الفيلتر بالتاريخ =====
+// ============================================================
+function applyDateFilter(){
+  const from=$("fromDate").value;
+  const to=$("toDate").value;
+
+  if(!from && !to){
+    alert("اختر تاريخ من أو إلى على الأقل");
+    return;
+  }
+
+  activeDateFrom = from || null;
+  activeDateTo   = to   || null;
+
+  // بادج بيظهر إن الفيلتر مفعّل
+  const badge = $("activeDateBadge");
+  let label = "📅 ";
+  if(activeDateFrom && activeDateTo) label += `${activeDateFrom} → ${activeDateTo}`;
+  else if(activeDateFrom)            label += `من ${activeDateFrom}`;
+  else                               label += `حتى ${activeDateTo}`;
+  badge.textContent = label;
+  badge.classList.add("visible");
+
+  resetAllPages();
+  renderOrders();
+  renderAnalytics();
+  renderRanks();
+}
+
+function resetDateFilter(){
+  activeDateFrom = null;
+  activeDateTo   = null;
+  $("fromDate").value = "";
+  $("toDate").value   = "";
+  $("activeDateBadge").classList.remove("visible");
+  resetAllPages();
+  renderOrders();
+  renderAnalytics();
+  renderRanks();
+}
+
+// بيرجع true لو الأوردر داخل نطاق التاريخ المختار
+function isInDateRange(order){
+  if(!activeDateFrom && !activeDateTo) return true;  // مفيش فيلتر
+
+  // created_at بيجي من Supabase كـ ISO string زي "2025-04-15T10:30:00Z"
+  const raw = order.created_at;
+  if(!raw) return true;  // لو مفيش تاريخ خليه يظهر
+
+  // بناخد الجزء بتاع التاريخ فقط "YYYY-MM-DD"
+  const orderDate = raw.split("T")[0];
+
+  if(activeDateFrom && activeDateTo){
+    return orderDate >= activeDateFrom && orderDate <= activeDateTo;
+  } else if(activeDateFrom){
+    return orderDate >= activeDateFrom;
+  } else {
+    return orderDate <= activeDateTo;
+  }
+}
+// ============================================================
+
+async function login(){
+  const {data,error}=await supabaseClient.from("user").select("*").eq("username",loginUsername.value.trim()).eq("password",loginPassword.value.trim()).limit(1);
+  if(error||!data||!data.length){loginError.style.display="block";return}
+  const u=data[0]; if(u.active===false){loginError.style.display="block";return}
+  currentUser={id:u.id,name:u.name,username:u.username,role:u.role||(u.username==="admin"?"admin":"agent")};
+  sessionStorage.setItem("okb_current_user",JSON.stringify(currentUser));
+  loginPage.classList.add("hidden"); app.classList.remove("hidden");
+  setupUserView(); await loadDoctors(); await loadShippingSystems(); await loadOrders(); if(isAdmin()) await loadUsers();
+}
+
+function logout(){sessionStorage.removeItem("okb_current_user");currentUser=null;app.classList.add("hidden");loginPage.classList.remove("hidden")}
+async function checkLogin(){const s=sessionStorage.getItem("okb_current_user");if(s){currentUser=JSON.parse(s);loginPage.classList.add("hidden");app.classList.remove("hidden");setupUserView();await loadDoctors();await loadShippingSystems();await loadOrders();if(isAdmin())await loadUsers()}}
+
+function setupUserView(){
+  $("userNameHere").textContent=currentUser.name; $("userRoleHere").textContent=currentUser.role;
+
+  document.querySelectorAll(".admin-only").forEach(el=>el.classList.toggle("hidden",!isAdmin()));
+  document.querySelectorAll(".admin-manager-only").forEach(el=>el.classList.toggle("hidden",!canViewAdminReports()));
+
+  if(!isAdmin()){employeeName.value=currentUser.name;employeeName.readOnly=true}else employeeName.readOnly=false;
+}
+
+async function loadOrders(){
+  const {data,error}=await supabaseClient.from("orders").select("*").order("created_at",{ascending:false});
+  if(error){alert("مشكلة في تحميل البيانات: "+error.message);return}
+  orders=data||[]; renderDoctorOptions(); renderShippingOptions(); renderOrders(); renderAnalytics(); renderRanks();
+}
+
+async function loadUsers(){
+  const {data,error}=await supabaseClient.from("user").select("*").order("name",{ascending:true});
+  if(error){alert("مشكلة في تحميل المستخدمين: "+error.message);return}
+  users=data||[]; renderUsers();
+}
+
+// old hideAllPages removed
+function showOrdersPage(){hideAllPages();$("ordersPage").classList.remove("hidden")}
+function showAnalyticsPage(){hideAllPages();$("analyticsPage").classList.remove("hidden");renderAnalytics()}
+function showShippingRankPage(){if(!canViewAdminReports())return;hideAllPages();$("shippingRankPage").classList.remove("hidden");setTimeout(()=>{renderShippingRank();renderShippingCharts()},150)}
+function showDoctorRankPage(){if(!canViewAdminReports())return;hideAllPages();$("doctorRankPage").classList.remove("hidden");setTimeout(()=>{renderDoctorRank();renderDoctorCharts()},150)}
+function showBranchRankPage(){
+  hideAllPages();
+  $("branchRankPage").classList.remove("hidden");
+  if(!$("reportFromDate").value || !$("reportToDate").value){
+    setReportMode("daily");
+  } else {
+    updateReportTabs();
+    renderReport();
+  }
+}
+
+function showUsersPage(){if(!isAdmin())return;hideAllPages();$("usersPage").classList.remove("hidden");loadUsers()}
+
+function resetForm(){orderForm.reset();editId=null;submitBtn.textContent="إضافة الأوردر";if(!isAdmin()){employeeName.value=currentUser.name;employeeName.readOnly=true}}
+function getVisibleOrders(){return orders}
+
+function renderEmployeeFilter(){
+  const current=filterEmployee.value, base=getVisibleOrders();
+  const employees=[...new Set(base.map(o=>o.employee_name).filter(Boolean))];
+  filterEmployee.innerHTML=`<option value="الكل">كل الموظفين</option>`+employees.map(e=>`<option value="${e}">${e}</option>`).join("");
+  filterEmployee.disabled=false;filterEmployee.value=employees.includes(current)?current:"الكل";
+}
+
+function getFilteredOrders(){
+  const search=searchInput.value.trim().toLowerCase(), statusFilter=filterStatus.value, employeeFilter=filterEmployee.value;
+  return getVisibleOrders().filter(o=>{
+    const matchSearch=String(o.employee_name||"").toLowerCase().includes(search)||String(o.doctor_name||"").toLowerCase().includes(search)||String(o.customer_name||"").toLowerCase().includes(search)||String(o.phone||"").toLowerCase().includes(search);
+    const matchStatus=statusFilter==="الكل"||o.status===statusFilter;
+    const matchEmployee=!isAdmin()||employeeFilter==="الكل"||o.employee_name===employeeFilter;
+    // ===== فيلتر التاريخ =====
+    const matchDate=isInDateRange(o);
+    // =========================
+    return matchSearch&&matchStatus&&matchEmployee&&matchDate;
+  });
+}
+
+function formatDate(iso){
+  if(!iso) return "";
+  const d = new Date(iso);
+  // Cairo = UTC+2 شتاء / UTC+3 صيف - نحسبها manually عشان نضمن الدقة
+  const cairoOffset = getCairoOffset(d); // +2 أو +3 بالساعة
+  const local = new Date(d.getTime() + cairoOffset * 3600000);
+  const yy  = local.getUTCFullYear();
+  const mo  = String(local.getUTCMonth()+1).padStart(2,"0");
+  const dd  = String(local.getUTCDate()).padStart(2,"0");
+  let   hh  = local.getUTCHours();
+  const mm  = String(local.getUTCMinutes()).padStart(2,"0");
+  const ampm = hh >= 12 ? "PM" : "AM";
+  hh = hh % 12 || 12;
+  return `${dd}/${mo}/${yy} ${String(hh).padStart(2,"0")}:${mm} ${ampm}`;
+}
+
+function getCairoOffset(d){
+  // مصر بتحول للتوقيت الصيفي أحياناً (UTC+3)
+  // نستخدم Intl عشان نعرف الـ offset الصح
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US",{timeZone:"Africa/Cairo",hour:"numeric",hour12:false,timeZoneName:"short"});
+    const parts = fmt.formatToParts(d);
+    const tz = parts.find(p=>p.type==="timeZoneName")?.value || "";
+    return tz.includes("+3") ? 3 : 2;
+  } catch(e){ return 2; }
+}
+
+function renderStats(filtered){
+  const revenue = calcRevenueBreakdown(filtered);
+  const confirmedCount = filtered.filter(o=>o.status==="تم التأكيد").length;
+  const returnedCount = filtered.filter(o=>o.status==="Returned").length;
+  const fakeDoctorCount = filtered.filter(o=>isFakeDoctorOrder(o)).length;
+  const fakeDeliveryCount = filtered.filter(o=>isFakeDeliveryUpdateOrder(o)).length;
+
+  totalOrders.innerHTML = statHTML(filtered.length, revenue.total, "Total Value");
+  confirmedOrders.innerHTML = statHTML(confirmedCount, revenue.confirmed, "Revenue", "good");
+  returnedOrders.innerHTML = statHTML(returnedCount, revenue.returned, "Returned Value", "bad");
+  fakeDoctorOrders.innerHTML = statHTML(fakeDoctorCount, revenue.fakeDoctor, "Fake Value", "warn");
+  fakeDeliveryUpdateOrders.innerHTML = statHTML(fakeDeliveryCount, revenue.fakeDelivery, "Fake Delivery Value", "warn");
+  totalRevenue.innerHTML = `<span class="stat-count">${money(revenue.total)}</span><small class="stat-money">All Statuses Value</small>`;
+}
+
+function renderOrders(){
+  renderEmployeeFilter();
+  const filtered=getFilteredOrders();
+  renderStats(filtered);
+
+  if(!filtered.length){
+    ordersTableBody.innerHTML=`<tr><td colspan="12" class="empty">No data found</td></tr>`;
+    renderPagination("ordersPagination", 0, "orders");
+    return;
+  }
+
+  const page = getPaginatedRows(filtered, "orders");
+
+  ordersTableBody.innerHTML=page.rows.map((o,i)=>`
+    <tr>
+      <td>${num(page.start+i+1)}</td><td>${o.employee_name||""}</td><td>${o.doctor_name||""}</td><td>${o.customer_name||""}</td><td>${o.phone||""}</td>
+      <td>${o.shipping_company||""}</td><td>${o.area||""}</td><td>${money(o.price)}</td><td><span class="chip">${o.status||""}</span></td>
+      <td style="color:#9fb0d6;font-size:13px;max-width:160px;white-space:normal">${o.notes||''}</td>
+      <td style="color:#9fb0d6;font-size:13px">${formatDate(o.created_at)}</td>
+      <td><div style="display:flex;gap:6px;align-items:center"><button class="edit" style="padding:7px 12px;font-size:12px" onclick="editOrder('${o.id}')">تعديل</button>${isAdmin()?`<button class="danger" style="padding:7px 12px;font-size:12px" onclick="deleteOrder('${o.id}')">حذف</button>`:''}</div></td>
+    </tr>`).join("");
+
+  renderPagination("ordersPagination", filtered.length, "orders");
+}
+
+orderForm.addEventListener("submit",async(e)=>{
+  e.preventDefault();
+  const orderData={employee_name:isAdmin()?employeeName.value.trim():currentUser.name,doctor_name:doctorName.value.trim(),customer_name:customerName.value.trim(),phone:phone.value.trim(),shipping_company:shippingCompany.value,area:area.value.trim(),price:Number(price.value),status:status.value,fake_doctor:status.value==="Fake Doctor",notes:($('orderNotes').value||'').trim()};
+  if(!orderData.employee_name||!orderData.doctor_name||!orderData.customer_name||!orderData.phone||!orderData.shipping_company||!orderData.area||!orderData.price||!orderData.status){alert("من فضلك املى كل البيانات");return}
+  const result=editId?await supabaseClient.from("orders").update(orderData).eq("id",editId):await supabaseClient.from("orders").insert([orderData]);
+  if(result.error){alert("مشكلة في الحفظ: "+result.error.message);return}
+  resetForm();loadOrders();
+});
+
+window.editOrder=function(id){
+  const o=orders.find(x=>String(x.id)===String(id)); if(!o)return;
+  if(!isAdmin()&&o.employee_name!==currentUser.name){alert("غير مسموح بتعديل أوردرات موظف آخر");return}
+  editId=id; employeeName.value=o.employee_name||""; doctorName.value=o.doctor_name||""; customerName.value=o.customer_name||""; phone.value=o.phone||""; shippingCompany.value=o.shipping_company||""; area.value=o.area||""; price.value=o.price||""; status.value=o.status||"";
+  $('orderNotes').value=o.notes||''; submitBtn.textContent="حفظ التعديل"; window.scrollTo({top:0,behavior:"smooth"});
+}
+
+window.deleteOrder = async function(id){
+  if(!isAdmin()){alert("غير مسموح بالحذف");return}
+  const confirmDelete = confirm("هل أنت متأكد من حذف هذا الأوردر فقط؟");
+  if(!confirmDelete) return;
+  const { error } = await supabaseClient.from("orders").delete().eq("id", id);
+  if(error){alert("مشكلة في الحذف: " + error.message);console.error(error);return}
+  alert("تم حذف الأوردر بنجاح");
+  await loadOrders();
+};
+
+function countStatus(list,s){return list.filter(o=>o.status===s).length}
+
+function getShippingAnalysisRows(sourceOrders){
+  // شركات الشحن بقت ديناميك من Shipping System + أي شركة موجودة داخل الأوردرات
+  const src = sourceOrders || orders;
+  const companies = getShippingCompanyNames();
+
+  return companies.map(company=>{
+    const list=src.filter(o=>o.shipping_company===company),
+      total=list.length,
+      confirmed=countStatus(list,"تم التأكيد"),
+      transit=countStatus(list,"Transit"),
+      returned=countStatus(list,"Returned"),
+      cancelled=countStatus(list,"ملغي"),
+      fake=getFakeDeliveryUpdateCount(list);
+
+    return {company,total,confirmed,transit,returned,cancelled,fake,fakeRate:percent(fake,total),returnRate:percent(returned,total),fakeRateNum:percentNum(fake,total),returnRateNum:percentNum(returned,total)}
+  });
+}
+
+function getDoctorsAnalysisRows(sourceOrders){
+  const src = sourceOrders || orders;
+  const doctors=[...new Set(src.map(o=>o.doctor_name).filter(Boolean))];
+  return doctors.map(doc=>{
+    const list=src.filter(o=>o.doctor_name===doc), total=list.length, confirmed=countStatus(list,"تم التأكيد"), transit=countStatus(list,"Transit"), returned=countStatus(list,"Returned"), cancelled=countStatus(list,"ملغي"), fake=getFakeDoctorCount(list), revenue=list.reduce((s,o)=>s+Number(o.price||0),0);
+    return {doctor:doc,total,confirmed,transit,returned,cancelled,fake,revenue,fakeRate:percent(fake,total),returnRate:percent(returned,total),fakeRateNum:percentNum(fake,total),returnRateNum:percentNum(returned,total)}
+  });
+}
+
+function getFilteredDoctorsAnalysisRows(sourceOrders){
+  const q = (doctorsAnalysisSearch?.value || "").trim().toLowerCase();
+  const rows = getDoctorsAnalysisRows(sourceOrders);
+  if(!q) return rows;
+  return rows.filter(r=>String(r.doctor||"").toLowerCase().includes(q));
+}
+
+// ===== Analytics Date Filter =====
+let analyticsDateFrom = null;
+let analyticsDateTo   = null;
+
+function applyAnalyticsFilter(){
+  analyticsDateFrom = $("analyticsFromDate").value || null;
+  analyticsDateTo   = $("analyticsToDate").value   || null;
+  const badge = $("analyticsFilterBadge");
+  if(analyticsDateFrom || analyticsDateTo){
+    let label = "📅 ";
+    if(analyticsDateFrom && analyticsDateTo) label += `${analyticsDateFrom} → ${analyticsDateTo}`;
+    else if(analyticsDateFrom)              label += `من ${analyticsDateFrom}`;
+    else                                    label += `حتى ${analyticsDateTo}`;
+    badge.textContent = label;
+    badge.classList.add("visible");
+  } else {
+    badge.classList.remove("visible");
+  }
+  renderAnalytics();
+}
+
+function resetAnalyticsFilter(){
+  analyticsDateFrom = null;
+  analyticsDateTo   = null;
+  $("analyticsFromDate").value = "";
+  $("analyticsToDate").value   = "";
+  $("analyticsFilterBadge").classList.remove("visible");
+  renderAnalytics();
+}
+
+function getAnalyticsOrders(){
+  if(!analyticsDateFrom && !analyticsDateTo) return orders;
+  return orders.filter(o=>{
+    const raw = o.created_at; if(!raw) return true;
+    const d = raw.split("T")[0];
+    if(analyticsDateFrom && analyticsDateTo) return d >= analyticsDateFrom && d <= analyticsDateTo;
+    if(analyticsDateFrom) return d >= analyticsDateFrom;
+    return d <= analyticsDateTo;
+  });
+}
+// ==================================
+
+function renderAnalytics(){
+  const analyticsOrders = getAnalyticsOrders();
+  const ship=getShippingAnalysisRows(analyticsOrders), docs=getFilteredDoctorsAnalysisRows(analyticsOrders);
+
+  const shipPage=getPaginatedRows(ship,"shippingAnalysis");
+  const docsPage=getPaginatedRows(docs,"doctorsAnalysis");
+
+  $("shippingAnalyticsBody").innerHTML=shipPage.rows.length
+    ? shipPage.rows.map(r=>`<tr><td>${r.company}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.transit)}</td><td>${num(r.returned)}</td><td>${num(r.cancelled)}</td><td>${num(r.fake)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td></tr>`).join("")
+    : `<tr><td colspan="9" class="empty">No shipping data</td></tr>`;
+
+  $("doctorsAnalyticsBody").innerHTML=docsPage.rows.length
+    ? docsPage.rows.map(r=>`<tr><td>${r.doctor}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.transit)}</td><td>${num(r.returned)}</td><td>${num(r.cancelled)}</td><td>${num(r.fake)}</td><td>${money(r.revenue)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td></tr>`).join("")
+    : `<tr><td colspan="10" class="empty">No doctors data</td></tr>`;
+
+  renderPagination("shippingAnalysisPagination", ship.length, "shippingAnalysis");
+  renderPagination("doctorsAnalysisPagination", docs.length, "doctorsAnalysis");
+}
+
+function getShippingRankRows(){const src=getShippingFilteredOrders();return getShippingAnalysisRows(src).map(r=>({...r,score:r.returnRateNum+r.fakeRateNum})).sort((a,b)=>a.score-b.score)}
+function getDoctorRankRows(){return getDoctorsAnalysisRows().map(r=>({...r,score:r.revenue-((r.fakeRateNum+r.returnRateNum)*100)})).sort((a,b)=>b.score-a.score)}
+
+
+function renderShippingCompanyFilter(){
+  if(!shippingCompanyCheckboxes) return;
+
+  const companies = getShippingRankRows().map(r=>r.company).filter(Boolean);
+
+  shippingCompanyCheckboxes.innerHTML = companies.length
+    ? companies.map(company=>`
+      <label class="multi-filter-item">
+        <input type="checkbox" class="shipping-filter-check" value="${company}" ${selectedShippingCompanies.includes(company)?"checked":""}>
+        <span>${company}</span>
+      </label>
+    `).join("")
+    : `<div class="empty">No companies found</div>`;
+}
+
+function toggleShippingCompanyFilter(){
+  if(!shippingCompanyFilterMenu) return;
+  renderShippingCompanyFilter();
+  shippingCompanyFilterMenu.classList.toggle("show");
+}
+
+function applyShippingCompanyFilter(){
+  selectedShippingCompanies = [...document.querySelectorAll(".shipping-filter-check:checked")].map(x=>x.value);
+  if(shippingCompanyFilterMenu) shippingCompanyFilterMenu.classList.remove("show");
+  pageState.shippingRank = 1;
+  renderShippingRank();
+  renderShippingCharts();
+}
+
+function resetShippingCompanyFilter(){
+  selectedShippingCompanies = [];
+  if(shippingCompanyFilterMenu) shippingCompanyFilterMenu.classList.remove("show");
+  pageState.shippingRank = 1;
+  renderShippingRank();
+  renderShippingCharts();
+}
+
+function getFilteredShippingRankRows(){
+  const q = (shippingRankSearch?.value || "").trim().toLowerCase();
+  let rows = getShippingRankRows();
+
+  if(selectedShippingCompanies.length){
+    rows = rows.filter(r=>selectedShippingCompanies.includes(r.company));
+  }
+
+  if(q){
+    rows = rows.filter(r=>String(r.company||"").toLowerCase().includes(q));
+  }
+
+  return rows;
+}
+
+function getFilteredDoctorRankRows(){
+  const q = (doctorRankSearch?.value || "").trim().toLowerCase();
+  const rows = getDoctorRankRows();
+  if(!q) return rows;
+  return rows.filter(r=>String(r.doctor||"").toLowerCase().includes(q));
+}
+
+function renderShippingRank(){
+  const allRows=getShippingRankRows();
+  const rows=getFilteredShippingRankRows();
+  const page=getPaginatedRows(rows,"shippingRank");
+
+  $("shippingRankBody").innerHTML=page.rows.length
+    ? page.rows.map((r,i)=>`<tr><td>${num(page.start+i+1)}</td><td>${r.company}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.returned)}</td><td>${num(r.fake)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td><td>${r.score.toFixed(1)}</td></tr>`).join("")
+    : `<tr><td colspan="9" class="empty">No shipping rank data</td></tr>`;
+
+  renderPagination("shippingRankPagination", rows.length, "shippingRank");
+
+  const active=rows.filter(r=>r.total>0);
+  $("bestShippingInsight").textContent=active[0]?active[0].company:"No data";
+  const worstReturn=[...active].sort((a,b)=>b.returnRateNum-a.returnRateNum)[0];
+  const worstFake=[...active].sort((a,b)=>b.fakeRateNum-a.fakeRateNum)[0];
+  $("worstReturnShippingInsight").textContent=worstReturn?`${worstReturn.company} (${worstReturn.returnRate})`:"No data";
+  $("worstFakeShippingInsight").textContent=worstFake?`${worstFake.company} (${worstFake.fakeRate})`:"No data";
+  $("shippingDecisionInsight").textContent=worstReturn&&worstReturn.returnRateNum>30?`راجع ${worstReturn.company}`:"الوضع مستقر";
+}
+
+function renderDoctorRank(){
+  const allRows=getDoctorRankRows();
+  const rows=getFilteredDoctorRankRows();
+  const page=getPaginatedRows(rows,"doctorRank");
+
+  $("doctorRankBody").innerHTML=page.rows.length
+    ? page.rows.map((r,i)=>`<tr><td>${num(page.start+i+1)}</td><td>${r.doctor}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.returned)}</td><td>${num(r.fake)}</td><td>${money(r.revenue)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td><td>${money(r.score)}</td></tr>`).join("")
+    : `<tr><td colspan="10" class="empty">No doctors data</td></tr>`;
+
+  renderPagination("doctorRankPagination", rows.length, "doctorRank");
+
+  const best=allRows[0], topRev=[...allRows].sort((a,b)=>b.revenue-a.revenue)[0], worstFake=[...allRows].sort((a,b)=>b.fakeRateNum-a.fakeRateNum)[0], worstReturn=[...allRows].sort((a,b)=>b.returnRateNum-a.returnRateNum)[0];
+  $("bestDoctorInsight").textContent=best?best.doctor:"No data";
+  $("topRevenueDoctorInsight").textContent=topRev?`${topRev.doctor} (${money(topRev.revenue)})`:"No data";
+  $("worstFakeDoctorInsight").textContent=worstFake?`${worstFake.doctor} (${worstFake.fakeRate})`:"No data";
+  $("worstReturnDoctorInsight").textContent=worstReturn?`${worstReturn.doctor} (${worstReturn.returnRate})`:"No data";
+}
+
+function renderRanks(){renderShippingRank();renderDoctorRank()}
+
+function destroyChart(id){if(charts[id]){charts[id].destroy();charts[id]=null}}
+function makeChart(id,type,labels,datasets){
+  destroyChart(id);
+  const ctx=$(id);
+  charts[id]=new Chart(ctx,{
+    type,
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      plugins:{legend:{labels:{color:"#edf4ff",padding:16}}},
+      scales:{
+        x:{ticks:{color:"#9fb0d6"},grid:{color:"rgba(255,255,255,.05)"}},
+        y:{ticks:{color:"#9fb0d6"},grid:{color:"rgba(255,255,255,.05)"}}
+      }
+    }
+  });
+}
+function makeChartH(id,type,labels,datasets){
+  destroyChart(id);
+  const ctx=$(id);
+  charts[id]=new Chart(ctx,{
+    type,
+    data:{labels,datasets},
+    options:{
+      indexAxis:"y",
+      responsive:true,
+      plugins:{legend:{labels:{color:"#edf4ff",padding:16}}},
+      scales:{
+        x:{ticks:{color:"#9fb0d6"},grid:{color:"rgba(255,255,255,.05)"},max:100},
+        y:{ticks:{color:"#9fb0d6"},grid:{color:"rgba(255,255,255,.05)"}}
+      }
+    }
+  });
+}
+
+// ===== Shipping Rank Date Filter =====
+let shippingDateFrom = null;
+let shippingDateTo   = null;
+
+function onShippingFilterChange(){
+  shippingDateFrom = $("shippingFromDate")?.value || null;
+  shippingDateTo   = $("shippingToDate")?.value   || null;
+  const badge = $("shippingDateBadge");
+  if(shippingDateFrom || shippingDateTo){
+    let label = "📅 ";
+    if(shippingDateFrom && shippingDateTo) label += `${shippingDateFrom} → ${shippingDateTo}`;
+    else if(shippingDateFrom)             label += `من ${shippingDateFrom}`;
+    else                                  label += `حتى ${shippingDateTo}`;
+    badge.textContent = label;
+    badge.classList.add("visible");
+  } else {
+    badge.classList.remove("visible");
+  }
+  renderShippingRank();
+  renderShippingCharts();
+}
+
+function resetShippingDateFilter(){
+  shippingDateFrom = null;
+  shippingDateTo   = null;
+  if($("shippingFromDate")) $("shippingFromDate").value = "";
+  if($("shippingToDate"))   $("shippingToDate").value   = "";
+  if($("shippingDateBadge")) $("shippingDateBadge").classList.remove("visible");
+  renderShippingRank();
+  renderShippingCharts();
+}
+
+function getShippingFilteredOrders(){
+  if(!shippingDateFrom && !shippingDateTo) return orders;
+  return orders.filter(o=>{
+    const raw = o.created_at; if(!raw) return true;
+    const d = raw.split("T")[0];
+    if(shippingDateFrom && shippingDateTo) return d >= shippingDateFrom && d <= shippingDateTo;
+    if(shippingDateFrom) return d >= shippingDateFrom;
+    return d <= shippingDateTo;
+  });
+}
+// =====================================
+
+function renderShippingCharts(){
+  // نفس البيانات اللي بتظهر في الجدول بالظبط
+  let rows = getShippingRankRows();
+
+  if(selectedShippingCompanies.length){
+    rows = rows.filter(r=>selectedShippingCompanies.includes(r.company));
+  }
+
+  rows = rows.filter(r=>r.total > 0);
+  rows.sort((a,b)=>b.total - a.total);
+
+  destroyChart("shippingBarChart");
+
+  if(!rows.length) return;
+
+  const wrap = document.getElementById("shippingBarChartWrap");
+  const minH = Math.max(300, rows.length * 55 + 80);
+  wrap.style.height = minH + "px";
+
+  const ctx = $("shippingBarChart");
+  if(!ctx) return;
+
+  const labels = rows.map(r=>r.company);
+
+  charts["shippingBarChart"] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets:[
+        {
+          label: "Total Orders",
+          data: rows.map(r=>r.total),
+          backgroundColor: "#378ADD",
+          borderRadius: 5,
+          borderSkipped: false
+        },
+        {
+          label: "Returned",
+          data: rows.map(r=>r.returned),
+          backgroundColor: "#E24B4A",
+          borderRadius: 5,
+          borderSkipped: false
+        },
+        {
+          label: "Fake Delivery",
+          data: rows.map(r=>r.fake),
+          backgroundColor: "#EF9F27",
+          borderRadius: 5,
+          borderSkipped: false
+        }
+      ]
+    },
+    options:{
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins:{
+        legend:{ display: false },
+        tooltip:{
+          callbacks:{
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.x}`
+          }
+        }
+      },
+      scales:{
+        x:{
+          beginAtZero: true,
+          grid:{ color:"rgba(255,255,255,0.07)" },
+          ticks:{ color:"#9fb0d6", font:{size:12} },
+          border:{ display:false }
+        },
+        y:{
+          grid:{ display:false },
+          ticks:{ color:"#edf4ff", font:{size:13} },
+          border:{ display:false }
+        }
+      }
+    }
+  });
+}
+
+function renderDoctorCharts(){
+  const rows=getDoctorRankRows().slice(0,10), labels=rows.map(r=>r.doctor);
+  makeChart("doctorRevenueChart","bar",labels,[{label:"Revenue",data:rows.map(r=>r.revenue)}]);
+  makeChart("doctorRiskChart","bar",labels,[
+    {label:"Fake Rate %",data:rows.map(r=>r.fakeRateNum.toFixed(1))},
+    {label:"Return Rate %",data:rows.map(r=>r.returnRateNum.toFixed(1))}
+  ]);
+}
+
+function downloadCSV(fileName,headers,rows){
+  const csv=[headers,...rows].map(row=>row.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}), url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url;a.download=fileName;a.click();URL.revokeObjectURL(url);
+}
+
+function exportData(){const f=getFilteredOrders();if(!f.length){alert("لا توجد بيانات للتصدير");return}downloadCSV("orders-data.csv",["Employee","Doctor","Customer","Phone","Shipping Company","Area","Price","Status","Notes","Created At"],f.map(o=>[o.employee_name,o.doctor_name,o.customer_name,o.phone,o.shipping_company,o.area,o.price,o.status,o.notes||"",o.created_at]))}
+function exportShippingAnalysis(){downloadCSV("shipping-analysis.csv",["Shipping Company","Total Orders","Confirmed","Transit","Returned","Cancelled","Fake","Fake Rate","Return Rate"],getShippingAnalysisRows().map(r=>[r.company,r.total,r.confirmed,r.transit,r.returned,r.cancelled,r.fake,r.fakeRate,r.returnRate]))}
+function exportDoctorsAnalysis(){const r=getDoctorsAnalysisRows();if(!r.length){alert("لا توجد بيانات دكاترة للتصدير");return}downloadCSV("doctors-analysis.csv",["Doctor","Total Orders","Confirmed","Transit","Returned","Cancelled","Fake","Total Revenue","Fake Rate","Return Rate"],r.map(x=>[x.doctor,x.total,x.confirmed,x.transit,x.returned,x.cancelled,x.fake,x.revenue,x.fakeRate,x.returnRate]))}
+function exportShippingRank(){downloadCSV("shipping-rank.csv",["Rank","Shipping Company","Total Orders","Confirmed","Returned","Fake","Fake Rate","Return Rate","Score"],getShippingRankRows().map((r,i)=>[i+1,r.company,r.total,r.confirmed,r.returned,r.fake,r.fakeRate,r.returnRate,r.score.toFixed(1)]))}
+function exportDoctorRank(){const r=getDoctorRankRows();if(!r.length){alert("لا توجد بيانات دكاترة للتصدير");return}downloadCSV("doctor-rank.csv",["Rank","Doctor","Total Orders","Confirmed","Returned","Fake","Total Revenue","Fake Rate","Return Rate","Score"],r.map((x,i)=>[i+1,x.doctor,x.total,x.confirmed,x.returned,x.fake,x.revenue,x.fakeRate,x.returnRate,x.score.toFixed(1)]))}
+
+userForm.addEventListener("submit",async(e)=>{
+  e.preventDefault(); if(!isAdmin()){alert("غير مسموح");return}
+  const userData={name:newUserName.value.trim(),username:newUsername.value.trim(),password:newPassword.value.trim(),role:newRole.value,active:true};
+  if(!userData.name||!userData.username||!userData.password||!userData.role){alert("املى كل بيانات المستخدم");return}
+  const {error}=await supabaseClient.from("user").insert([userData]);
+  if(error){alert("مشكلة في إضافة المستخدم: "+error.message);return}
+  userForm.reset();await loadUsers();alert("تم إضافة المستخدم بنجاح");
+});
+
+function renderUsers(){
+  usersTableBody.innerHTML=users.length?users.map(u=>`<tr><td>${u.name||""}</td><td>${u.username||""}</td><td>${u.role||""}</td><td>${u.active===false?"false":"true"}</td></tr>`).join(""):`<tr><td colspan="4" class="empty">No users found</td></tr>`;
+}
+
+searchInput.addEventListener("input",()=>{pageState.orders=1;renderOrders();});
+filterStatus.addEventListener("change",()=>{pageState.orders=1;renderOrders();});
+filterEmployee.addEventListener("change",()=>{pageState.orders=1;renderOrders();});
+exportBtn.addEventListener("click",exportData);
+if(shippingRankSearch) shippingRankSearch.addEventListener("input",()=>{pageState.shippingRank=1;renderShippingRank();renderShippingCharts();});
+if(doctorRankSearch) doctorRankSearch.addEventListener("input",()=>{pageState.doctorRank=1;renderDoctorRank();});
+if(doctorsAnalysisSearch) doctorsAnalysisSearch.addEventListener("input",()=>{pageState.doctorsAnalysis=1;renderAnalytics();});
+
+
+document.addEventListener("click",(e)=>{
+  if(!e.target.closest(".multi-filter")){
+    if(shippingCompanyFilterMenu) shippingCompanyFilterMenu.classList.remove("show");
+  }
+});
+
+// ===== OKB Settings =====
+let branchs = [];
+let doctorsList = [];
+let shippingSystems = [];
+
+function showBranchsPage(){
+  if(!isAdmin()) return;
+  hideAllPages();
+  $("branchsPage").classList.remove("hidden");
+  loadBranchs();
+  loadDoctors();
+  loadShippingSystems();
+}
+
+async function loadBranchs(){
+  const {data,error} = await supabaseClient.from("branchs").select("*").order("created_at",{ascending:false});
+  if(error){ console.warn("branchs table not found or error:",error.message); branchs=[]; renderBranchs(); return; }
+  branchs = data||[];
+  renderBranchs();
+}
+
+function renderBranchs(){
+  const tbody = $("branchsTableBody");
+  if(!branchs.length){ tbody.innerHTML=`<tr><td colspan="6" class="empty">لا توجد فروع مضافة</td></tr>`; return; }
+  tbody.innerHTML = branchs.map((b,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${b.name||""}</td>
+      <td>${b.city||""}</td>
+      <td>${b.manager||""}</td>
+      <td>${b.phone||""}</td>
+      <td><button class="danger" onclick="deleteBranch('${b.id}')">حذف</button></td>
+    </tr>`).join("");
+}
+
+function renderBranchRank(){
+  const tbody = $("branchRankBody");
+  if(!tbody) return;
+  if(!branchs.length){
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">لا توجد فروع مضافة</td></tr>`;
+    renderPagination("branchRankPagination", 0, "branchRank");
+    return;
+  }
+
+  const page = getPaginatedRows(branchs, "branchRank");
+
+  tbody.innerHTML = page.rows.map((b,i)=>`
+    <tr>
+      <td>${page.start+i+1}</td>
+      <td>${b.name||""}</td>
+      <td>${b.city||""}</td>
+      <td>${b.manager||""}</td>
+      <td>${b.phone||""}</td>
+    </tr>`).join("");
+
+  renderPagination("branchRankPagination", branchs.length, "branchRank");
+}
+
+$("branchForm").addEventListener("submit", async(e)=>{
+  e.preventDefault();
+  if(!isAdmin()){ alert("غير مسموح"); return; }
+  const payload = {
+    name:    $("branchName").value.trim(),
+    city:    $("branchCity").value.trim(),
+    manager: $("branchManager").value.trim(),
+    phone:   $("branchPhone").value.trim()
+  };
+  if(!payload.name||!payload.city||!payload.manager||!payload.phone){ alert("من فضلك املى كل البيانات"); return; }
+  const {error} = await supabaseClient.from("branchs").insert([payload]);
+  if(error){ alert("مشكلة في الإضافة: "+error.message); return; }
+  $("branchForm").reset();
+  await loadBranchs();
+});
+
+window.deleteBranch = async function(id){
+  if(!isAdmin()){ alert("غير مسموح"); return; }
+  if(!confirm("هل أنت متأكد من حذف هذا الفرع؟")) return;
+  const {error} = await supabaseClient.from("branchs").delete().eq("id",id);
+  if(error){ alert("مشكلة في الحذف: "+error.message); return; }
+  await loadBranchs();
+};
+
+// ===== OKB Doctors =====
+async function loadDoctors(){
+  const {data,error} = await supabaseClient.from("doctors").select("*").order("name",{ascending:true});
+  if(error){ console.warn("doctors table not found or error:", error.message); doctorsList=[]; renderDoctorsSettings(); renderDoctorOptions(); return; }
+  doctorsList = data || [];
+  renderDoctorsSettings();
+  renderDoctorOptions();
+}
+
+function getDoctorNames(){
+  const fromSettings = doctorsList.map(d=>d.name).filter(Boolean);
+  const fromOrders = orders.map(o=>o.doctor_name).filter(Boolean);
+  return [...new Set([...fromSettings, ...fromOrders])].sort((a,b)=>a.localeCompare(b,'ar'));
+}
+
+function renderDoctorOptions(){
+  if(!doctorName) return;
+  const current = doctorName.value;
+  const names = getDoctorNames();
+  doctorName.innerHTML = `<option value="">اختر اسم الدكتور</option>` + names.map(name=>`<option value="${name}">${name}</option>`).join("");
+  if(names.includes(current)) doctorName.value = current;
+}
+
+function renderDoctorsSettings(){
+  const tbody = $("doctorsSettingsTableBody");
+  if(!tbody) return;
+  if(!doctorsList.length){ tbody.innerHTML=`<tr><td colspan="3" class="empty">لا يوجد دكاترة مضافة</td></tr>`; return; }
+  tbody.innerHTML = doctorsList.map((d,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${d.name||""}</td>
+      <td><button class="danger" onclick="deleteDoctor('${d.id}')">حذف</button></td>
+    </tr>`).join("");
+}
+
+$("doctorSettingsForm").addEventListener("submit", async(e)=>{
+  e.preventDefault();
+  if(!isAdmin()){ alert("غير مسموح"); return; }
+  const name = $("settingDoctorName").value.trim();
+  if(!name){ alert("اكتب اسم الدكتور"); return; }
+  const {error} = await supabaseClient.from("doctors").insert([{name}]);
+  if(error){ alert("مشكلة في إضافة الدكتور: "+error.message); return; }
+  $("doctorSettingsForm").reset();
+  await loadDoctors();
+});
+
+window.deleteDoctor = async function(id){
+  if(!isAdmin()){ alert("غير مسموح"); return; }
+  if(!confirm("هل أنت متأكد من حذف هذا الدكتور؟")) return;
+  const {error} = await supabaseClient.from("doctors").delete().eq("id",id);
+  if(error){ alert("مشكلة في الحذف: "+error.message); return; }
+  await loadDoctors();
+};
+
+// ===== Shipping System =====
+async function loadShippingSystems(){
+  const {data,error} = await supabaseClient.from("shipping_system").select("*").order("company_name",{ascending:true});
+  if(error){ console.warn("shipping_system table not found or error:", error.message); shippingSystems=[]; renderShippingSettings(); renderShippingOptions(); return; }
+  shippingSystems = data || [];
+  renderShippingSettings();
+  renderShippingOptions();
+}
+
+function getShippingCompanyNames(){
+  const fromSettings = shippingSystems.map(s=>s.company_name).filter(Boolean);
+  const fromOrders = orders.map(o=>o.shipping_company).filter(Boolean);
+  const fallback = ["J & T", "Y F S", "P D C"];
+  return [...new Set([...fromSettings, ...fromOrders, ...fallback])].sort((a,b)=>a.localeCompare(b,'en'));
+}
+
+function renderShippingOptions(){
+  if(!shippingCompany) return;
+  const current = shippingCompany.value;
+  const names = getShippingCompanyNames();
+  shippingCompany.innerHTML = `<option value="">اختر شركة الشحن</option>` + names.map(name=>`<option value="${name}">${name}</option>`).join("");
+  if(names.includes(current)) shippingCompany.value = current;
+}
+
+function renderShippingSettings(){
+  const tbody = $("shippingSettingsTableBody");
+  if(!tbody) return;
+  if(!shippingSystems.length){ tbody.innerHTML=`<tr><td colspan="6" class="empty">لا توجد شركات شحن مضافة</td></tr>`; return; }
+  tbody.innerHTML = shippingSystems.map((s,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${s.company_name||""}</td>
+      <td>${s.city||""}</td>
+      <td>${s.manager||""}</td>
+      <td>${s.phone||""}</td>
+      <td><button class="danger" onclick="deleteShippingSystem('${s.id}')">حذف</button></td>
+    </tr>`).join("");
+}
+
+$("shippingSettingsForm").addEventListener("submit", async(e)=>{
+  e.preventDefault();
+  if(!isAdmin()){ alert("غير مسموح"); return; }
+  const payload = {
+    company_name: $("shippingCompanyName").value.trim(),
+    city: $("shippingCity").value.trim(),
+    manager: $("shippingManager").value.trim(),
+    phone: $("shippingPhone").value.trim()
+  };
+  if(!payload.company_name||!payload.city||!payload.manager||!payload.phone){ alert("من فضلك املى كل البيانات"); return; }
+  const {error} = await supabaseClient.from("shipping_system").insert([payload]);
+  if(error){ alert("مشكلة في إضافة شركة الشحن: "+error.message); return; }
+  $("shippingSettingsForm").reset();
+  await loadShippingSystems();
+});
+
+window.deleteShippingSystem = async function(id){
+  if(!isAdmin()){ alert("غير مسموح"); return; }
+  if(!confirm("هل أنت متأكد من حذف شركة الشحن؟")) return;
+  const {error} = await supabaseClient.from("shipping_system").delete().eq("id",id);
+  if(error){ alert("مشكلة في الحذف: "+error.message); return; }
+  await loadShippingSystems();
+};
+// =======================
+
+// ===== REPORTS CENTER =====
+let reportMode = "daily";
+
+function dateToStr(d){
+  return d.toISOString().split("T")[0];
+}
+
+function getTodayStr(){
+  return dateToStr(new Date());
+}
+
+function setReportMode(mode){
+  reportMode = mode;
+
+  const today = new Date();
+  let from = new Date(today);
+  let to = new Date(today);
+
+  if(mode === "daily"){
+    // اليوم الحالي
+    from = new Date(today);
+    to = new Date(today);
+  }
+
+  if(mode === "weekly"){
+    // آخر 7 أيام
+    from = new Date(today);
+    from.setDate(today.getDate() - 6);
+    to = new Date(today);
+  }
+
+  if(mode === "monthly"){
+    // الشهر الحالي من أول يوم لليوم
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+    to = new Date(today);
+  }
+
+  $("reportFromDate").value = dateToStr(from);
+  $("reportToDate").value = dateToStr(to);
+
+  updateReportTabs();
+  renderReport();
+}
+
+function updateReportTabs(){
+  ["daily","weekly","monthly"].forEach(m=>{
+    const btn = $(`${m}ReportBtn`);
+    if(btn) btn.classList.toggle("active", reportMode===m);
+  });
+}
+
+function applyReportFilter(){
+  const from = $("reportFromDate").value;
+  const to = $("reportToDate").value;
+
+  if(!from || !to){
+    alert("اختار تاريخ من وإلى");
+    return;
+  }
+
+  if(from > to){
+    alert("تاريخ من لازم يكون قبل أو يساوي تاريخ إلى");
+    return;
+  }
+
+  renderReport();
+}
+
+function resetReportFilter(){
+  setReportMode(reportMode);
+}
+
+function getReportOrders(){
+  const from = $("reportFromDate").value;
+  const to = $("reportToDate").value;
+
+  if(!from || !to) return [];
+
+  return orders.filter(o=>{
+    const raw = o.created_at;
+    if(!raw) return false;
+    const d = raw.split("T")[0];
+    return d >= from && d <= to;
+  });
+}
+
+function countByDoctor(list, statusType){
+  const map = {};
+
+  list.forEach(o=>{
+    if(!o.doctor_name) return;
+
+    let match = false;
+    if(statusType === "returned")      match = o.status === "Returned";
+    if(statusType === "fakeDoctor")    match = isFakeDoctorOrder(o);
+    if(statusType === "fakeDelivery")  match = isFakeDeliveryUpdateOrder(o);
+
+    if(!match) return;
+
+    map[o.doctor_name] = (map[o.doctor_name] || 0) + 1;
+  });
+
+  return Object.entries(map)
+    .map(([name,count])=>({name,count}))
+    .sort((a,b)=>b.count-a.count);
+}
+
+function getAllShippingRanked(list){
+  const map = {};
+  list.forEach(o=>{
+    if(!o.shipping_company) return;
+    if(!map[o.shipping_company]) map[o.shipping_company]={total:0,returned:0,fakeDelivery:0,problems:0};
+    map[o.shipping_company].total++;
+    if(o.status==="Returned"){ map[o.shipping_company].returned++; map[o.shipping_company].problems++; }
+    if(isFakeDeliveryUpdateOrder(o)){ map[o.shipping_company].fakeDelivery++; map[o.shipping_company].problems++; }
+  });
+  return Object.entries(map)
+    .map(([name,d])=>({name,total:d.total,returned:d.returned,fakeDelivery:d.fakeDelivery,rate:d.total?(d.problems/d.total)*100:0}))
+    .filter(s=>s.total>0)
+    .sort((a,b)=>b.rate-a.rate);
+}
+
+function getWorstShipping(list){
+  const map = {};
+
+  list.forEach(o=>{
+    if(!o.shipping_company) return;
+
+    if(!map[o.shipping_company]){
+      map[o.shipping_company] = {total:0, returned:0, fakeDelivery:0, problems:0};
+    }
+
+    map[o.shipping_company].total++;
+
+    if(o.status === "Returned"){
+      map[o.shipping_company].returned++;
+      map[o.shipping_company].problems++;
+    }
+
+    if(isFakeDeliveryUpdateOrder(o)){
+      map[o.shipping_company].fakeDelivery++;
+      map[o.shipping_company].problems++;
+    }
+  });
+
+  return Object.entries(map)
+    .map(([name,d])=>({
+      name,
+      total:d.total,
+      returned:d.returned,
+      fakeDelivery:d.fakeDelivery,
+      problems:d.problems,
+      rate:d.total ? (d.problems/d.total)*100 : 0
+    }))
+    .filter(x=>x.total>0)
+    .sort((a,b)=>b.rate-a.rate || b.problems-a.problems)[0];
+}
+
+function renderDoctorList(containerId, rows, limit){
+  const container = $(containerId);
+
+  const sliced = rows.slice(0, limit);
+
+  if(!sliced.length){
+    container.innerHTML = `<div class="empty" style="padding:12px">لا توجد بيانات</div>`;
+    return;
+  }
+
+  container.innerHTML = sliced.map((r,i)=>`
+    <div class="report-item">
+      <span class="report-name">${i+1}. ${r.name}</span>
+      <span class="report-value">${num(r.count)}</span>
+    </div>
+  `).join("");
+}
+
+function renderReport(){
+  const from = $("reportFromDate").value;
+  const to = $("reportToDate").value;
+
+  if(!from || !to){
+    setReportMode("daily");
+    return;
+  }
+
+  const list = getReportOrders();
+
+  const limit = reportMode==="daily" ? 1 : reportMode==="weekly" ? 5 : 10;
+  const title = reportMode==="daily" ? "Daily Report" : reportMode==="weekly" ? "Weekly Report" : "Monthly Report";
+
+  $("reportTitle").textContent = title;
+  $("reportRangeText").textContent = `الفترة: ${from} → ${to}`;
+
+  $("reportTotalOrders").textContent = num(list.length);
+  $("reportReturned").textContent = num(list.filter(o=>o.status==="Returned").length);
+  $("reportFakeDoctor").textContent = num(list.filter(o=>isFakeDoctorOrder(o)).length);
+  $("reportFakeDelivery").textContent = num(list.filter(o=>isFakeDeliveryUpdateOrder(o)).length);
+
+  const worstShipping = getWorstShipping(list);
+
+  if(worstShipping){
+    $("reportWorstShipping").innerHTML = `
+      <div class="report-item">
+        <span class="report-name">${worstShipping.name}</span>
+        <span class="report-value">${worstShipping.rate.toFixed(1)}%</span>
+      </div>
+      <div style="color:#9fb0d6;font-size:13px;margin-top:8px">
+        Returned: ${num(worstShipping.returned)} | Fake Delivery Update: ${num(worstShipping.fakeDelivery)} | Total Orders: ${num(worstShipping.total)}
+      </div>
+    `;
+  } else {
+    $("reportWorstShipping").innerHTML = `<div class="empty" style="padding:12px">لا توجد بيانات</div>`;
+  }
+
+  // أسوأ 3 شركات شحن - تظهر في Monthly فقط
+  const worst3Container = $("reportWorst3Shipping");
+  if(reportMode === "monthly" && worst3Container){
+    worst3Container.style.display = "block";
+    const allShipping = getAllShippingRanked(list);
+    const top3 = allShipping.slice(0,3);
+    $("reportWorst3ShippingList").innerHTML = top3.length
+      ? top3.map((s,i)=>`
+          <div class="report-item" style="margin-bottom:10px;padding:10px;background:#0d1829;border-radius:12px">
+            <span class="report-name" style="font-size:15px">${i+1}. ${s.name}</span>
+            <span class="report-value" style="color:${i===0?'#ef4444':i===1?'#f97316':'#f59e0b'}">${s.rate.toFixed(1)}%</span>
+            <div style="color:#9fb0d6;font-size:12px;margin-top:4px;width:100%">
+              Returned: ${num(s.returned)} | Fake Delivery: ${num(s.fakeDelivery)} | Total: ${num(s.total)}
+            </div>
+          </div>`).join("")
+      : `<div style="color:#9fb0d6">لا توجد بيانات</div>`;
+  } else if(worst3Container){
+    worst3Container.style.display = "none";
+  }
+
+  const returnedDoctors = countByDoctor(list,"returned");
+  const fakeDoctors = countByDoctor(list,"fakeDoctor");
+
+  $("returnedDoctorsTitle").textContent =
+    reportMode==="daily"
+      ? "أكتر دكتور راجع له أوردرات في اليوم (Returned)"
+      : reportMode==="weekly"
+        ? "أكتر 5 دكاترة راجع لهم أوردرات في الأسبوع (Returned)"
+        : "أكتر 10 دكاترة راجع لهم أوردرات في الشهر (Returned)";
+
+  $("fakeDoctorsTitle").textContent =
+    reportMode==="daily"
+      ? "أكتر دكتور عامل Fake Doctor في اليوم"
+      : reportMode==="weekly"
+        ? "أكتر 5 دكاترة عاملين Fake Doctor في الأسبوع"
+        : "أكتر 10 دكاترة عاملين Fake Doctor في الشهر";
+
+  renderDoctorList("reportTopReturnedDoctors", returnedDoctors, limit);
+  renderDoctorList("reportTopFakeDoctors", fakeDoctors, limit);
+
+  const topReturned = returnedDoctors[0];
+  const topFake = fakeDoctors[0];
+
+  // حساب أعلى شركة شحن في Fake Delivery Update
+  const shipFakeDeliveryMap = {};
+  list.forEach(o=>{
+    if(!o.shipping_company || !isFakeDeliveryUpdateOrder(o)) return;
+    shipFakeDeliveryMap[o.shipping_company] = (shipFakeDeliveryMap[o.shipping_company]||0) + 1;
+  });
+  const topFakeDeliveryShip = Object.entries(shipFakeDeliveryMap)
+    .sort((a,b)=>b[1]-a[1])[0];
+
+  $("reportDecisionSummary").innerHTML = `
+    <div class="report-item">
+      <span class="report-name">أسوأ شركة شحن</span>
+      <span class="report-value">${worstShipping ? worstShipping.name : "—"}</span>
+    </div>
+    <div class="report-item">
+      <span class="report-name">أعلى Returned Doctor</span>
+      <span class="report-value">${topReturned ? topReturned.name : "—"}</span>
+    </div>
+    <div class="report-item">
+      <span class="report-name">أعلى Fake Doctor</span>
+      <span class="report-value">${topFake ? topFake.name : "—"}</span>
+    </div>
+    <div class="report-item">
+      <span class="report-name">أعلى Fake Delivery Update</span>
+      <span class="report-value">${topFakeDeliveryShip ? `${topFakeDeliveryShip[0]} (${topFakeDeliveryShip[1]})` : "—"}</span>
+    </div>
+  `;
+}
+
+function exportCurrentReport(){
+  const from = $("reportFromDate").value;
+  const to = $("reportToDate").value;
+  const list = getReportOrders();
+
+  if(!list.length){
+    alert("لا توجد بيانات للتصدير");
+    return;
+  }
+
+  const limit = reportMode==="daily" ? 1 : reportMode==="weekly" ? 5 : 10;
+  const title = reportMode==="daily" ? "daily" : reportMode==="weekly" ? "weekly" : "monthly";
+
+  const worstShipping = getWorstShipping(list);
+  const returnedDoctors = countByDoctor(list,"returned").slice(0, limit);
+  const fakeDoctors = countByDoctor(list,"fakeDoctor").slice(0, limit);
+
+  const rows = [
+    ["Report Type", title],
+    ["From", from],
+    ["To", to],
+    ["Total Orders", list.length],
+    ["Total Returned", list.filter(o=>o.status==="Returned").length],
+    ["Total Fake Doctor", list.filter(o=>isFakeDoctorOrder(o)).length],
+    ["Total Fake Delivery Update", list.filter(o=>isFakeDeliveryUpdateOrder(o)).length],
+    ["Worst Shipping", worstShipping ? `${worstShipping.name} (${worstShipping.rate.toFixed(1)}%)` : "—"],
+    ["", ""],
+    ["Top Returned Doctors", ""],
+    ...returnedDoctors.map((x,i)=>[`${i+1}. ${x.name}`, x.count]),
+    ["", ""],
+    ["Top Fake Doctor Doctors", ""],
+    ...fakeDoctors.map((x,i)=>[`${i+1}. ${x.name}`, x.count])
+  ];
+
+  downloadCSV(`${title}-report-${from}-to-${to}.csv`, ["Metric","Value"], rows);
+}
+// ========================
+
+// ===== hideAllPages تحديث =====
+function hideAllPages(){["ordersPage","analyticsPage","shippingRankPage","doctorRankPage","branchRankPage","usersPage","branchsPage"].forEach(id=>$(id).classList.add("hidden"))}
+
+checkLogin();
+</script>
+</body>
+</html>
