@@ -1372,7 +1372,7 @@ function renderOrders(){
 orderForm.addEventListener("submit",async(e)=>{
   e.preventDefault();
   const orderData={employee_name:isAdmin()?employeeName.value.trim():currentUser.name,doctor_name:doctorName.value.trim(),customer_name:customerName.value.trim(),phone:phone.value.trim(),shipping_company:shippingCompany.value,area:area.value.trim(),price:Number(price.value),status:status.value,fake_doctor:status.value==="Fake Doctor",notes:($('orderNotes').value||'').trim()};
-  if(!orderData.employee_name||!orderData.doctor_name||!orderData.customer_name||!orderData.phone||!orderData.shipping_company||!orderData.area||!orderData.price||!orderData.status){alert("من فضلك املى كل البيانات");return}
+  if(!orderData.employee_name||!orderData.doctor_name||!orderData.customer_name||!orderData.phone||!orderData.shipping_company||!orderData.area||!orderData.price||!orderData.status|| !orderData.notes){alert("من فضلك املى كل البيانات");return}
   const result=editId?await supabaseClient.from("orders").update(orderData).eq("id",editId):await supabaseClient.from("orders").insert([orderData]);
   if(result.error){alert("مشكلة في الحفظ: "+result.error.message);return}
   resetForm();loadOrders();
