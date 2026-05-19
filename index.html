@@ -1764,29 +1764,48 @@ function syncBulkSelectionUI(currentPageRows = []) {
   }
 }
 
-orderForm.addEventListener("submit",async(e)=>{
+orderForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const orderData={
-    employee_name: isAdmin()?employeeName.value.trim():currentUser.name,
-    doctor_name:doctorName.value.trim(),
-    customer_name:customerName.value.trim(),
-    phone:phone.value.trim(),
-    shipping_company:shippingCompany.value,
-    area:area.value.trim(),
-    price:Number(price.value),
-    status:status.value,
-    fake_doctor:status.value==="Fake Doctor",
-    notes:($('orderNotes').value||'').trim() || "لا توجد ملاحظات"  // ✅ قيمة افتراضية
+
+  // ✅ استخدمي getElementById عشان نتفادى تعارض الأسماء مع window
+  const empEl    = document.getElementById("employeeName");
+  const docEl    = document.getElementById("doctorName");
+  const custEl   = document.getElementById("customerName");
+  const phoneEl  = document.getElementById("phone");
+  const shipEl   = document.getElementById("shippingCompany");
+  const areaEl   = document.getElementById("area");
+  const priceEl  = document.getElementById("price");
+  const statusEl = document.getElementById("status");
+  const notesEl  = document.getElementById("orderNotes");
+
+  const orderData = {
+    employee_name:    isAdmin() ? empEl.value.trim() : currentUser.name,
+    doctor_name:      docEl.value.trim(),
+    customer_name:    custEl.value.trim(),
+    phone:            phoneEl.value.trim(),
+    shipping_company: shipEl.value,
+    area:             areaEl.value.trim(),
+    price:            Number(priceEl.value),
+    status:           statusEl.value,
+    fake_doctor:      statusEl.value === "Fake Doctor",
+    notes:            (notesEl.value || '').trim() || "لا توجد ملاحظات"
   };
 
-  if(!orderData.employee_name||!orderData.doctor_name||!orderData.customer_name||!orderData.phone||!orderData.shipping_company||!orderData.area||!orderData.price||!orderData.status){
+  // 🔍 Debug: شوفي القيم في الكونسول لو لسه فيه مشكلة
+  console.log("Order Data:", orderData);
+
+  if (!orderData.employee_name || !orderData.doctor_name || !orderData.customer_name 
+      || !orderData.phone || !orderData.shipping_company || !orderData.area 
+      || !orderData.price || !orderData.status) {
     alert("من فضلك املى كل البيانات");
     return;
   }
-  const result=editId
-  ?await supabaseClient.from("orders").update(orderData).eq("id",editId)
-  :await supabaseClient.from("orders").insert([orderData]);
-  if(result.error){alert("مشكلة في الحفظ: "+result.error.message);return}
+
+  const result = editId
+    ? await supabaseClient.from("orders").update(orderData).eq("id", editId)
+    : await supabaseClient.from("orders").insert([orderData]);
+
+  if (result.error) { alert("مشكلة في الحفظ: " + result.error.message); return; }
   resetForm();
   loadOrders();
 });
