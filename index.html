@@ -11,85 +11,203 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <style>
+
+<style>
     *{box-sizing:border-box}
     html,body{margin:0;padding:0}
+    
+    /* ============ THEME VARIABLES ============ */
+    :root {
+      --bg-main: linear-gradient(135deg,#FEFEFE 0%,#F8FAFC 100%);
+      --bg-card: #ffffff;
+      --bg-soft: #F8FAFC;
+      --bg-hover: #FAFBFC;
+      --bg-input: #F8FAFC;
+      --bg-input-focus: #ffffff;
+      --bg-table-head: #F8FAFC;
+      --bg-sidebar: #ffffff;
+      --bg-header: #ffffff;
+      --bg-footer: #ffffff;
+      
+      --text-primary: #0F172A;
+      --text-secondary: #334155;
+      --text-muted: #64748B;
+      --text-light: #94A3B8;
+      --text-faint: #CBD5E1;
+      
+      --border-color: #E2E8F0;
+      --border-soft: #F1F5F9;
+      
+      --shadow-card: 0 1px 3px rgba(15,23,42,0.04);
+      --shadow-stat: 0 1px 2px rgba(15,23,42,0.03);
+      --shadow-menu: 0 10px 30px rgba(15,23,42,0.08);
+      
+      --chip-bg: #F1F5F9;
+      --chip-text: #334155;
+      
+      --modal-overlay: rgba(0,0,0,0.85);
+    }
+    
+    [data-theme="dark"] {
+      --bg-main: linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
+      --bg-card: #1E293B;
+      --bg-soft: #0F172A;
+      --bg-hover: #334155;
+      --bg-input: #0F172A;
+      --bg-input-focus: #1E293B;
+      --bg-table-head: #0F172A;
+      --bg-sidebar: #1E293B;
+      --bg-header: #1E293B;
+      --bg-footer: #1E293B;
+      
+      --text-primary: #F1F5F9;
+      --text-secondary: #E2E8F0;
+      --text-muted: #94A3B8;
+      --text-light: #64748B;
+      --text-faint: #475569;
+      
+      --border-color: #334155;
+      --border-soft: #1E293B;
+      
+      --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-stat: 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-menu: 0 10px 30px rgba(0,0,0,0.5);
+      
+      --chip-bg: #334155;
+      --chip-text: #E2E8F0;
+      
+      --modal-overlay: rgba(0,0,0,0.9);
+    }
+    
     body{
       font-family:'Cairo', Arial, sans-serif;
-      background:linear-gradient(135deg,#FEFEFE 0%,#F8FAFC 100%);
-      color:#0F172A;
+      background: var(--bg-main);
+      color: var(--text-primary);
       min-height:100vh;
       overflow-x:hidden;
+      transition: background 0.3s ease, color 0.3s ease;
     }
     h1,h2,h3,p{margin-top:0}
+    h1, h2, h3 { color: var(--text-primary) !important; }
     button{border:0;cursor:pointer;font-family:inherit}
     input,select,textarea{font-family:inherit}
 
-    
     /* ========== App Layout ========== */
     #app.app-layout{display:flex;flex-direction:column;min-height:100vh}
 
     /* ===== Top Header ===== */
-    .app-header{
-      min-height:72px;
-      background:#fff;
-      border-bottom:1px solid #E2E8F0;
-      padding:0 24px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:16px;
-      position:sticky;top:0;z-index:50;
-    }
-    .app-brand{
-      display:flex;align-items:center;gap:10px;
-      font-size:20px;font-weight:800;color:#0D9488;
-    }
-    .app-brand .brand-badge{
-      width:36px;height:36px;border-radius:10px;
-      background:#0D9488;color:#fff;display:flex;align-items:center;justify-content:center;
-      font-size:14px;font-weight:800;
-    }
-    .header-search{position:relative;flex:1;max-width:420px}
-    .header-search input{
-      width:100%;min-height:40px;padding:0 44px 0 16px;
-      background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;
-      color:#0F172A;font-size:14px;text-align:right;outline:none;
-    }
+   .app-header{
+  min-height:72px;
+  background: var(--bg-header);
+  border-bottom:1px solid var(--border-color);
+  padding:0 24px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  position:sticky;top:0;z-index:50;
+  transition: background 0.3s, border-color 0.3s;
+}
+   .app-brand{
+  display:flex;align-items:center;gap:10px;
+  font-size:20px;font-weight:800;color:#0D9488;
+  flex-shrink:0;
+}
+   .app-brand .brand-badge{
+  width:36px;height:36px;border-radius:10px;
+  background:#0D9488;color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:800;
+}
+    .header-search{position:relative;flex:1;max-width:420px;min-width:200px}
+.header-search input{
+  width:100%;min-height:40px;padding:0 44px 0 16px;
+  background: var(--bg-input);
+  border:1px solid var(--border-color);
+  border-radius:10px;
+  color: var(--text-primary);
+  font-size:14px;text-align:right;outline:none;
+}
     .header-search input:focus{border-color:#0D9488}
-    .header-search .search-icon{
-      position:absolute;right:14px;top:50%;transform:translateY(-50%);
-      color:#94A3B8;font-size:14px;pointer-events:none;
-    }
-    .header-right{display:flex;align-items:center;gap:14px}
-    .notif-wrap{position:relative;cursor:pointer;padding:6px}
-    .notif-dot{
-      position:absolute;top:2px;right:2px;
-      width:16px;height:16px;border-radius:50%;background:#EF4444;
-      display:flex;align-items:center;justify-content:center;
-      color:#fff;font-size:10px;font-weight:700;
-    }
-    .user-chip{
-      display:flex;align-items:center;gap:10px;
-      padding:6px 12px;background:#F8FAFC;border-radius:10px;
-    }
-    .user-chip .avatar{
-      width:36px;height:36px;border-radius:50%;
-      background:linear-gradient(135deg,#0D9488,#0F766E);
-      display:flex;align-items:center;justify-content:center;
-      color:#fff;font-weight:700;font-size:14px;
-    }
-    .user-chip .user-info{display:flex;flex-direction:column;line-height:1.2}
-    .user-chip .user-name{font-size:13px;font-weight:700;color:#334155}
-    .user-chip .user-role{font-size:11px;color:#64748B}
+.header-search .search-icon{
+  position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  color: var(--text-light);font-size:14px;pointer-events:none;
+}
+.header-right{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-shrink:0;
+}
+    
+    /* ===== THEME TOGGLE BUTTON ===== */
+    .theme-toggle{
+  width:42px;
+  height:42px;
+  min-width:42px;
+  border-radius:50%;
+  background: var(--bg-soft);
+  border:1px solid var(--border-color);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  cursor:pointer;
+  transition: all 0.3s ease;
+  padding:0;
+  flex-shrink:0;
+  order:3;
+}.theme-toggle:hover{
+  transform: rotate(15deg) scale(1.1);
+  background: var(--bg-hover);
+}
 
-    /* ===== Body (Sidebar + Content) ===== */
+[data-theme="dark"] .theme-toggle .icon-sun{display:inline-block}
+[data-theme="dark"] .theme-toggle .icon-moon{display:none}
+
+[data-theme="light"] .theme-toggle .icon-sun{display:none}
+[data-theme="light"] .theme-toggle .icon-moon{display:inline-block}
+
+.notif-wrap{
+  position:relative;
+  cursor:pointer;
+  padding:6px;
+  flex-shrink:0;
+  order:2;
+}
+.notif-dot{
+  position:absolute;top:2px;right:2px;
+  width:16px;height:16px;border-radius:50%;background:#EF4444;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:10px;font-weight:700;
+}
+.user-chip{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 12px;
+  background: var(--bg-soft);
+  border-radius:10px;
+  transition: background 0.3s;
+  flex-shrink:0;
+  order:1;
+}
+.user-chip .avatar{
+  width:36px;height:36px;border-radius:50%;
+  background:linear-gradient(135deg,#0D9488,#0F766E);
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:14px;
+}
+.user-chip .user-info{display:flex;flex-direction:column;line-height:1.2}
+.user-chip .user-name{font-size:13px;font-weight:700;color: var(--text-secondary)}
+.user-chip .user-role{font-size:11px;color: var(--text-muted)}
+    /* ===== Body ===== */
     .app-body{display:flex;flex:1;min-height:0}
     .app-sidebar{
       width:250px;min-width:250px;
-      background:#fff;border-left:1px solid #E2E8F0;
+      background: var(--bg-sidebar);
+      border-left:1px solid var(--border-color);
       padding:18px 14px;
+      transition: background 0.3s, border-color 0.3s;
     }
     .sidebar-menu{display:flex;flex-direction:column;gap:8px}
     .menu-item{
@@ -102,10 +220,11 @@
     }
     .menu-item .mi-icon{font-size:16px;width:20px;text-align:center}
     .menu-item:hover{filter:brightness(0.97)}
+    [data-theme="dark"] .menu-item:hover{filter:brightness(1.15)}
     .menu-item.active{border-right-color:#EA580C;background:#FED7AA !important;color:#EA580C !important}
+    [data-theme="dark"] .menu-item.active{background:rgba(234,88,12,0.2) !important;color:#FB923C !important}
     .menu-item.active .mi-icon{color:#EA580C}
 
-    /* ألوان قوائم الـ sidebar */
     .mi-dashboard{background:#E9D5FF;color:#9333EA}
     .mi-report{background:#FED7AA;color:#EA580C}
     .mi-analysis{background:#DCFCE7;color:#16A34A}
@@ -114,49 +233,61 @@
     .mi-users{background:#FEF9C3;color:#D97706}
     .mi-settings{background:#F1F5F9;color:#475569}
     .mi-logout{background:#FEE2E2;color:#DC2626}
+    
+    [data-theme="dark"] .mi-dashboard{background:rgba(147,51,234,0.2);color:#C084FC}
+    [data-theme="dark"] .mi-report{background:rgba(234,88,12,0.2);color:#FB923C}
+    [data-theme="dark"] .mi-analysis{background:rgba(22,163,74,0.2);color:#4ADE80}
+    [data-theme="dark"] .mi-shipping{background:rgba(100,116,139,0.2);color:#94A3B8}
+    [data-theme="dark"] .mi-doctor{background:rgba(37,99,235,0.2);color:#60A5FA}
+    [data-theme="dark"] .mi-users{background:rgba(217,119,6,0.2);color:#FBBF24}
+    [data-theme="dark"] .mi-settings{background:rgba(71,85,105,0.3);color:#94A3B8}
+    [data-theme="dark"] .mi-logout{background:rgba(220,38,38,0.2);color:#F87171}
 
-    /* ===== Main Content ===== */
     .app-content{flex:1;padding:24px;overflow-x:auto;min-width:0}
 
-    /* ===== Footer ===== */
     .app-footer{
-      min-height:56px;background:#fff;border-top:1px solid #E2E8F0;
+      min-height:56px;
+      background: var(--bg-footer);
+      border-top:1px solid var(--border-color);
       display:flex;align-items:center;justify-content:center;
-      color:#64748B;font-size:13px;
+      color: var(--text-muted);font-size:13px;
+      transition: background 0.3s, border-color 0.3s;
     }
 
     /* ===== Cards ===== */
     .card{
-      background:#fff;
-      border:1px solid #E2E8F0;
+      background: var(--bg-card);
+      border:1px solid var(--border-color);
       border-radius:16px;
       padding:22px;
       margin-bottom:20px;
-      box-shadow:0 1px 3px rgba(15,23,42,0.04);
+      box-shadow: var(--shadow-card);
+      transition: background 0.3s, border-color 0.3s;
     }
-    .card h1{font-size:22px;font-weight:700;color:#0F172A;margin-bottom:6px}
-    .card h2{font-size:18px;font-weight:700;color:#0F172A;margin-bottom:12px}
-    .card h3{font-size:15px;font-weight:700;color:#334155;margin-bottom:10px}
-    .card p{color:#64748B;font-size:13px;margin:0}
+    .card h1{font-size:22px;font-weight:700;color: var(--text-primary);margin-bottom:6px}
+    .card h2{font-size:18px;font-weight:700;color: var(--text-primary);margin-bottom:12px}
+    .card h3{font-size:15px;font-weight:700;color: var(--text-secondary);margin-bottom:10px}
+    .card p{color: var(--text-muted);font-size:13px;margin:0}
 
     /* ===== Inputs ===== */
     input,select,textarea{
       width:100%;
-      border:1px solid #E2E8F0;
+      border:1px solid var(--border-color);
       border-radius:10px;
-      background:#F8FAFC;
-      color:#0F172A;
+      background: var(--bg-input);
+      color: var(--text-primary);
       padding:12px 14px;
       font-size:14px;
       outline:none;
-      transition:border-color .18s, background .18s;
+      transition:border-color .18s, background .18s, color .18s;
     }
     input:focus,select:focus,textarea:focus{
-      border-color:#0D9488;background:#fff;
+      border-color:#0D9488;background: var(--bg-input-focus);
     }
-    input[type="date"]::-webkit-calendar-picker-indicator{
-      cursor:pointer;filter:none;
-    }
+    [data-theme="dark"] input::placeholder,
+    [data-theme="dark"] textarea::placeholder{color: var(--text-light)}
+    [data-theme="dark"] select option{background: var(--bg-card);color: var(--text-primary)}
+    [data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator{filter: invert(1) brightness(0.8)}
 
     /* ===== Buttons ===== */
     button{
@@ -172,233 +303,220 @@
     .primary{background:#0D9488}
     .primary:hover{background:#0F766E}
     .success{background:#10B981}
-    .soft{background:#F1F5F9;color:#475569;border:1px solid #E2E8F0}
+    .soft{
+      background: var(--bg-soft);
+      color: var(--text-secondary);
+      border:1px solid var(--border-color);
+    }
     .edit{background:#2563EB}
     .danger{background:#EF4444}
     .yellow{background:#F59E0B;color:#fff}
     .blue{background:#3B82F6}
     .teal{background:#0D9488}
 
-    /* ===== User Tag ===== */
     .user-tag{
-      background:#F1F5F9;color:#334155;
+      background: var(--bg-soft);color: var(--text-secondary);
       padding:8px 14px;border-radius:10px;
       font-weight:600;font-size:13px;
-      border:1px solid #E2E8F0;
+      border:1px solid var(--border-color);
     }
 
-    /* ===== Forms ===== */
     .form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
     .order-actions{display:flex;gap:12px;margin-top:14px;justify-content:flex-start}
     .wide-btn{min-width:220px;padding:14px 28px;font-size:15px}
     .actions{display:flex;gap:10px;margin-top:12px}
 
-    /* ===== Charts / Grids ===== */
     .charts-grid,.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
     .insight{
-      background:#F8FAFC;border:1px solid #E2E8F0;
+      background: var(--bg-soft);
+      border:1px solid var(--border-color);
       border-radius:14px;padding:16px;
     }
-    .insight span{color:#64748B;font-size:13px;font-weight:600}
-    .insight strong{display:block;font-size:17px;margin-top:6px;color:#0F172A;font-weight:700}
+    .insight span{color: var(--text-muted);font-size:13px;font-weight:600}
+    .insight strong{display:block;font-size:17px;margin-top:6px;color: var(--text-primary);font-weight:700}
 
-    /* ===== Stats Cards ===== */
     .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
     .stat{
-      background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;
-      box-shadow:0 1px 2px rgba(15,23,42,0.03);
+      background: var(--bg-card);
+      border:1px solid var(--border-color);
+      border-radius:14px;padding:16px;
+      box-shadow: var(--shadow-stat);
+      transition: background 0.3s, border-color 0.3s;
     }
-    .stat span{color:#64748B;font-size:13px;font-weight:600}
-    .stat strong{display:block;font-size:22px;margin-top:6px;color:#0F172A;font-weight:700}
-    .stat strong .stat-count{display:block;font-size:24px;line-height:1.1;color:#0F172A}
-    .stat strong .stat-money{display:block;margin-top:6px;font-size:12px;line-height:1.3;color:#64748B;font-weight:600;white-space:normal}
+    .stat span{color: var(--text-muted);font-size:13px;font-weight:600}
+    .stat strong{display:block;font-size:22px;margin-top:6px;color: var(--text-primary);font-weight:700}
+    .stat strong .stat-count{display:block;font-size:24px;line-height:1.1;color: var(--text-primary)}
+    .stat strong .stat-money{display:block;margin-top:6px;font-size:12px;line-height:1.3;color: var(--text-muted);font-weight:600;white-space:normal}
     .stat strong .stat-money.good{color:#10B981}
     .stat strong .stat-money.bad{color:#EF4444}
     .stat strong .stat-money.warn{color:#F59E0B}
 
-    /* ===== Toolbar & Date Filter ===== */
-    /* ===== Toolbar & Date Filter ===== */
-.toolbar{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  align-items:center;
-  margin-bottom:16px;
-  padding:12px;
-  background:#F8FAFC;
-  border:1px solid #E2E8F0;
-  border-radius:12px;
-}
-.toolbar > *{flex:0 0 auto}
-.toolbar #searchInput{
-  flex:1 1 220px;
-  min-width:200px;
-  max-width:320px;
-  min-height:40px;
-  padding:8px 14px;
-  font-size:13px;
-  background:#fff;
-}
-.toolbar #filterStatus,
-.toolbar #filterEmployee{
-  flex:0 0 auto;
-  min-width:160px;
-  max-width:200px;
-  min-height:40px;
-  padding:8px 12px;
-  font-size:13px;
-  background:#fff;
-}
-.date-filter-group{
-  display:flex;align-items:center;gap:8px;
-  background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:4px 10px;
-  min-height:40px;
-}
-.date-filter-group label{color:#64748B;font-size:13px;font-weight:700;white-space:nowrap}
-.date-filter-group input[type="date"]{
-  width:140px;padding:6px 8px;font-size:12px;border-radius:6px;
-  background:#F8FAFC;border:1px solid #E2E8F0;
-}
-.btn-filter{background:#8B5CF6;padding:9px 16px;font-size:13px;min-height:40px;white-space:nowrap}
-.btn-reset-date{background:#64748B;padding:9px 14px;font-size:13px;min-height:40px;white-space:nowrap}
-#exportBtn{min-height:40px;padding:9px 18px;white-space:nowrap;margin-right:auto}
-.active-filter-badge{
-  background:#0D9488;color:#fff;padding:6px 12px;border-radius:999px;
-  font-size:12px;font-weight:700;display:none;white-space:nowrap;
-}
-.active-filter-badge.visible{display:inline-block}
-/* ===== Tables ===== */
-.table-wrap{
-  overflow-x:auto;
-  border:1px solid #E2E8F0;
-  border-radius:10px;
-  background:#fff;
-}
-table{width:100%;border-collapse:collapse;min-width:1200px;font-size:12.5px}
-th,td{
-  padding:10px 12px;
-  border-bottom:1px solid #F1F5F9;
-  text-align:right;
-  vertical-align:middle;
-  font-size:12.5px;
-  line-height:1.5;
-  white-space:nowrap;
-}
-th{background:#F8FAFC;color:#475569;font-weight:700;font-size:12px;position:sticky;top:0}
-tr:hover td{background:#FAFBFC}
+    .toolbar{
+      display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;
+      padding:12px;
+      background: var(--bg-soft);
+      border:1px solid var(--border-color);
+      border-radius:12px;
+    }
+    .toolbar > *{flex:0 0 auto}
+    .toolbar #searchInput{
+      flex:1 1 220px;min-width:200px;max-width:320px;min-height:40px;padding:8px 14px;font-size:13px;
+      background: var(--bg-card);
+    }
+    .toolbar #filterStatus,.toolbar #filterEmployee{
+      flex:0 0 auto;min-width:160px;max-width:200px;min-height:40px;padding:8px 12px;font-size:13px;
+      background: var(--bg-card);
+    }
+    .date-filter-group{
+      display:flex;align-items:center;gap:8px;
+      background: var(--bg-card);
+      border:1px solid var(--border-color);
+      border-radius:10px;padding:4px 10px;min-height:40px;
+    }
+    .date-filter-group label{color: var(--text-muted);font-size:13px;font-weight:700;white-space:nowrap}
+    .date-filter-group input[type="date"]{
+      width:140px;padding:6px 8px;font-size:12px;border-radius:6px;
+      background: var(--bg-input);border:1px solid var(--border-color);
+    }
+    .btn-filter{background:#8B5CF6;padding:9px 16px;font-size:13px;min-height:40px;white-space:nowrap}
+    .btn-reset-date{background:#64748B;padding:9px 14px;font-size:13px;min-height:40px;white-space:nowrap}
+    #exportBtn{min-height:40px;padding:9px 18px;white-space:nowrap;margin-right:auto}
+    #importBtn{background:#8b5cf6;color:white;font-weight:700}
+    .active-filter-badge{
+      background:#0D9488;color:#fff;padding:6px 12px;border-radius:999px;
+      font-size:12px;font-weight:700;display:none;white-space:nowrap;
+    }
+    .active-filter-badge.visible{display:inline-block}
 
-/* عمود الملاحظات - نص مختصر + tooltip */
-td.notes-cell{
-  max-width:180px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  color:#64748B;
-  font-size:12px;
-  cursor:help;
-}
-td.notes-cell:empty::after{
-  content:"—";
-  color:#CBD5E1;
-}
+    .table-wrap{
+      overflow-x:auto;
+      border:1px solid var(--border-color);
+      border-radius:10px;
+      background: var(--bg-card);
+    }
+    table{width:100%;border-collapse:collapse;min-width:1200px;font-size:12.5px}
+    th,td{
+      padding:10px 12px;
+      border-bottom:1px solid var(--border-soft);
+      text-align:right;vertical-align:middle;font-size:12.5px;line-height:1.5;white-space:nowrap;
+      color: var(--text-primary);
+    }
+    th{background: var(--bg-table-head);color: var(--text-secondary);font-weight:700;font-size:12px;position:sticky;top:0}
+    tr:hover td{background: var(--bg-hover)}
 
-.chip{
-  padding:4px 10px;border-radius:999px;
-  background:#F1F5F9;color:#334155;
-  display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:600;
-}
-.chip.chip-confirmed{background:#DCFCE7;color:#16A34A}
-.chip.chip-returned{background:#FEE2E2;color:#DC2626}
-.chip.chip-transit{background:#DBEAFE;color:#2563EB}
-.chip.chip-cancelled{background:#F1F5F9;color:#64748B}
-.chip.chip-fake{background:#FEF3C7;color:#D97706}
+    td.notes-cell{
+      max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      color: var(--text-muted);font-size:12px;cursor:help;
+    }
+    td.notes-cell:empty::after{content:"—";color: var(--text-faint)}
 
-.empty{text-align:center;color:#94A3B8;padding:24px;font-size:13px}
-.hidden{display:none!important}
+    .chip{
+      padding:4px 10px;border-radius:999px;
+      background: var(--chip-bg);color: var(--chip-text);
+      display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:600;
+    }
+    .chip.chip-confirmed{background:#DCFCE7;color:#16A34A}
+    .chip.chip-returned{background:#FEE2E2;color:#DC2626}
+    .chip.chip-transit{background:#DBEAFE;color:#2563EB}
+    .chip.chip-cancelled{background:#F1F5F9;color:#64748B}
+    .chip.chip-fake{background:#FEF3C7;color:#D97706}
+    
+    [data-theme="dark"] .chip.chip-confirmed{background:rgba(22,163,74,0.2);color:#4ADE80}
+    [data-theme="dark"] .chip.chip-returned{background:rgba(220,38,38,0.2);color:#F87171}
+    [data-theme="dark"] .chip.chip-transit{background:rgba(37,99,235,0.2);color:#60A5FA}
+    [data-theme="dark"] .chip.chip-cancelled{background:rgba(100,116,139,0.2);color:#94A3B8}
+    [data-theme="dark"] .chip.chip-fake{background:rgba(217,119,6,0.2);color:#FBBF24}
 
-    /* ===== Section Heads ===== */
+    .empty{text-align:center;color: var(--text-light);padding:24px;font-size:13px}
+    .hidden{display:none!important}
+
     .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 
-    /* ===== Login Page (Kept as is) ===== */
+    /* ===== Login Page ===== */
     .login-page-new{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#F8FAFB 0%,#F1F5F9 100%);font-family:'Inter',Arial,sans-serif;position:relative;overflow:hidden;padding:20px}
+    [data-theme="dark"] .login-page-new{background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%)}
     .medical-bg-pattern{position:absolute;inset:0;opacity:0.06;pointer-events:none}
     .cross-icon{position:absolute;color:#0D9488;font-style:normal;font-weight:bold}
-    .cross-1{top:10%;left:15%;font-size:48px}
-    .cross-2{top:25%;right:20%;font-size:40px}
-    .cross-3{bottom:20%;left:25%;font-size:32px}
-    .cross-4{bottom:30%;right:15%;font-size:48px}
-    .cross-5{top:60%;left:10%;font-size:40px}
-    .cross-6{top:40%;right:10%;font-size:32px}
+    .cross-1{top:10%;left:15%;font-size:48px}.cross-2{top:25%;right:20%;font-size:40px}
+    .cross-3{bottom:20%;left:25%;font-size:32px}.cross-4{bottom:30%;right:15%;font-size:48px}
+    .cross-5{top:60%;left:10%;font-size:40px}.cross-6{top:40%;right:10%;font-size:32px}
     .login-card-new{width:100%;max-width:400px;background:#FFFFFF;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,0.04),0 8px 32px rgba(13,148,136,0.08);padding:48px;position:relative;z-index:10}
+    [data-theme="dark"] .login-card-new{background:#1E293B;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
     .login-header{margin-bottom:40px;text-align:center}
     .brand-row{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px}
     .brand-cross{color:#0D9488;font-size:24px;font-weight:bold}
     .brand-name{font-size:28px;font-weight:600;color:#0D9488;margin:0}
     .brand-subtitle{font-size:14px;color:#64748B;margin:0}
+    [data-theme="dark"] .brand-subtitle{color:#94A3B8}
     .field-group{margin-bottom:20px}
     .field-group-last{margin-bottom:32px}
     .field-label{display:block;font-size:13px;font-weight:500;color:#334155;margin-bottom:8px}
+    [data-theme="dark"] .field-label{color:#E2E8F0}
     .field-input{width:100%;min-height:44px;padding:0 16px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;font-size:14px;color:#0F172A;transition:border-color 0.2s}
+    [data-theme="dark"] .field-input{background:#0F172A;border-color:#334155;color:#F1F5F9}
     .field-input::placeholder{color:#94A3B8}
     .field-input:focus{outline:none;border-color:#0D9488;border-width:2px;background:#FFFFFF}
+    [data-theme="dark"] .field-input:focus{background:#1E293B}
     .password-wrap{position:relative}
     .password-wrap .field-input{padding-right:48px}
     .eye-icon{position:absolute;right:16px;top:50%;transform:translateY(-50%);color:#94A3B8;cursor:pointer;font-size:16px;user-select:none}
     .signin-btn{width:100%;min-height:48px;background:#0D9488;color:#FFFFFF;font-weight:600;font-size:15px;border:0;border-radius:8px;cursor:pointer;margin-bottom:24px;transition:background 0.2s}
     .signin-btn:hover{background:#0F766E}
     .login-error-new{color:#DC2626;background:#FEF2F2;border:1px solid #FECACA;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;text-align:center;display:none}
+    [data-theme="dark"] .login-error-new{background:rgba(220,38,38,0.1);border-color:rgba(220,38,38,0.3);color:#F87171}
     .login-footer{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:#64748B}
+    [data-theme="dark"] .login-footer{color:#94A3B8}
     .lock-icon{font-size:12px}
     [dir="rtl"] .eye-icon{right:auto;left:16px}
     [dir="rtl"] .password-wrap .field-input{padding-right:16px;padding-left:48px}
 
-    /* ===== Charts ===== */
     canvas{max-height:340px}
     #shippingBarChart{max-height:none!important}
-    .analytics-date-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:16px}
-    .analytics-date-bar label{color:#64748B;font-size:13px;font-weight:700;white-space:nowrap}
-    .analytics-date-bar input[type="date"]{width:150px;padding:9px 10px;font-size:13px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;color:#0F172A}
+    .analytics-date-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background: var(--bg-soft);border:1px solid var(--border-color);border-radius:12px;margin-bottom:16px}
+    .analytics-date-bar label{color: var(--text-muted);font-size:13px;font-weight:700;white-space:nowrap}
+    .analytics-date-bar input[type="date"]{width:150px;padding:9px 10px;font-size:13px;border-radius:8px;background: var(--bg-card);border:1px solid var(--border-color);color: var(--text-primary)}
 
-    /* ===== Reports ===== */
     .report-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .report-tabs button{background:#F1F5F9;color:#475569;border:1px solid #E2E8F0}
+    .report-tabs button{background: var(--bg-soft);color: var(--text-secondary);border:1px solid var(--border-color)}
     .report-tabs button.active{background:#EA580C;color:#fff;border-color:#EA580C}
     .report-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
-    .report-card{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:16px}
-    .report-card span{color:#64748B;font-size:13px;font-weight:600}
-    .report-card strong{display:block;font-size:32px;margin-top:8px;color:#0F172A;font-weight:700;text-align:center}
+    .report-card{background: var(--bg-soft);border:1px solid var(--border-color);border-radius:14px;padding:16px}
+    .report-card span{color: var(--text-muted);font-size:13px;font-weight:600}
+    .report-card strong{display:block;font-size:32px;margin-top:8px;color: var(--text-primary);font-weight:700;text-align:center}
     .report-list{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    .report-box{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px}
-    .report-box h3{margin-bottom:12px;color:#0F172A;font-size:15px;font-weight:700}
-    .report-item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #F1F5F9}
+    .report-box{background: var(--bg-card);border:1px solid var(--border-color);border-radius:14px;padding:18px}
+    .report-box h3{margin-bottom:12px;color: var(--text-primary);font-size:15px;font-weight:700}
+    .report-item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-soft)}
     .report-item:last-child{border-bottom:0}
-    .report-name{font-weight:600;color:#334155}
+    .report-name{font-weight:600;color: var(--text-secondary)}
     .report-value{color:#EA580C;font-weight:700}
 
-    /* ===== Pagination ===== */
-.pagination{display:flex;justify-content:center;align-items:center;gap:5px;flex-wrap:wrap;margin-top:12px;direction:ltr}
-.pagination button{padding:5px 10px;border-radius:6px;background:#F1F5F9;color:#475569;font-size:12px;min-width:30px;border:1px solid #E2E8F0}
-.pagination button.active{background:#0D9488;color:#fff;border-color:#0D9488}
-.pagination button:disabled{opacity:.45;cursor:not-allowed}
-.pagination-info{color:#64748B;font-size:11px;padding:0 6px;direction:rtl}
+    .pagination{display:flex;justify-content:center;align-items:center;gap:5px;flex-wrap:wrap;margin-top:12px;direction:ltr}
+    .pagination button{padding:5px 10px;border-radius:6px;background: var(--bg-soft);color: var(--text-secondary);font-size:12px;min-width:30px;border:1px solid var(--border-color)}
+    .pagination button.active{background:#0D9488;color:#fff;border-color:#0D9488}
+    .pagination button:disabled{opacity:.45;cursor:not-allowed}
+    .pagination-info{color: var(--text-muted);font-size:11px;padding:0 6px;direction:rtl}
 
-    /* ===== Rank Search & Multi Filter ===== */
     .rank-search{flex:1;min-width:280px;max-width:600px}
     .multi-filter{position:relative;min-width:200px}
-    .multi-filter-btn{width:100%;background:#F1F5F9;color:#334155;border:1px solid #E2E8F0;padding:11px 16px;text-align:center}
+    .multi-filter-btn{width:100%;background: var(--bg-soft);color: var(--text-secondary);border:1px solid var(--border-color);padding:11px 16px;text-align:center}
     .multi-filter-menu{
       position:absolute;top:52px;right:0;width:280px;max-height:320px;overflow:auto;
-      background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px;z-index:999;
-      box-shadow:0 10px 30px rgba(15,23,42,.08);display:none;
+      background: var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:12px;z-index:999;
+      box-shadow: var(--shadow-menu);display:none;
     }
     .multi-filter-menu.show{display:block}
-    .multi-filter-item{display:flex;align-items:center;gap:10px;padding:8px;color:#334155;border-radius:8px;cursor:pointer;font-size:13px}
-    .multi-filter-item:hover{background:#F8FAFC}
+    .multi-filter-item{display:flex;align-items:center;gap:10px;padding:8px;color: var(--text-secondary);border-radius:8px;cursor:pointer;font-size:13px}
+    .multi-filter-item:hover{background: var(--bg-soft)}
     .multi-filter-item input{width:auto}
     .multi-filter-actions{display:flex;gap:8px;margin-top:10px}
     .multi-filter-actions button{padding:8px 12px;font-size:12px;flex:1}
 
-    /* ===== Responsive ===== */
+    /* Import Modal Dark Mode */
+    [data-theme="dark"] #importModal .card{background: var(--bg-card) !important;border-color: var(--border-color) !important}
+    [data-theme="dark"] #importModal h2{color:#5EEAD4 !important}
+    [data-theme="dark"] #importModal p{color: var(--text-secondary) !important}
+
     @media(max-width:1100px){
       .app-sidebar{width:70px;min-width:70px;padding:12px 8px}
       .menu-item span:not(.mi-icon){display:none}
@@ -472,30 +590,42 @@ td.notes-cell:empty::after{
 <div id="app" class="app-layout hidden">
 
   <!-- ===== Top Header ===== -->
-  <header class="app-header">
-    <div class="app-brand">
-      <div class="brand-badge">OKB</div>
-      <span>elokabypharmacy</span>
+  <!-- ===== Top Header ===== -->
+<header class="app-header">
+  
+  <!-- يمين: البراند -->
+  <div class="app-brand">
+    <div class="brand-badge">OKB</div>
+    <span>elokabypharmacy</span>
+  </div>
+
+  <!-- النص: البحث -->
+  <div class="header-search">
+    <input id="globalSearch" type="text" placeholder="ابحث..." />
+    <span class="search-icon">🔍</span>
+  </div>
+
+  <!-- شمال: المستخدم + الإشعارات + الثيم -->
+  <div class="header-right">
+    <div class="user-chip">
+      <div class="avatar" id="userAvatar">U</div>
+      <div class="user-info">
+        <span class="user-name" id="userNameHere">User</span>
+        <span class="user-role" id="userRoleHere">role</span>
+      </div>
     </div>
 
-    <div class="header-search">
-      <input id="globalSearch" type="text" placeholder="ابحث..." />
-      <span class="search-icon">🔍</span>
+    <div class="notif-wrap" title="Notifications">
+      <!-- لو عايزة تحطي أيقونة الجرس -->
     </div>
 
-    <div class="header-right">
-      <div class="notif-wrap" title="Notifications">
-       
-      </div>
-      <div class="user-chip">
-        <div class="avatar" id="userAvatar">U</div>
-        <div class="user-info">
-          <span class="user-name" id="userNameHere">User</span>
-          <span class="user-role" id="userRoleHere">role</span>
-        </div>
-      </div>
-    </div>
-  </header>
+    <button class="theme-toggle" onclick="toggleTheme()" title="تبديل الوضع الليلي">
+      <span class="icon-moon">🌙</span>
+      <span class="icon-sun">☀️</span>
+    </button>
+  </div>
+
+</header>
 
   <div class="app-body">
 
@@ -564,7 +694,7 @@ td.notes-cell:empty::after{
                 <option value="Returned">Returned</option>
                 <option value="ملغي">ملغي</option>
                 <option value="Fake Doctor">Fake Doctor</option>
-                <option value="Fake Delivery Update">Fake Delivery Update</option>
+                <option value="Signed">Signed</option>
               </select>
             </div>
 
@@ -610,12 +740,14 @@ td.notes-cell:empty::after{
               <option value="Returned">Returned</option>
               <option value="ملغي">ملغي</option>
               <option value="Fake Doctor">Fake Doctor</option>
-              <option value="Fake Delivery Update">Fake Delivery Update</option>
+              <option value="Signed">Signed</option>
             </select>
 
             <select id="filterEmployee"></select>
 
             <button class="success" id="exportBtn">⬇ Export</button>
+           <button  id="importBtn" onclick="openImportModal()">📥 Import Excel</button>
+
           </div>
 
           <div class="table-wrap">
@@ -629,7 +761,7 @@ td.notes-cell:empty::after{
               <tbody id="ordersTableBody"></tbody>
             </table>
           </div>
-          <div id="ordersPagination" class="pagination"></div>
+                  <div id="ordersPagination" class="pagination"></div>
         </div>
       </section>
 
@@ -934,7 +1066,37 @@ td.notes-cell:empty::after{
 
     </main>
   </div>
+<!-- ===== IMPORT EXCEL MODAL ===== -->
+  <div id="importModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:none; align-items:center; justify-content:center; padding:15px; direction:rtl;">
+    <div class="card" style="width:100%; max-width:700px; background:#f8f9fa; border:1px solid rgba(255,255,255,.14); border-radius:24px; padding:25px; box-shadow:0 20px 50px rgba(0,0,0,.5); max-height:90vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+        <h2 style="margin:0; color:#0d9488; font-size:20px;">📥 استيراد أوردرات من ملف إكسيل</h2>
+        <button class="danger" style="padding:6px 14px; border-radius:10px; cursor:pointer;" onclick="closeImportModal()">✕ إغلاق</button>
+      </div>
+      
+      <div id="importStep1">
+        <p style="color:#003a6c; font-size:14px; margin-bottom:12px;">اختر ملف الإكسيل الخاص بشركة الشحن (يدعم صيغ .xlsx أو .xls أو .csv)</p>
+        <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" style="padding:10px; margin-bottom:15px; width:100%;" />
+        <button class="primary" style="width:100%; padding:12px; cursor:pointer;" onclick="processExcelFile()">تحميل الملف وقراءة الأعمدة 🔍</button>
+      </div>
 
+      <div id="importStep2" class="hidden" style="margin-top:15px;">
+        <h3 style="color:#facc15; font-size:15px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">طابق أعمدة الملف أو اختر قيم ثابتة للرفع:</h3>
+        
+        <div style="display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:20px;" id="mappingFieldsContainer">
+          <!-- الحقول ستظهر هنا ديناميكياً بتصميم مريح للمستخدم -->
+        </div>
+
+        <div style="background:rgba(21,128,61,0.15); border:1px solid #15803d; padding:12px; border-radius:12px; margin-bottom:15px;">
+          <span style="color:#15803d; font-size:13px; font-weight:bold;" id="importSummaryText">تم قراءة الصفوف بنجاح.</span>
+        </div>
+
+        <button class="success" style="width:100%; padding:14px; font-size:16px; cursor:pointer;" id="startImportBtn" onclick="executeBulkImport()">ابدأ إدخال البيانات في السيستم فوراً 🚀</button>
+        <div id="importProgressText" style="text-align:center; margin-top:10px; color:#facc15; font-weight:bold; font-size:14px;"></div>
+      </div>
+    </div>
+  </div>
+  <!-- ======================================= -->
   <!-- ===== Footer ===== -->
   <footer class="app-footer">
     © 2024 elokaby Pharmacy System. جميع الحقوق محفوظة
@@ -947,6 +1109,47 @@ const supabaseClient = window.supabase.createClient(
   "https://nsynylbqrkdftnyqrgkn.supabase.co",
   "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv"
 );
+// ===== DARK MODE SYSTEM =====
+function initTheme(){
+  let savedTheme = 'light';
+  try {
+    savedTheme = sessionStorage.getItem('okb_theme') || 'light';
+  } catch(e){ savedTheme = 'light'; }
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateChartsTheme(savedTheme);
+}
+
+function toggleTheme(){
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const newTheme = current === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  try { sessionStorage.setItem('okb_theme', newTheme); } catch(e){}
+  updateChartsTheme(newTheme);
+  
+  // إعادة رسم الـ Charts عشان الألوان تتحدث
+  if(typeof Chart !== 'undefined' && Chart.defaults){
+    if(charts){
+      Object.keys(charts).forEach(key=>{
+        if(charts[key]) charts[key].update();
+      });
+    }
+    // إعادة رسم Charts الصفحات
+    setTimeout(()=>{
+      if(!document.getElementById('shippingRankPage').classList.contains('hidden')) renderShippingCharts();
+      if(!document.getElementById('doctorRankPage').classList.contains('hidden')) renderDoctorCharts();
+    }, 100);
+  }
+}
+
+function updateChartsTheme(theme){
+  if(typeof Chart === 'undefined') return;
+  const isDark = theme === 'dark';
+  Chart.defaults.color = isDark ? '#94A3B8' : '#64748B';
+  Chart.defaults.borderColor = isDark ? 'rgba(241,245,249,0.1)' : 'rgba(15,23,42,0.05)';
+}
+
+// تشغيل الثيم فور تحميل الصفحة
+initTheme();
 
 let orders=[], users=[], editId=null, currentUser=null;
 let charts={};
@@ -991,6 +1194,7 @@ function calcRevenueBreakdown(list){
     returned: sum(list.filter(o=>o.status==="Returned")),
     cancelled: sum(list.filter(o=>o.status==="ملغي")),
     transit: sum(list.filter(o=>o.status==="Transit")),
+    Signed:sum(list.filter(o=>o.status==="Signed")),
     fakeDoctor: sum(list.filter(o=>isFakeDoctorOrder(o))),
     fakeDelivery: sum(list.filter(o=>isFakeDeliveryUpdateOrder(o)))
   };
@@ -1334,7 +1538,8 @@ function renderOrders(){
   renderStats(filtered);
 
   if(!filtered.length){
-    ordersTableBody.innerHTML=`<tr><td colspan="12" class="empty">No data found</td></tr>`;
+    ordersTableBody.innerHTML=`<tr><td colspan="13" class="empty">No data found</td></tr>`;
+    syncBulkSelectionUI([]);
     renderPagination("ordersPagination", 0, "orders");
     return;
   }
@@ -1347,6 +1552,7 @@ function renderOrders(){
       o.status==="Returned" ? "chip-returned" :
       o.status==="Transit" ? "chip-transit" :
       o.status==="ملغي" ? "chip-cancelled" :
+      o.status==="Signed"? "chip-Signed":
       (o.status==="Fake Doctor" || o.status==="Fake Delivery Update") ? "chip-fake" : "";
     const safeNotes = (o.notes||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
     return `
@@ -1367,7 +1573,10 @@ function renderOrders(){
         ${isAdmin()?`<button class="danger" style="padding:4px 10px;font-size:11px" onclick="deleteOrder('${o.id}')">حذف</button>`:''}
       </div></td>
     </tr>`;
-  }).join("");}
+  }).join("");
+ renderPagination("ordersPagination", filtered.length, "orders");
+  syncBulkSelectionUI(page.rows);
+}
 
 orderForm.addEventListener("submit",async(e)=>{
   e.preventDefault();
@@ -1407,6 +1616,7 @@ function getShippingAnalysisRows(sourceOrders){
       transit=countStatus(list,"Transit"),
       returned=countStatus(list,"Returned"),
       cancelled=countStatus(list,"ملغي"),
+      signed=countStatus(list,"Signed"),
       fake=getFakeDeliveryUpdateCount(list);
     return {company,total,confirmed,transit,returned,cancelled,fake,fakeRate:percent(fake,total),returnRate:percent(returned,total),fakeRateNum:percentNum(fake,total),returnRateNum:percentNum(returned,total)}
   });
@@ -1416,7 +1626,7 @@ function getDoctorsAnalysisRows(sourceOrders){
   const src = sourceOrders || orders;
   const doctors=[...new Set(src.map(o=>o.doctor_name).filter(Boolean))];
   return doctors.map(doc=>{
-    const list=src.filter(o=>o.doctor_name===doc), total=list.length, confirmed=countStatus(list,"تم التأكيد"), transit=countStatus(list,"Transit"), returned=countStatus(list,"Returned"), cancelled=countStatus(list,"ملغي"), fake=getFakeDoctorCount(list), revenue=list.reduce((s,o)=>s+Number(o.price||0),0);
+    const list=src.filter(o=>o.doctor_name===doc), total=list.length, confirmed=countStatus(list,"تم التأكيد"), transit=countStatus(list,"Transit"), returned=countStatus(list,"Returned"), cancelled=countStatus(list,"ملغي"),signed=countStatus(list,"Signed"), fake=getFakeDoctorCount(list), revenue=list.reduce((s,o)=>s+Number(o.price||0),0);
     return {doctor:doc,total,confirmed,transit,returned,cancelled,fake,revenue,fakeRate:percent(fake,total),returnRate:percent(returned,total),fakeRateNum:percentNum(fake,total),returnRateNum:percentNum(returned,total)}
   });
 }
@@ -2165,6 +2375,292 @@ if(globalSearch){
     pageState.orders = 1;
     renderOrders();
   });
+}
+
+// ===== EXCEL SMART IMPORT SYSTEM (DEVELOPED) =====
+let excelDataRows = []; 
+let excelHeaderColumns = []; 
+
+const systemRequiredFields = [
+  { id: "map_customerName", label: "اسم العميل 👤", dbField: "customer_name", allowStatic: false },
+  { id: "map_phone", label: "رقم الموبايل 📱", dbField: "phone", allowStatic: false },
+  { id: "map_area", label: "المنطقة / المحافظة 📍", dbField: "area", allowStatic: false },
+  { id: "map_price", label: "السعر / المبلغ 💰", dbField: "price", allowStatic: false },
+  { id: "map_doctorName", label: "اسم الدكتور 👨‍⚕️", dbField: "doctor_name", allowStatic: false },
+  { id: "map_shippingCompany", label: "شركة الشحن 🚚", dbField: "shipping_company", allowStatic: true, type: "shipping" },
+  { id: "map_employeeName", label: "اسم الموظف 💼", dbField: "employee_name", allowStatic: true, type: "employee" },
+  { id: "map_status", label: "حالة الأوردر 📊", dbField: "status", allowStatic: false },
+  { id: "map_orderNotes", label: "ملاحظات (اختياري) 📝", dbField: "notes", allowStatic: false }
+];
+
+function openImportModal() {
+  document.getElementById("importModal").style.display = "flex";
+  document.getElementById("importStep1").classList.remove("hidden");
+  document.getElementById("importStep2").classList.add("hidden");
+  document.getElementById("excelFileInput").value = "";
+  excelDataRows = [];
+  excelHeaderColumns = [];
+  document.getElementById("importProgressText").textContent = "";
+  document.getElementById("startImportBtn").disabled = false;
+}
+
+function closeImportModal() {
+  document.getElementById("importModal").style.display = "none";
+}
+
+function processExcelFile() {
+  const fileInput = document.getElementById("excelFileInput");
+  if (!fileInput.files || fileInput.files.length === 0) {
+    alert("برجاء اختيار ملف اكسيل أولاً!");
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+      
+      if (jsonData.length === 0) {
+        alert("ملف الاكسيل فارغ ولا يحتوي على بيانات!");
+        return;
+      }
+
+      excelDataRows = jsonData;
+      excelHeaderColumns = Object.keys(jsonData[0]);
+
+      buildMappingInterface();
+
+      document.getElementById("importStep1").classList.add("hidden");
+      document.getElementById("importStep2").classList.remove("hidden");
+      document.getElementById("importSummaryText").textContent = `تم قراءة الملف بنجاح! يحتوي الملف على (${excelDataRows.length}) صف جاهز للمطابقة.`;
+
+    } catch (err) {
+      console.error(err);
+      alert("حدث خطأ أثناء قراءة ملف الاكسيل، تأكد من سلامة صيغة الملف.");
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function buildMappingInterface() {
+  const container = document.getElementById("mappingFieldsContainer");
+  container.innerHTML = "";
+
+  // جلب شركات الشحن المضافة ديناميكياً في السيستم من الـ select الأصلي
+  const originalShippingSelect = document.getElementById("shippingCompany");
+  let shippingOptions = [];
+  if (originalShippingSelect) {
+    for (let i = 0; i < originalShippingSelect.options.length; i++) {
+      const val = originalShippingSelect.options[i].value;
+      if (val) shippingOptions.push(val);
+    }
+  }
+
+  // جلب أسماء الموظفين من متغير الـ users أو المتاحين في النظام
+  let employeeOptions = [];
+  if (typeof users !== "undefined" && users.length > 0) {
+    employeeOptions = users.map(u => u.name).filter(Boolean);
+  } else if (currentUser) {
+    employeeOptions = [currentUser.name];
+  }
+
+  systemRequiredFields.forEach(field => {
+    // بناء خيارات المنسدلة من أعمدة الإكسيل
+    let excelColsHtml = `<option value="">-- اختر عمود من الملف --</option>`;
+    let guessedValue = "";
+    
+    excelHeaderColumns.forEach(col => {
+      const lowerCol = col.toLowerCase().trim();
+      const cleanCol = col.trim();
+      excelColsHtml += `<option value="${col}">${col}</option>`;
+
+      if (field.dbField === "customer_name" && (lowerCol.includes("name") || cleanCol.includes("الاسم") || cleanCol.includes("عميل") || cleanCol.includes("المستلم"))) guessedValue = col;
+      if (field.dbField === "phone" && (lowerCol.includes("phone") || lowerCol.includes("mobile") || lowerCol.includes("tel") || cleanCol.includes("هاتف") || cleanCol.includes("موبايل") || cleanCol.includes("تليفون"))) guessedValue = col;
+      if (field.dbField === "area" && (lowerCol.includes("area") || lowerCol.includes("city") || lowerCol.includes("gov") || cleanCol.includes("منطقة") || cleanCol.includes("محافظة") || cleanCol.includes("عنوان") || cleanCol.includes("المدينة"))) guessedValue = col;
+      if (field.dbField === "price" && (lowerCol.includes("price") || lowerCol.includes("amount") || lowerCol.includes("total") || cleanCol.includes("سعر") || cleanCol.includes("مبلغ") || cleanCol.includes("قيمة") || cleanCol.includes("إجمالي"))) guessedValue = col;
+      if (field.dbField === "doctor_name" && (lowerCol.includes("doctor") || cleanCol.includes("دكتور") || cleanCol.includes("طبيب"))) guessedValue = col;
+      if (field.dbField === "shipping_company" && (lowerCol.includes("shipping") || lowerCol.includes("company") || cleanCol.includes("شحن") || cleanCol.includes("شركة"))) guessedValue = col;
+      if (field.dbField === "employee_name" && (lowerCol.includes("employee") || lowerCol.includes("agent") || lowerCol.includes("user") || cleanCol.includes("موظف") || cleanCol.includes("مدخل"))) guessedValue = col;
+      if (field.dbField === "status" && (lowerCol.includes("status") || cleanCol.includes("حالة") || cleanCol.includes("الحالة"))) guessedValue = col;
+      if (field.dbField === "notes" && (lowerCol.includes("note") || lowerCol.includes("comment") || cleanCol.includes("ملاحظات") || cleanCol.includes("تفاصيل"))) guessedValue = col;
+    });
+
+    let rowHtml = "";
+
+    if (field.allowStatic) {
+      // إذا كان الحقل يقبل قيمة ثابتة مانيوال (مثل شركة الشحن أو اسم الموظف)
+      let staticOptionsHtml = `<option value="">-- اختر قيمة ثابتة مانيوال من السيستم --</option>`;
+      const targetOptions = field.type === "shipping" ? shippingOptions : employeeOptions;
+      
+      targetOptions.forEach(opt => {
+        staticOptionsHtml += `<option value="${opt}">${opt}</option>`;
+      });
+
+      rowHtml = `
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgb(0 0 0 / 8%); padding: 12px; border-radius:14px; margin-bottom:4px;">
+          <label style="font-size:13px; font-weight:bold; color:#facc15; display:block; margin-bottom:8px;">${field.label}</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+            <div>
+              <span style="font-size:11px; color:#9fb0d6; display:block; margin-bottom:4px;">الخيار 1: اسحب من عمود الإكسيل</span>
+              <select id="${field.id}" onchange="toggleImportFieldMode('${field.id}', 'excel')" style="padding:10px; font-size:13px; background:#003a6c; color:white; border-radius:10px; border:1px solid rgba(255,255,255,0.1); width:100%;">${excelColsHtml}</select>
+            </div>
+            <div>
+              <span style="font-size:11px; color:#9fb0d6; display:block; margin-bottom:4px;">الخيار 2: قيمة ثابتة لكل الشيت مانيوال</span>
+              <select id="${field.id}_static" onchange="toggleImportFieldMode('${field.id}', 'static')" style="padding:10px; font-size:13px; background:#003a6c; color:white; border-radius:10px; border:1px solid rgba(255,255,255,0.1); width:100%;">${staticOptionsHtml}</select>
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      // حقل عادي يقرأ من الإكسيل فقط
+      rowHtml = `
+        <div style="display:grid; grid-template-columns: 200px 1fr; align-items:center; background: rgba(255,255,255,0.01); padding: 8px 12px; border-radius:10px; border: 1px solid rgb(6 0 0 / 5%);">
+          <label style="font-size:13px; font-weight:bold; color:#0d9488;">${field.label}</label>
+          <select id="${field.id}" style="padding:10px; font-size:13px; background:#003a6c; color:white; border-radius:10px; border:1px solid rgba(255,255,255,0.1); width:100%;">${excelColsHtml}</select>
+        </div>
+      `;
+    }
+
+    container.insertAdjacentHTML('beforeend', rowHtml);
+
+    // إذا تم تخمين عمود الإكسيل بنجاح نقوم بتحديده مبدئياً
+    if (guessedValue) {
+      document.getElementById(field.id).value = guessedValue;
+    }
+  });
+}
+
+function toggleImportFieldMode(fieldId, mode) {
+  if (mode === 'excel') {
+    const staticEl = document.getElementById(fieldId + "_static");
+    if (staticEl) staticEl.value = "";
+  } else if (mode === 'static') {
+    const excelEl = document.getElementById(fieldId);
+    if (excelEl) excelEl.value = "";
+  }
+}
+
+async function executeBulkImport() {
+  const mapping = {};
+  const staticValues = {};
+  let missingRequired = false;
+
+  systemRequiredFields.forEach(field => {
+    const excelVal = document.getElementById(field.id).value;
+    const staticEl = document.getElementById(field.id + "_static");
+    const staticVal = staticEl ? staticEl.value : "";
+
+    if (field.allowStatic) {
+      if (!excelVal && !staticVal) {
+        missingRequired = true;
+      }
+      mapping[field.dbField] = excelVal; 
+      staticValues[field.dbField] = staticVal; 
+    } else {
+      if (!excelVal && field.dbField !== "notes") {
+        missingRequired = true;
+      }
+      mapping[field.dbField] = excelVal;
+    }
+  });
+
+  if (missingRequired) {
+    alert("يرجى اختيار عمود الإكسيل أو تحديد القيمة الثابتة لكل حقل أساسي قبل الرفع!");
+    return;
+  }
+
+  if (!confirm(`هل أنت متأكد من رغبتك في استيراد ${excelDataRows.length} أوردر إلى النظام الآن؟`)) {
+    return;
+  }
+
+  document.getElementById("startImportBtn").disabled = true;
+  const progressDiv = document.getElementById("importProgressText");
+  progressDiv.textContent = "جاري تحضير البيانات ومعالجة الأوردرات...";
+
+  const ordersToInsert = [];
+  
+  excelDataRows.forEach(row => {
+    // 1- حساب السعر
+    let pVal = Number(String(row[mapping["price"]]).replace(/[^0-9.]/g, '')) || 0; 
+    
+    // 2- معالجة الحالة وتوحيدها مع السيستم
+    let rawStatus = String(row[mapping["status"]]).trim();
+    let finalStatus = "Transit"; 
+    if (rawStatus.toLowerCase().includes("transit")) finalStatus = "Transit";
+    else if (rawStatus.includes("تأكيد") || rawStatus.includes("مؤكد") || rawStatus.toLowerCase().includes("confirm")) finalStatus = "تم التأكيد";
+    else if (rawStatus.toLowerCase().includes("return") || rawStatus.includes("راجع") || rawStatus.includes("مرتجع")) finalStatus = "Returned";
+    else if (rawStatus.includes("ملغي") || rawStatus.toLowerCase().includes("cancel")) finalStatus = "ملغي";
+    else if (rawStatus.toLowerCase().includes("fake doctor") || rawStatus.includes("فيك دكتور")) finalStatus = "Fake Doctor";
+    else if (rawStatus.toLowerCase().includes("fake delivery") || rawStatus.includes("فيك شحن")) finalStatus = "Fake Delivery Update";
+
+    // 3- تحديد اسم الموظف (ثابت مانيوال أو ديناميكي من العمود)
+    let finalEmployee = staticValues["employee_name"] ? staticValues["employee_name"] : String(row[mapping["employee_name"]] || "").trim();
+    if (!finalEmployee) finalEmployee = (currentUser ? currentUser.name : "System Import");
+
+    // 4- تحديد شركة الشحن (ثابتة مانيوال أو ديناميكية من العمود)
+    let finalShipping = staticValues["shipping_company"] ? staticValues["shipping_company"] : String(row[mapping["shipping_company"]] || "").trim();
+
+    const orderObj = {
+      employee_name: finalEmployee,
+      doctor_name: String(row[mapping["doctor_name"]] || "").trim(),
+      customer_name: String(row[mapping["customer_name"]] || "").trim(),
+      phone: String(row[mapping["phone"]] || "").trim(),
+      shipping_company: finalShipping,
+      area: String(row[mapping["area"]] || "").trim(),
+      price: pVal,
+      status: finalStatus,
+      fake_doctor: finalStatus === "Fake Doctor",
+      notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : ""
+    };
+
+    ordersToInsert.push(orderObj);
+  });
+
+  const BATCH_SIZE = 50; 
+  let successCount = 0;
+  let hasError = false;
+
+  for (let i = 0; i < ordersToInsert.length; i += BATCH_SIZE) {
+    const chunk = ordersToInsert.slice(i, i + BATCH_SIZE);
+    progressDiv.textContent = `جاري رفع الدفعة: من ${i} إلى ${Math.min(i + BATCH_SIZE, ordersToInsert.length)} من أصل ${ordersToInsert.length}...`;
+
+    const { error } = await supabaseClient.from("orders").insert(chunk);
+    
+    if (error) {
+      console.error("Batch Import Error:", error);
+      hasError = true;
+      alert(`حدث خطأ أثناء رفع الدفعة: ${error.message}`);
+      break;
+    } else {
+      successCount += chunk.length;
+    }
+  }
+
+  if (!hasError) {
+    progressDiv.innerHTML = `<span style="color:#86efac;">✅ تم استيراد وإدخل ${successCount} أوردر بنجاح!</span>`;
+    alert(`رائع! تم إدخال عدد ${successCount} أوردر بنجاح تام إلى قاعدة البيانات.`);
+    closeImportModal();
+    
+    if (typeof loadOrders === "function") {
+      await loadOrders();
+    }
+  } else {
+    document.getElementById("startImportBtn").disabled = false;
+    progressDiv.textContent = "توقف الاستيراد بسبب خطأ، يرجى مراجعة البيانات.";
+  }
+}
+
+// Placeholder function (للاستخدام المستقبلي مع Bulk Selection)
+function syncBulkSelectionUI(rows){
+  // غير مستخدمة حالياً — موجودة فقط لمنع الخطأ
+  return;
 }
 
 checkLogin();
