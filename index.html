@@ -716,6 +716,7 @@
             <div class="stat"><span>Total Fake Doctor</span><strong id="fakeDoctorOrders">0</strong></div>
             <div class="stat"><span>Total Fake Delivery Update</span><strong id="fakeDeliveryUpdateOrders">0</strong></div>
             <div class="stat"><span>Total Revenue</span><strong id="totalRevenue">0</strong></div>
+            <div class="stat"><span>Total Signed</span><strong id="totalSigned">0</strong></div>
           </div>
 
           <div class="toolbar">
@@ -1168,7 +1169,7 @@ const $=id=>document.getElementById(id);
 const loginPage=$("loginPage"), app=$("app"), loginUsername=$("loginUsername"), loginPassword=$("loginPassword"), loginError=$("loginError");
 const orderForm=$("orderForm"), employeeName=$("employeeName"), doctorName=$("doctorName"), customerName=$("customerName"), phone=$("phone"), shippingCompany=$("shippingCompany"), area=$("area"), price=$("price"), status=$("status");
 const submitBtn=$("submitBtn"), ordersTableBody=$("ordersTableBody");
-const totalOrders=$("totalOrders"), confirmedOrders=$("confirmedOrders"), returnedOrders=$("returnedOrders"), fakeDoctorOrders=$("fakeDoctorOrders"), fakeDeliveryUpdateOrders=$("fakeDeliveryUpdateOrders"), totalRevenue=$("totalRevenue");
+const totalOrders=$("totalOrders"), confirmedOrders=$("confirmedOrders"), returnedOrders=$("returnedOrders"), fakeDoctorOrders=$("fakeDoctorOrders"), fakeDeliveryUpdateOrders=$("fakeDeliveryUpdateOrders"), totalRevenue=$("totalRevenue"), totalSigned=$("totalSigned");
 const searchInput=$("searchInput"), filterStatus=$("filterStatus"), filterEmployee=$("filterEmployee"), exportBtn=$("exportBtn");
 const userForm=$("userForm"), newUserName=$("newUserName"), newUsername=$("newUsername"), newPassword=$("newPassword"), newRole=$("newRole"), usersTableBody=$("usersTableBody");
 const shippingRankSearch=$("shippingRankSearch"), doctorRankSearch=$("doctorRankSearch"), doctorsAnalysisSearch=$("doctorsAnalysisSearch"), shippingCompanyFilterMenu=$("shippingCompanyFilterMenu"), shippingCompanyCheckboxes=$("shippingCompanyCheckboxes");
@@ -1194,8 +1195,8 @@ function calcRevenueBreakdown(list){
     returned: sum(list.filter(o=>o.status==="Returned")),
     cancelled: sum(list.filter(o=>o.status==="ملغي")),
     transit: sum(list.filter(o=>o.status==="Transit")),
-    Signed:sum(list.filter(o=>o.status==="Signed")),
-    fakeDoctor: sum(list.filter(o=>isFakeDoctorOrder(o))),
+  signed: sum(list.filter(o=>o.status==="Signed")),
+  fakeDoctor: sum(list.filter(o=>isFakeDoctorOrder(o))),
     fakeDelivery: sum(list.filter(o=>isFakeDeliveryUpdateOrder(o)))
   };
 }
@@ -1523,12 +1524,14 @@ function renderStats(filtered){
   const returnedCount = filtered.filter(o=>o.status==="Returned").length;
   const fakeDoctorCount = filtered.filter(o=>isFakeDoctorOrder(o)).length;
   const fakeDeliveryCount = filtered.filter(o=>isFakeDeliveryUpdateOrder(o)).length;
+const signedCount = filtered.filter(o=>o.status==="Signed").length;
 
   totalOrders.innerHTML = statHTML(filtered.length, revenue.total, "Total Value");
   confirmedOrders.innerHTML = statHTML(confirmedCount, revenue.confirmed, "Revenue", "good");
   returnedOrders.innerHTML = statHTML(returnedCount, revenue.returned, "Returned Value", "bad");
   fakeDoctorOrders.innerHTML = statHTML(fakeDoctorCount, revenue.fakeDoctor, "Fake Value", "warn");
   fakeDeliveryUpdateOrders.innerHTML = statHTML(fakeDeliveryCount, revenue.fakeDelivery, "Fake Delivery Value", "warn");
+  totalSigned.innerHTML = statHTML(signedCount, revenue.signed, "Signed Value", "good");
   totalRevenue.innerHTML = `<span class="stat-count">${money(revenue.total)}</span><small class="stat-money">All Statuses Value</small>`;
 }
 
