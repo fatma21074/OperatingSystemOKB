@@ -697,7 +697,6 @@
                 <option value="">اختر حالة الأوردر</option>
                 <option value="Transit">Transit</option>
                 <option value="Returned">Returned</option>
-                <option value="ملغي">ملغي</option>
                 <option value="Fake Delivery update">Fake Delivery Update</option>
                 <option value="Fake Doctor">Fake Doctor</option>
                 <option value="Picked-up">Picked-up</option>
@@ -751,7 +750,6 @@
               <option value="الكل">كل الحالات</option>
               <option value="Transit">Transit</option>
                 <option value="Returned">Returned</option>
-                <option value="ملغي">ملغي</option>
                 <option value="Fake Delivery update">Fake Delivery Update</option>
                 <option value="Fake Doctor">Fake Doctor</option>
                 <option value="Picked-up">Picked-up</option>
@@ -1202,7 +1200,6 @@ function calcRevenueBreakdown(list) {
     signed: sum(list.filter(o => o.status === "Signed")),
     returning: sum(list.filter(o => o.status === "Returning")),
     returned: sum(list.filter(o => o.status === "Returned")),
-    cancelled: sum(list.filter(o => o.status === "ملغي")),
     transit: sum(list.filter(o => o.status === "Transit")),
     fakeDoctor: sum(list.filter(o => isFakeDoctorOrder(o))),
     fakeDelivery: sum(list.filter(o => isFakeDeliveryUpdateOrder(o)))
@@ -1713,10 +1710,8 @@ function renderOrders() {
 
   ordersTableBody.innerHTML = page.rows.map((o, i) => {
     const statusClass = 
-      o.status === "تم التأكيد" ? "chip-confirmed" :
       o.status === "Returned" ? "chip-returned" :
       o.status === "Transit" ? "chip-transit" :
-      o.status === "ملغي" ? "chip-cancelled" :
       o.status === "Signed" ? "chip-Signed" :
       (o.status === "Fake Doctor" || o.status === "Fake Delivery Update") ? "chip-fake" : "";
     const safeNotes = (o.notes || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -1848,10 +1843,8 @@ function getShippingAnalysisRows(sourceOrders) {
   return companies.map(company => {
     const list = src.filter(o => o.shipping_company === company),
       total = list.length,
-      confirmed = countStatus(list, "تم التأكيد"),
       transit = countStatus(list, "Transit"),
       returned = countStatus(list, "Returned"),
-      cancelled = countStatus(list, "ملغي"),
       signed = countStatus(list, "Signed"),
       fake = getFakeDeliveryUpdateCount(list);
     return { company, total, confirmed, transit, returned, cancelled, fake, fakeRate: percent(fake, total), returnRate: percent(returned, total), fakeRateNum: percentNum(fake, total), returnRateNum: percentNum(returned, total) };
@@ -1862,7 +1855,7 @@ function getDoctorsAnalysisRows(sourceOrders) {
   const src = sourceOrders || orders;
   const doctors = [...new Set(src.map(o => o.doctor_name).filter(Boolean))];
   return doctors.map(doc => {
-    const list = src.filter(o => o.doctor_name === doc), total = list.length, confirmed = countStatus(list, "تم التأكيد"), transit = countStatus(list, "Transit"), returned = countStatus(list, "Returned"), cancelled = countStatus(list, "ملغي"), signed = countStatus(list, "Signed"), fake = getFakeDoctorCount(list), revenue = list.reduce((s, o) => s + Number(o.price || 0), 0);
+    const list = src.filter(o => o.doctor_name === doc), total = list.length, transit = countStatus(list, "Transit"), returned = countStatus(list, "Returned"), signed = countStatus(list, "Signed"), fake = getFakeDoctorCount(list), revenue = list.reduce((s, o) => s + Number(o.price || 0), 0);
     return { doctor: doc, total, confirmed, transit, returned, cancelled, fake, revenue, fakeRate: percent(fake, total), returnRate: percent(returned, total), fakeRateNum: percentNum(fake, total), returnRateNum: percentNum(returned, total) };
   });
 }
