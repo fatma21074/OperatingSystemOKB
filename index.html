@@ -437,12 +437,14 @@
     .chip.chip-returned{background:#FEE2E2;color:#DC2626}
     .chip.chip-transit{background:#DBEAFE;color:#2563EB}
     .chip.chip-cancelled{background:#F1F5F9;color:#64748B}
+    .chip.chip-signed{background:#DCFCE7;color:#16A34A}
     .chip.chip-fake{background:#FEF3C7;color:#D97706}
     
     [data-theme="dark"] .chip.chip-confirmed{background:rgba(22,163,74,0.2);color:#4ADE80}
     [data-theme="dark"] .chip.chip-returned{background:rgba(220,38,38,0.2);color:#F87171}
     [data-theme="dark"] .chip.chip-transit{background:rgba(37,99,235,0.2);color:#60A5FA}
     [data-theme="dark"] .chip.chip-cancelled{background:rgba(100,116,139,0.2);color:#94A3B8}
+    [data-theme="dark"] .chip.chip-signed{background:rgba(22,163,74,0.2);color:#4ADE80}
     [data-theme="dark"] .chip.chip-fake{background:rgba(217,119,6,0.2);color:#FBBF24}
 
     .empty{text-align:center;color: var(--text-light);padding:24px;font-size:13px}
@@ -749,13 +751,13 @@
             <select id="filterStatus">
               <option value="الكل">كل الحالات</option>
               <option value="Transit">Transit</option>
-                <option value="Returned">Returned</option>
-                <option value="Fake Delivery update">Fake Delivery Update</option>
-                <option value="Fake Doctor">Fake Doctor</option>
-                <option value="Picked-up">Picked-up</option>
-                <option value="Delivering">Delivering</option>
-                <option value="Returning">Returning</option>
-                <option value="Signed">Signed</option>
+              <option value="Returned">Returned</option>
+              <option value="Fake Delivery update">Fake Delivery Update</option>
+              <option value="Fake Doctor">Fake Doctor</option>
+              <option value="Picked-up">Picked-up</option>
+              <option value="Delivering">Delivering</option>
+              <option value="Returning">Returning</option>
+              <option value="Signed">Signed</option>
             </select>
 
             <select id="filterEmployee"></select>
@@ -808,16 +810,16 @@
 
         <div class="card">
           <div class="section-head"><h2>🚚 تحليل شركات الشحن</h2><button class="success" onclick="exportShippingAnalysis()">Export Shipping Analysis</button></div>
-          <div class="table-wrap"><table><thead><tr>
+          <div class="table-wrap"> <table><thead><tr>
             <th>شركة الشحن</th>
             <th>Total Order</th>
             <th>Signed</th>
             <th>Transit</th>
             <th>Returned</th>
-            <th>Fack Delivery</th>
+            <th>Fake Delivery</th>
             <th>نسبة الفيك</th>
             <th>نسبة الراجع</th>
-          </tr></thead><tbody id="shippingAnalyticsBody"></tbody></table></div>
+           </tr></thead><tbody id="shippingAnalyticsBody"></tbody></table></div>
           <div id="shippingAnalysisPagination" class="pagination"></div>
         </div>
 
@@ -828,8 +830,8 @@
             <button class="success" onclick="exportDoctorsAnalysis()">Export Doctors Analysis</button>
           </div>
           <div class="table-wrap"><table><thead><tr>
-            <th>اسم الدكتور</th><th>Total Order</th><th>Signed</th><th>Transit</th><th>Returned</th><th>Fack Delivery</th><th>إجمالي المبيعات</th><th>نسبة الفيك</th><th>نسبة الراجع</th>
-          </tr></thead><tbody id="doctorsAnalyticsBody"></tbody></table></div>
+            <th>اسم الدكتور</th><th>Total Order</th><th>Signed</th><th>Transit</th><th>Returned</th><th>Fake Doctor</th><th>إجمالي المبيعات</th><th>نسبة الفيك</th><th>نسبة الراجع</th>
+           </tr></thead><tbody id="doctorsAnalyticsBody"></tbody></table></div>
           <div id="doctorsAnalysisPagination" class="pagination"></div>
         </div>
       </section>
@@ -885,8 +887,8 @@
             </div>
           </div>
           <div class="table-wrap"><table><thead><tr>
-            <th>Rank</th><th>Shipping Company</th><th>Total Orders</th><th>Confirmed</th><th>Returned</th><th>Fake Delivery</th><th>Return Rate</th><th>Fake Rate</th><th>Score</th>
-           </tr></thead><tbody id="shippingRankBody"></tbody></table></div>
+            <th>Rank</th><th>Shipping Company</th><th>Total Orders</th><th>Signed</th><th>Returned</th><th>Fake Delivery</th><th>Return Rate</th><th>Fake Rate</th><th>Score</th>
+            </tr></thead><tbody id="shippingRankBody"></tbody></table></div>
           <div id="shippingRankPagination" class="pagination"></div>
         </div>
 
@@ -927,8 +929,8 @@
         <div class="card">
           <div class="section-head"><h2>Doctor Ranking</h2><input class="rank-search" id="doctorRankSearch" placeholder="Search doctor..." /><button class="success" onclick="exportDoctorRank()">Export Doctor Rank</button></div>
           <div class="table-wrap"><table><thead><tr>
-            <th>Rank</th><th>Doctor</th><th>Total Orders</th><th>Confirmed</th><th>Returned</th><th>Fake</th><th>Total Revenue</th><th>Fake Rate</th><th>Return Rate</th><th>Score</th>
-           </tr></thead><tbody id="doctorRankBody"></tbody></table></div>
+            <th>Rank</th><th>Doctor</th><th>Total Orders</th><th>Signed</th><th>Returned</th><th>Fake</th><th>Total Revenue</th><th>Fake Rate</th><th>Return Rate</th><th>Score</th>
+            </tr></thead><tbody id="doctorRankBody"></tbody></table></div>
           <div id="doctorRankPagination" class="pagination"></div>
         </div>
       </section>
@@ -1151,7 +1153,7 @@ let users = [];
 let editId = null;
 let currentUser = null;
 let charts = {};
-let selectedOrderIds = new Set(); // ✅ إضافة المتغير الناقص
+let selectedOrderIds = new Set();
 
 let branchs = [];
 let doctorsList = [];
@@ -1709,15 +1711,16 @@ function renderOrders() {
   const page = getPaginatedRows(filtered, "orders");
 
   ordersTableBody.innerHTML = page.rows.map((o, i) => {
-    const statusClass = 
-      o.status === "Returned" ? "chip-returned" :
-      o.status === "Transit" ? "chip-transit" :
-      o.status === "Signed" ? "chip-Signed" :
-      (o.status === "Fake Doctor" || o.status === "Fake Delivery Update") ? "chip-fake" : "";
+    let statusClass = "chip-transit";
+    if (o.status === "Returned") statusClass = "chip-returned";
+    else if (o.status === "Transit") statusClass = "chip-transit";
+    else if (o.status === "Signed") statusClass = "chip-signed";
+    else if (o.status === "Fake Doctor" || o.status === "Fake Delivery Update") statusClass = "chip-fake";
+    
     const safeNotes = (o.notes || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const isChecked = selectedOrderIds.has(String(o.id));
     
-    const adminCheckbox = isAdmin() ? `<th><input type="checkbox" class="row-check" data-id="${o.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectOrder(this, '${o.id}')" /></th>` : '';
+    const adminCheckbox = isAdmin() ? `<td><input type="checkbox" class="row-check" data-id="${o.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectOrder(this, '${o.id}')" /></td>` : '';
     
     return `
     <tr>
@@ -1763,7 +1766,6 @@ function syncBulkSelectionUI(currentPageRows = []) {
 orderForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  // ✅ استخدمي getElementById عشان نتفادى تعارض الأسماء مع window
   const empEl    = document.getElementById("employeeName");
   const docEl    = document.getElementById("doctorName");
   const custEl   = document.getElementById("customerName");
@@ -1786,9 +1788,6 @@ orderForm.addEventListener("submit", async (e) => {
     fake_doctor:      statusEl.value === "Fake Doctor",
     notes:            (notesEl.value || '').trim() || "لا توجد ملاحظات"
   };
-
-  // 🔍 Debug: شوفي القيم في الكونسول لو لسه فيه مشكلة
-  console.log("Order Data:", orderData);
 
   if (!orderData.employee_name || !orderData.doctor_name || !orderData.customer_name 
       || !orderData.phone || !orderData.shipping_company || !orderData.area 
@@ -1834,20 +1833,32 @@ window.deleteOrder = async function (id) {
   await loadOrders();
 };
 
-// ===== دوال التحليلات =====
+// ===== دوال التحليلات المُصححة =====
 function countStatus(list, s) { return list.filter(o => o.status === s).length; }
 
 function getShippingAnalysisRows(sourceOrders) {
   const src = sourceOrders || orders;
   const companies = getShippingCompanyNames();
   return companies.map(company => {
-    const list = src.filter(o => o.shipping_company === company),
-      total = list.length,
-      transit = countStatus(list, "Transit"),
-      returned = countStatus(list, "Returned"),
-      signed = countStatus(list, "Signed"),
-      fake = getFakeDeliveryUpdateCount(list);
-    return { company, total, confirmed, transit, returned, cancelled, fake, fakeRate: percent(fake, total), returnRate: percent(returned, total), fakeRateNum: percentNum(fake, total), returnRateNum: percentNum(returned, total) };
+    const list = src.filter(o => o.shipping_company === company);
+    const total = list.length;
+    const signed = countStatus(list, "Signed");
+    const transit = countStatus(list, "Transit");
+    const returned = countStatus(list, "Returned");
+    const fakeDelivery = getFakeDeliveryUpdateCount(list);
+    
+    return { 
+      company, 
+      total, 
+      signed,
+      transit,
+      returned,
+      fakeDelivery,
+      fakeRate: percent(fakeDelivery, total), 
+      returnRate: percent(returned, total),
+      fakeRateNum: percentNum(fakeDelivery, total), 
+      returnRateNum: percentNum(returned, total) 
+    };
   });
 }
 
@@ -1855,8 +1866,27 @@ function getDoctorsAnalysisRows(sourceOrders) {
   const src = sourceOrders || orders;
   const doctors = [...new Set(src.map(o => o.doctor_name).filter(Boolean))];
   return doctors.map(doc => {
-    const list = src.filter(o => o.doctor_name === doc), total = list.length, transit = countStatus(list, "Transit"), returned = countStatus(list, "Returned"), signed = countStatus(list, "Signed"), fake = getFakeDoctorCount(list), revenue = list.reduce((s, o) => s + Number(o.price || 0), 0);
-    return { doctor: doc, total, confirmed, transit, returned, cancelled, fake, revenue, fakeRate: percent(fake, total), returnRate: percent(returned, total), fakeRateNum: percentNum(fake, total), returnRateNum: percentNum(returned, total) };
+    const list = src.filter(o => o.doctor_name === doc);
+    const total = list.length;
+    const signed = countStatus(list, "Signed");
+    const transit = countStatus(list, "Transit");
+    const returned = countStatus(list, "Returned");
+    const fakeDoctor = getFakeDoctorCount(list);
+    const revenue = list.reduce((s, o) => s + Number(o.price || 0), 0);
+    
+    return { 
+      doctor: doc, 
+      total, 
+      signed,
+      transit,
+      returned,
+      fakeDoctor,
+      revenue, 
+      fakeRate: percent(fakeDoctor, total), 
+      returnRate: percent(returned, total),
+      fakeRateNum: percentNum(fakeDoctor, total), 
+      returnRateNum: percentNum(returned, total) 
+    };
   });
 }
 
@@ -1904,25 +1934,60 @@ function getAnalyticsOrders() {
 
 function renderAnalytics() {
   const analyticsOrders = getAnalyticsOrders();
-  const ship = getShippingAnalysisRows(analyticsOrders), docs = getFilteredDoctorsAnalysisRows(analyticsOrders);
+  const ship = getShippingAnalysisRows(analyticsOrders);
+  const docs = getFilteredDoctorsAnalysisRows(analyticsOrders);
+  
   const shipPage = getPaginatedRows(ship, "shippingAnalysis");
   const docsPage = getPaginatedRows(docs, "doctorsAnalysis");
 
   $("shippingAnalyticsBody").innerHTML = shipPage.rows.length
-    ? shipPage.rows.map(r => `<tr><td>${r.company}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.transit)}</td><td>${num(r.returned)}</td><td>${num(r.fakeDeliveryUpdateOrders)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td></tr>`).join("")
-    : `<tr><td colspan="9" class="empty">No shipping data</td></tr>`;
+    ? shipPage.rows.map(r => `
+      <tr>
+        <td>${r.company}</td>
+        <td>${num(r.total)}</td>
+        <td>${num(r.signed)}</td>
+        <td>${num(r.transit)}</td>
+        <td>${num(r.returned)}</td>
+        <td>${num(r.fakeDelivery)}</td>
+        <td>${r.fakeRate}</td>
+        <td>${r.returnRate}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="8" class="empty">No shipping data</td></tr>`;
 
   $("doctorsAnalyticsBody").innerHTML = docsPage.rows.length
-    ? docsPage.rows.map(r => `<tr><td>${r.doctor}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.transit)}</td><td>${num(r.returned)}</td><td>${num(r.fakeDeliveryUpdateOrders)}</td><td>${money(r.revenue)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td></tr>`).join("")
-    : `<tr><td colspan="10" class="empty">No doctors data</td></tr>`;
+    ? docsPage.rows.map(r => `
+      <tr>
+        <td>${r.doctor}</td>
+        <td>${num(r.total)}</td>
+        <td>${num(r.signed)}</td>
+        <td>${num(r.transit)}</td>
+        <td>${num(r.returned)}</td>
+        <td>${num(r.fakeDoctor)}</td>
+        <td>${money(r.revenue)}</td>
+        <td>${r.fakeRate}</td>
+        <td>${r.returnRate}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="9" class="empty">No doctors data</td></tr>`;
 
   renderPagination("shippingAnalysisPagination", ship.length, "shippingAnalysis");
   renderPagination("doctorsAnalysisPagination", docs.length, "doctorsAnalysis");
 }
 
 // ===== دوال الترتيب =====
-function getShippingRankRows() { const src = getShippingFilteredOrders(); return getShippingAnalysisRows(src).map(r => ({ ...r, score: r.returnRateNum + r.fakeRateNum })).sort((a, b) => a.score - b.score); }
-function getDoctorRankRows() { return getDoctorsAnalysisRows().map(r => ({ ...r, score: r.revenue - ((r.fakeRateNum + r.returnRateNum) * 100) })).sort((a, b) => b.score - a.score); }
+function getShippingRankRows() { 
+  const src = getShippingFilteredOrders(); 
+  return getShippingAnalysisRows(src).map(r => ({ 
+    ...r, 
+    score: (r.returnRateNum * 2) + (r.fakeRateNum * 1.5)
+  })).sort((a, b) => a.score - b.score); 
+}
+
+function getDoctorRankRows() { 
+  return getDoctorsAnalysisRows().map(r => ({ 
+    ...r, 
+    score: r.revenue - ((r.fakeRateNum + r.returnRateNum) * 200)
+  })).sort((a, b) => b.score - a.score); 
+}
 
 function renderShippingCompanyFilter() {
   if (!shippingCompanyCheckboxes) return;
@@ -1977,7 +2042,17 @@ function renderShippingRank() {
   const page = getPaginatedRows(rows, "shippingRank");
 
   $("shippingRankBody").innerHTML = page.rows.length
-    ? page.rows.map((r, i) => `<tr><td>${num(page.start + i + 1)}</td><td>${r.company}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.returned)}</td><td>${num(r.fake)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td><td>${r.score.toFixed(1)}</td></tr>`).join("")
+    ? page.rows.map((r, i) => `<tr>
+        <td>${num(page.start + i + 1)}</td>
+        <td>${r.company}</td>
+        <td>${num(r.total)}</td>
+        <td>${num(r.signed)}</td>
+        <td>${num(r.returned)}</td>
+        <td>${num(r.fakeDelivery)}</td>
+        <td>${r.returnRate}</td>
+        <td>${r.fakeRate}</td>
+        <td>${r.score.toFixed(1)}</td>
+      </tr>`).join("")
     : `<tr><td colspan="9" class="empty">No shipping rank data</td></tr>`;
 
   renderPagination("shippingRankPagination", rows.length, "shippingRank");
@@ -1996,7 +2071,18 @@ function renderDoctorRank() {
   const page = getPaginatedRows(rows, "doctorRank");
 
   $("doctorRankBody").innerHTML = page.rows.length
-    ? page.rows.map((r, i) => `<tr><td>${num(page.start + i + 1)}</td><td>${r.doctor}</td><td>${num(r.total)}</td><td>${num(r.confirmed)}</td><td>${num(r.returned)}</td><td>${num(r.fake)}</td><td>${money(r.revenue)}</td><td>${r.fakeRate}</td><td>${r.returnRate}</td><td>${money(r.score)}</td></tr>`).join("")
+    ? page.rows.map((r, i) => `<tr>
+        <td>${num(page.start + i + 1)}</td>
+        <td>${r.doctor}</td>
+        <td>${num(r.total)}</td>
+        <td>${num(r.signed)}</td>
+        <td>${num(r.returned)}</td>
+        <td>${num(r.fakeDoctor)}</td>
+        <td>${money(r.revenue)}</td>
+        <td>${r.fakeRate}</td>
+        <td>${r.returnRate}</td>
+        <td>${money(r.score)}</td>
+      </tr>`).join("")
     : `<tr><td colspan="10" class="empty">No doctors data</td></tr>`;
 
   renderPagination("doctorRankPagination", rows.length, "doctorRank");
@@ -2099,7 +2185,7 @@ function renderShippingCharts() {
       datasets: [
         { label: "Total Orders", data: rows.map(r => r.total), backgroundColor: "#3B82F6", borderRadius: 5, borderSkipped: false },
         { label: "Returned", data: rows.map(r => r.returned), backgroundColor: "#EF4444", borderRadius: 5, borderSkipped: false },
-        { label: "Fake Delivery", data: rows.map(r => r.fake), backgroundColor: "#F59E0B", borderRadius: 5, borderSkipped: false }
+        { label: "Fake Delivery", data: rows.map(r => r.fakeDelivery), backgroundColor: "#F59E0B", borderRadius: 5, borderSkipped: false }
       ]
     },
     options: {
@@ -2130,10 +2216,10 @@ function downloadCSV(fileName, headers, rows) {
 }
 
 function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor", "Customer", "Phone", "Shipping Company", "Area", "Price", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name, o.customer_name, o.phone, o.shipping_company, o.area, o.price, o.status, o.notes || "", o.created_at])); }
-function exportShippingAnalysis() { downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Confirmed", "Transit", "Returned", "Cancelled", "Fake", "Fake Rate", "Return Rate"], getShippingAnalysisRows().map(r => [r.company, r.total, r.confirmed, r.transit, r.returned, r.cancelled, r.fake, r.fakeRate, r.returnRate])); }
-function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Confirmed", "Transit", "Returned", "Cancelled", "Fake", "Total Revenue", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.confirmed, x.transit, x.returned, x.cancelled, x.fake, x.revenue, x.fakeRate, x.returnRate])); }
-function exportShippingRank() { downloadCSV("shipping-rank.csv", ["Rank", "Shipping Company", "Total Orders", "Confirmed", "Returned", "Fake", "Fake Rate", "Return Rate", "Score"], getShippingRankRows().map((r, i) => [i + 1, r.company, r.total, r.confirmed, r.returned, r.fake, r.fakeRate, r.returnRate, r.score.toFixed(1)])); }
-function exportDoctorRank() { const r = getDoctorRankRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctor-rank.csv", ["Rank", "Doctor", "Total Orders", "Confirmed", "Returned", "Fake", "Total Revenue", "Fake Rate", "Return Rate", "Score"], r.map((x, i) => [i + 1, x.doctor, x.total, x.confirmed, x.returned, x.fake, x.revenue, x.fakeRate, x.returnRate, x.score.toFixed(1)])); }
+function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.fakeRate, r.returnRate])); }
+function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.fakeRate, x.returnRate])); }
+function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-rank.csv", ["Rank", "Shipping Company", "Total Orders", "Signed", "Returned", "Fake Delivery", "Return Rate", "Fake Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.returned, r.fakeDelivery, r.returnRate, r.fakeRate, r.score.toFixed(1)])); }
+function exportDoctorRank() { const r = getDoctorRankRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctor-rank.csv", ["Rank", "Doctor", "Total Orders", "Signed", "Returned", "Fake", "Total Revenue", "Fake Rate", "Return Rate", "Score"], r.map((x, i) => [i + 1, x.doctor, x.total, x.signed, x.returned, x.fakeDoctor, x.revenue, x.fakeRate, x.returnRate, x.score.toFixed(1)])); }
 
 // ===== دوال المستخدمين =====
 userForm.addEventListener("submit", async (e) => {
@@ -2206,7 +2292,7 @@ function renderBranchRank() {
   const tbody = $("branchRankBody");
   if (!tbody) return;
   if (!branchs.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty">لا توجد فروع مضافة</td></tr>`;
+    tbody.innerHTML = `<td><td colspan="5" class="empty">لا توجد فروع مضافة</td></tr>`;
     renderPagination("branchRankPagination", 0, "branchRank");
     return;
   }
@@ -2435,6 +2521,11 @@ function getWorstShipping(list) {
     .sort((a, b) => b.rate - a.rate || b.problems - a.problems)[0];
 }
 
+function getWorstThreeShipping(list) {
+  const allShipping = getAllShippingRanked(list);
+  return allShipping.slice(0, 3);
+}
+
 function renderDoctorList(containerId, rows, limit) {
   const container = $(containerId);
   const sliced = rows.slice(0, limit);
@@ -2475,7 +2566,7 @@ function renderReport() {
         <span class="report-value">${worstShipping.rate.toFixed(1)}%</span>
       </div>
       <div style="color:#64748B;font-size:13px;margin-top:8px">
-        Returned: ${num(worstShipping.returned)} | Fake Delivery Update: ${num(worstShipping.fakeDelivery)} | Total Orders: ${num(worstShipping.total)}
+        Returned: ${num(worstShipping.returned)} | Fake Delivery: ${num(worstShipping.fakeDelivery)} | Total: ${num(worstShipping.total)}
       </div>
     `;
   } else {
@@ -2485,18 +2576,17 @@ function renderReport() {
   const worst3Container = $("reportWorst3Shipping");
   if (reportMode === "monthly" && worst3Container) {
     worst3Container.style.display = "block";
-    const allShipping = getAllShippingRanked(list);
-    const top3 = allShipping.slice(0, 3);
-    $("reportWorst3ShippingList").innerHTML = top3.length
-      ? top3.map((s, i) => `
+    const worstThree = getWorstThreeShipping(list);
+    $("reportWorst3ShippingList").innerHTML = worstThree.length
+      ? worstThree.map((s, i) => `
           <div class="report-item" style="margin-bottom:10px;padding:10px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0">
             <span class="report-name" style="font-size:15px">${i + 1}. ${s.name}</span>
             <span class="report-value" style="color:${i === 0 ? '#EF4444' : i === 1 ? '#F97316' : '#F59E0B'}">${s.rate.toFixed(1)}%</span>
-            <div style="color:#64748B;font-size:12px;margin-top:4px;width:100%">
-              Returned: ${num(s.returned)} | Fake Delivery: ${num(s.fakeDelivery)} | Total: ${num(s.total)}
+            <div style="color:#64748B;font-size:12px;margin-top:4px">
+              Returned: ${num(s.returned)} | Fake: ${num(s.fakeDelivery)} | Total: ${num(s.total)}
             </div>
           </div>`).join("")
-      : `<div style="color:#94A3B8">لا توجد بيانات</div>`;
+      : `<div style="color:#94A3B8;padding:12px;text-align:center">لا توجد بيانات كافية</div>`;
   } else if (worst3Container) {
     worst3Container.style.display = "none";
   }
@@ -2504,15 +2594,8 @@ function renderReport() {
   const returnedDoctors = countByDoctor(list, "returned");
   const fakeDoctors = countByDoctor(list, "fakeDoctor");
 
-  $("returnedDoctorsTitle").textContent =
-    reportMode === "daily" ? "أكتر دكتور راجع له أوردرات في اليوم (Returned)"
-      : reportMode === "weekly" ? "أكتر 5 دكاترة راجع لهم أوردرات في الأسبوع (Returned)"
-        : "أكتر 10 دكاترة راجع لهم أوردرات في الشهر (Returned)";
-
-  $("fakeDoctorsTitle").textContent =
-    reportMode === "daily" ? "أكتر دكتور عامل Fake Doctor في اليوم"
-      : reportMode === "weekly" ? "أكتر 5 دكاترة عاملين Fake Doctor في الأسبوع"
-        : "أكتر 10 دكاترة عاملين Fake Doctor في الشهر";
+  $("returnedDoctorsTitle").textContent = reportMode === "daily" ? "أكتر دكتور راجع له أوردرات في اليوم" : reportMode === "weekly" ? "أكتر 5 دكاترة راجع لهم أوردرات في الأسبوع" : "أكتر 10 دكاترة راجع لهم أوردرات في الشهر";
+  $("fakeDoctorsTitle").textContent = reportMode === "daily" ? "أكتر دكتور عامل Fake Doctor في اليوم" : reportMode === "weekly" ? "أكتر 5 دكاترة عاملين Fake Doctor في الأسبوع" : "أكتر 10 دكاترة عاملين Fake Doctor في الشهر";
 
   renderDoctorList("reportTopReturnedDoctors", returnedDoctors, limit);
   renderDoctorList("reportTopFakeDoctors", fakeDoctors, limit);
@@ -2534,14 +2617,14 @@ function renderReport() {
     </div>
     <div class="report-item">
       <span class="report-name">أعلى Returned Doctor</span>
-      <span class="report-value">${topReturned ? topReturned.name : "—"}</span>
+      <span class="report-value">${topReturned ? topReturned.name : "—"} (${topReturned ? num(topReturned.count) : "0"})</span>
     </div>
     <div class="report-item">
       <span class="report-name">أعلى Fake Doctor</span>
-      <span class="report-value">${topFake ? topFake.name : "—"}</span>
+      <span class="report-value">${topFake ? topFake.name : "—"} (${topFake ? num(topFake.count) : "0"})</span>
     </div>
     <div class="report-item">
-      <span class="report-name">أعلى Fake Delivery Update</span>
+      <span class="report-name">أعلى Fake Delivery</span>
       <span class="report-value">${topFakeDeliveryShip ? `${topFakeDeliveryShip[0]} (${topFakeDeliveryShip[1]})` : "—"}</span>
     </div>
   `;
@@ -2741,6 +2824,7 @@ function toggleImportFieldMode(fieldId, mode) {
     if (excelEl) excelEl.value = "";
   }
 }
+
 async function executeBulkImport() {
   const mapping = {};
   const staticValues = {};
@@ -2781,14 +2865,11 @@ async function executeBulkImport() {
   const ordersToInsert = [];
   
   excelDataRows.forEach(row => {
-    // 1- حساب السعر
     let pVal = Number(String(row[mapping["price"]]).replace(/[^0-9.]/g, '')) || 0; 
     
-    // 2- معالجة الحالة وتوحيدها مع السيستم (محسنة)
     let rawStatus = String(row[mapping["status"]] || "").trim();
     let finalStatus = "Transit";
     
-    // ✅ تحويل الحالة إلى lower case مرة واحدة فقط
     const lowerStatus = rawStatus.toLowerCase();
     
     if (lowerStatus.includes("signed")) {
@@ -2797,11 +2878,9 @@ async function executeBulkImport() {
     else if (lowerStatus.includes("transit")) {
       finalStatus = "Transit";
     }
-    
-    else if (lowerStatus.includes("return") || rawStatus.includes("راجع") || rawStatus.includes("مرتجع")|| rawStatus.includes("cancel")) {
+    else if (lowerStatus.includes("returned") || lowerStatus.includes("return")) {
       finalStatus = "Returned";
     }
-   
     else if (lowerStatus.includes("fake doctor") || rawStatus.includes("فيك دكتور")) {
       finalStatus = "Fake Doctor";
     }
@@ -2817,12 +2896,16 @@ async function executeBulkImport() {
     else if (lowerStatus.includes("returning")) {
       finalStatus = "Returning";
     }
+    else if (rawStatus.includes("تأكيد") || rawStatus.includes("مؤكد") || lowerStatus.includes("confirm")) {
+      finalStatus = "تم التأكيد";
+    }
+    else if (rawStatus.includes("ملغي") || lowerStatus.includes("cancel")) {
+      finalStatus = "ملغي";
+    }
 
-    // 3- تحديد اسم الموظف
     let finalEmployee = staticValues["employee_name"] ? staticValues["employee_name"] : String(row[mapping["employee_name"]] || "").trim();
     if (!finalEmployee) finalEmployee = (currentUser ? currentUser.name : "System Import");
 
-    // 4- تحديد شركة الشحن
     let finalShipping = staticValues["shipping_company"] ? staticValues["shipping_company"] : String(row[mapping["shipping_company"]] || "").trim();
 
     const orderObj = {
