@@ -707,7 +707,36 @@
               <input id="area" placeholder="المنطقة" required />
               <input id="price" type="number" placeholder="السعر" required />
               <input id="deposit" type="number" placeholder="المدفوع مقدمًا (ديبوزيت)"  step="0.01" />
-
+             <div style="grid-column:span 2;">
+  <div style="background: var(--bg-soft); border: 2px dashed var(--border-color); border-radius: 16px; padding: 16px; transition: all 0.2s;">
+   
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+      <label style="background: linear-gradient(135deg, #0D9488, #0F766E); color: white; padding: 10px 24px; border-radius: 40px; font-size: 13px; font-weight: 600; cursor: pointer; transition: transform 0.1s; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 6px rgba(13,148,136,0.3);">
+        📤 رفع صورة
+        <input type="file" id="paymentImage" accept="image/*" style="display: none;" onchange="previewPaymentImage(this)" />
+      </label>
+      <span id="fileNameDisplay" style="color: var(--text-muted); font-size: 12px; background: var(--bg-card); padding: 6px 12px; border-radius: 20px;">
+        📄 لم يتم الرفع
+      </span>
+    </div>
+    
+    <div id="paymentImagePreview" style="margin-top: 16px; display: none; background: var(--bg-card); border-radius: 14px; padding: 12px; border: 1px solid var(--border-color);">
+      <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+        <img id="paymentPreviewImg" style="width: 70px; height: 70px; object-fit: cover; border-radius: 12px; border: 2px solid #0D9488; cursor: pointer;" onclick="viewPaymentImage(this.src)" />
+        <div style="flex: 1;">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <span style="background: #10B98120; color: #10B981; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;">✓ جاهز</span>
+            <button type="button" onclick="clearPaymentImage()" style="background: none; border: 1px solid #EF4444; color: #EF4444; padding: 5px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; font-weight: 500;">
+              ✕ إزالة
+            </button>
+          </div>
+          <p style="margin-top: 8px; font-size: 10px; color: var(--text-muted);">اضغط على الصورة لتكبيرها</p>
+        </div>
+      </div>
+    </div>
+    <input type="hidden" id="existingPaymentImage" />
+  </div>
+</div>
               <select id="status" required>
                 <option value="">اختر حالة الأوردر</option>
                 <option value="Transit">Transit</option>
@@ -793,7 +822,7 @@
                 <tr>
                   <th class="admin-only"><input id="selectPageOrders" class="row-check" type="checkbox" title="اختيار كل العملاء في الصفحة" onchange="toggleSelectCurrentPage(this)" /></th>
                   <th>#</th><th>الموظف</th><th>الدكتور</th><th>العميل</th><th>الموبايل</th>
-                  <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
+                  <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
                 </tr>
               </thead>
               <tbody id="ordersTableBody"></tbody>
@@ -1368,6 +1397,98 @@ async function deleteSelectedOrders() {
   await loadOrders();
 }
 
+// ===== دوال رفع وحذف الصور =====
+async function uploadPaymentImage(file, orderId) {
+  if (!file || !orderId) return null;
+  
+  const fileExt = file.name.split('.').pop();
+  const fileName = `order_${orderId}_${Date.now()}.${fileExt}`;
+  const filePath = `payment-proofs/${fileName}`;
+  
+  const { data, error } = await supabaseClient.storage
+    .from('payment-proofs')
+    .upload(filePath, file);
+    
+  if (error) {
+    console.error("Upload error:", error);
+    alert("فشل رفع الصورة: " + error.message);
+    return null;
+  }
+  
+  const { data: urlData } = supabaseClient.storage
+    .from('payment-proofs')
+    .getPublicUrl(filePath);
+    
+  return urlData.publicUrl;
+}
+
+async function deletePaymentImage(imageUrl) {
+  if (!imageUrl) return;
+  
+  const path = imageUrl.split('/payment-proofs/')[1];
+  if (!path) return;
+  
+  const { error } = await supabaseClient.storage
+    .from('payment-proofs')
+    .remove([`payment-proofs/${path}`]);
+    
+  if (error) console.error("Delete error:", error);
+}
+
+function previewPaymentImage(input) {
+  const file = input.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const preview = document.getElementById("paymentImagePreview");
+      const img = document.getElementById("paymentPreviewImg");
+      if (preview && img) {
+        img.src = e.target.result;
+        preview.style.display = "block";
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function clearPaymentImage() {
+  const fileInput = document.getElementById("paymentImage");
+  const previewDiv = document.getElementById("paymentImagePreview");
+  const existingField = document.getElementById("existingPaymentImage");
+  
+  if (fileInput) fileInput.value = "";
+  if (previewDiv) previewDiv.style.display = "none";
+  if (existingField) existingField.value = "";
+}
+
+function viewPaymentImage(imageUrl) {
+  if (!imageUrl) return;
+  
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position:fixed; top:0; left:0; width:100%; height:100%; 
+    background:rgba(0,0,0,0.9); z-index:10000; 
+    display:flex; align-items:center; justify-content:center; 
+    cursor:pointer; direction:ltr;
+  `;
+  
+  const img = document.createElement('img');
+  img.src = imageUrl;
+  img.style.cssText = `
+    max-width:90%; max-height:90%; 
+    border-radius:12px; box-shadow:0 0 30px rgba(0,0,0,0.5);
+  `;
+  
+  modal.appendChild(img);
+  modal.onclick = () => modal.remove();
+  document.body.appendChild(modal);
+}
+
+// إضافة مستمع لحدث change على input file
+document.getElementById("paymentImage")?.addEventListener("change", function() {
+  previewPaymentImage(this);
+});
+
 // ===== دوال الثيم =====
 function initTheme() {
   let savedTheme = 'light';
@@ -1749,7 +1870,7 @@ function renderOrders() {
     const deposit = Number(o.deposit || 0);
     const price = Number(o.price || 0);
     const remaining = price - deposit;
-    
+    const paymentImage = o.payment_image ? `<button class="view-payment-btn" onclick="viewPaymentImage('${o.payment_image}')" style="background:#0D9488;padding:4px 8px;border-radius:6px;font-size:11px">📷 عرض</button>` : '<span class="chip chip-cancelled" style="font-size:10px">لا يوجد</span>';
     const adminCheckbox = isAdmin() ? `<td><input type="checkbox" class="row-check" data-id="${o.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectOrder(this, '${o.id}')" /></td>` : '';
     
     html += `
@@ -1765,6 +1886,7 @@ function renderOrders() {
         <td>${money(price)}</td>
         <td>${deposit > 0 ? `<span class="deposit-badge">💰 ${money(deposit)}</span>` : "—"}</td>
         <td>${remaining > 0 ? money(remaining) : "—"}</td>
+        <td>${paymentImage}</td>
         <td><span class="chip ${statusClass}">${o.status || ""}</span></td>
         <td class="notes-cell" title="${safeNotes}">${o.notes || ''}</td>
         <td>${formatDate(o.created_at)}</td>
@@ -1804,6 +1926,10 @@ orderForm.addEventListener("submit", async (e) => {
   const priceEl  = document.getElementById("price");
   const statusEl = document.getElementById("status");
   const notesEl  = document.getElementById("orderNotes");
+  
+  const submitButton = document.getElementById("submitBtn");
+  submitButton.disabled = true;
+  submitButton.textContent = "جاري الحفظ...";
 
   const orderData = {
     employee_name:    isAdmin() ? empEl.value.trim() : currentUser.name,
@@ -1822,17 +1948,53 @@ orderForm.addEventListener("submit", async (e) => {
   if (!orderData.employee_name || !orderData.doctor_name || !orderData.customer_name 
       || !orderData.phone || !orderData.shipping_company || !orderData.area 
       || !orderData.price || !orderData.status) {
-    alert("من فضلك املى كل البيانات");
+       alert("من فضلك املى كل البيانات");
+    submitButton.disabled = false;
+    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
     return;
   }
 
-  const result = editId
-    ? await supabaseClient.from("orders").update(orderData).eq("id", editId)
-    : await supabaseClient.from("orders").insert([orderData]);
-
-  if (result.error) { alert("مشكلة في الحفظ: " + result.error.message); return; }
-  resetForm();
-  loadOrders();
+ try {
+    let result;
+    let orderId = editId;
+    
+    if (editId) {
+      result = await supabaseClient.from("orders").update(orderData).eq("id", editId);
+    } else {
+      result = await supabaseClient.from("orders").insert([orderData]);
+      if (result.data && result.data[0]) {
+        orderId = result.data[0].id;
+      }
+    }
+    
+    if (result.error) throw result.error;
+    
+    // ✅ رفع الصورة إذا وجدت
+    const imageFile = document.getElementById("paymentImage")?.files[0];
+    const existingImage = document.getElementById("existingPaymentImage")?.value;
+    
+    if (imageFile && orderId) {
+      // حذف الصورة القديمة إذا وجدت
+      if (existingImage) {
+        await deletePaymentImage(existingImage);
+      }
+      
+      const imageUrl = await uploadPaymentImage(imageFile, orderId);
+      if (imageUrl) {
+        await supabaseClient.from("orders").update({ payment_image: imageUrl }).eq("id", orderId);
+      }
+    }
+    
+    resetForm();
+    await loadOrders();
+    alert(editId ? "تم التعديل بنجاح" : "تم الإضافة بنجاح");
+    
+  } catch (error) {
+    alert("مشكلة في الحفظ: " + error.message);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+  }
 });
 
 window.editOrder = function (id) {
@@ -1850,19 +2012,56 @@ window.editOrder = function (id) {
   if($("deposit")) $("deposit").value = o.deposit || 0;
   status.value = o.status || "";
   $('orderNotes').value = o.notes || '';
+    // ✅ عرض الصورة الموجودة إن وجدت
+  const existingImage = o.payment_image || "";
+  const existingImageField = document.getElementById("existingPaymentImage");
+  if (existingImageField) existingImageField.value = existingImage;
+  
+  const previewDiv = document.getElementById("paymentImagePreview");
+  const previewImg = document.getElementById("paymentPreviewImg");
+  
+  if (existingImage && previewDiv && previewImg) {
+    previewImg.src = existingImage;
+    previewDiv.style.display = "block";
+  } else if (previewDiv) {
+    previewDiv.style.display = "none";
+  }
+  
+  // تنظيف حقل رفع الملف
+  const fileInput = document.getElementById("paymentImage");
+  if (fileInput) fileInput.value = "";
+
   submitBtn.textContent = "حفظ التعديل";
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 window.deleteOrder = async function (id) {
-  if (!isAdmin()) { alert("غير مسموح بالحذف"); return; }
+  if (!isAdmin()) { 
+    alert("غير مسموح بالحذف"); 
+    return; 
+  }
+  
   const confirmDelete = confirm("هل أنت متأكد من حذف هذا الأوردر فقط؟");
   if (!confirmDelete) return;
+  
+  // ✅ البحث عن الأوردر للحصول على رابط الصورة قبل الحذف
+  const orderToDelete = orders.find(x => String(x.id) === String(id));
+  
   const { error } = await supabaseClient.from("orders").delete().eq("id", id);
-  if (error) { alert("مشكلة في الحذف: " + error.message); console.error(error); return; }
+  if (error) { 
+    alert("مشكلة في الحذف: " + error.message); 
+    console.error(error); 
+    return; 
+  }
+  
+  // ✅ حذف الصورة من التخزين إذا وجدت
+  if (orderToDelete && orderToDelete.payment_image) {
+    await deletePaymentImage(orderToDelete.payment_image);
+  }
+  
   alert("تم حذف الأوردر بنجاح");
   await loadOrders();
-};
+}
 
 // ===== دوال التحليلات المُصححة =====
 function countStatus(list, s) { return list.filter(o => o.status === s).length; }
@@ -2702,6 +2901,7 @@ const systemRequiredFields = [
   { id: "map_area", label: "المنطقة / المحافظة 📍", dbField: "area", allowStatic: false },
   { id: "map_price", label: "السعر / المبلغ 💰", dbField: "price", allowStatic: false },
   { id: "map_deposit", label: "المدفوع مقدمًا 💵 (ديبوزيت)", dbField: "deposit", allowStatic: false, optional: true },
+  { id: "map_paymentImage", label: "📎 رابط صورة إثبات الدفع (اختياري)", dbField: "payment_image", allowStatic: false, optional: true },
   { id: "map_doctorName", label: "اسم الدكتور 👨‍⚕️", dbField: "doctor_name", allowStatic: false },
   { id: "map_shippingCompany", label: "شركة الشحن 🚚", dbField: "shipping_company", allowStatic: true, type: "shipping" },
   { id: "map_employeeName", label: "اسم الموظف 💼", dbField: "employee_name", allowStatic: true, type: "employee" },
@@ -2799,6 +2999,7 @@ function buildMappingInterface() {
       if (field.dbField === "area" && (lowerCol.includes("area") || lowerCol.includes("city") || lowerCol.includes("gov") || cleanCol.includes("منطقة") || cleanCol.includes("محافظة") || cleanCol.includes("عنوان") || cleanCol.includes("المدينة"))) guessedValue = col;
       if (field.dbField === "price" && (lowerCol.includes("price") || lowerCol.includes("amount") || lowerCol.includes("total") || cleanCol.includes("سعر") || cleanCol.includes("مبلغ") || cleanCol.includes("قيمة") || cleanCol.includes("إجمالي"))) guessedValue = col;
       if (field.dbField === "deposit" && (lowerCol.includes("deposit") || lowerCol.includes("paid") || lowerCol.includes("advance") || lowerCol.includes("مدفوع") || lowerCol.includes("ديبوزيت"))) guessedValue = col;
+      if (field.dbField === "payment_image" && (lowerCol.includes("image") || lowerCol.includes("url") || lowerCol.includes("link") || lowerCol.includes("photo") || lowerCol.includes("صورة") || lowerCol.includes("رابط"))) guessedValue = col;
       if (field.dbField === "doctor_name" && (lowerCol.includes("doctor") || cleanCol.includes("دكتور") || cleanCol.includes("طبيب"))) guessedValue = col;
       if (field.dbField === "shipping_company" && (lowerCol.includes("shipping") || lowerCol.includes("company") || cleanCol.includes("شحن") || cleanCol.includes("شركة"))) guessedValue = col;
       if (field.dbField === "employee_name" && (lowerCol.includes("employee") || lowerCol.includes("agent") || lowerCol.includes("user") || cleanCol.includes("موظف") || cleanCol.includes("مدخل"))) guessedValue = col;
@@ -2900,6 +3101,14 @@ async function executeBulkImport() {
   excelDataRows.forEach(row => {
     let pVal = Number(String(row[mapping["price"]]).replace(/[^0-9.]/g, '')) || 0; 
     const depositVal = mapping["deposit"] ? (Number(String(row[mapping["deposit"]] || "").replace(/[^0-9.]/g, '')) || 0) : 0;
+      let paymentImageUrl = "";
+    if (mapping["payment_image"]) {
+      paymentImageUrl = String(row[mapping["payment_image"]] || "").trim();
+      // التحقق من أن الرابط صالح
+      if (paymentImageUrl && !paymentImageUrl.startsWith("http")) {
+        paymentImageUrl = ""; // تجاهل إذا لم يكن رابط صحيح
+      }
+    }
     let rawStatus = String(row[mapping["status"]] || "").trim();
     let finalStatus = "Transit";
     
@@ -2950,6 +3159,7 @@ async function executeBulkImport() {
       area: String(row[mapping["area"]] || "").trim(),
       price: pVal,
       deposit: depositVal,
+      payment_image: paymentImageUrl,
       status: finalStatus,
       fake_doctor: finalStatus === "Fake Doctor",
       notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : ""
