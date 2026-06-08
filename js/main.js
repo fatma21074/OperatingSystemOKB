@@ -208,7 +208,37 @@ async function deleteSelectedOrders() {
   selectedOrderIds.clear();
   await loadOrders();
 }
+// ===== دوال التحقق من الصورة والديبوزيت =====
+function validateDepositWithImage(deposit, imageFile, existingImageUrl) {
+  if (deposit > 0) {
+    if (!imageFile && !existingImageUrl) {
+      // ✅ استخدم backtick (`) بدلاً من ("):
+      alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع ${money(deposit)}`);
+      return false;
+    }
+  }
+  return true;
+}
 
+// التحقق من صحة الصورة (الحجم والنوع)
+function validateImageFile(file) {
+  if (!file) return true;
+  
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+  const maxSize = 5 * 1024 * 1024; // 5 ميجابايت
+  
+  if (!allowedTypes.includes(file.type)) {
+    alert("❌ صيغة الصورة غير مدعومة. يرجى رفع صورة بصيغة JPG, PNG, WEBP أو GIF");
+    return false;
+  }
+  
+  if (file.size > maxSize) {
+    alert("❌ حجم الصورة كبير جداً. الحد الأقصى 5 ميجابايت");
+    return false;
+  }
+  
+  return true;
+}
 // ===== دوال رفع وحذف الصور =====
 async function uploadPaymentImage(file, orderId) {
   if (!file || !orderId) return null;
@@ -254,6 +284,12 @@ async function deletePaymentImage(imageUrl) {
 function previewPaymentImage(input) {
   const file = input.files[0];
   if (file) {
+    // التحقق من صحة الصورة قبل العرض
+    if (!validateImageFile(file)) {
+      input.value = "";
+      return;
+    }
+    
     const reader = new FileReader();
     reader.onload = function(e) {
       const preview = document.getElementById("paymentImagePreview");
@@ -262,6 +298,9 @@ function previewPaymentImage(input) {
         img.src = e.target.result;
         preview.style.display = "block";
       }
+      // ✅ إخفاء التحذير فور رفع الصورة
+      const warningEl = document.getElementById("depositImageWarning");
+      if (warningEl) warningEl.style.display = "none";
     };
     reader.readAsDataURL(file);
   }
@@ -275,8 +314,9 @@ function clearPaymentImage() {
   if (fileInput) fileInput.value = "";
   if (previewDiv) previewDiv.style.display = "none";
   if (existingField) existingField.value = "";
+  
+  checkDepositImageRequirement();
 }
-
 function viewPaymentImage(imageUrl) {
   if (!imageUrl) return;
   
@@ -300,10 +340,7 @@ function viewPaymentImage(imageUrl) {
   document.body.appendChild(modal);
 }
 
-// إضافة مستمع لحدث change على input file
-document.getElementById("paymentImage")?.addEventListener("change", function() {
-  previewPaymentImage(this);
-});
+
 
 // ===== دوال الثيم =====
 function initTheme() {
@@ -604,12 +641,22 @@ function showUsersPage() { if (!isAdmin()) return; hideAllPages(); $("usersPage"
 function showBranchsPage() { if (!isAdmin()) return; hideAllPages(); $("branchsPage").classList.remove("hidden"); setActiveMenu("branchsPage"); loadBranchs(); loadDoctors(); loadShippingSystems(); }
 
 function resetForm() { 
-  orderForm.reset(); editId = null; 
+  orderForm.reset(); 
+  editId = null; 
   submitBtn.textContent = "إضافة الأوردر"; 
-  if (!isAdmin()) { employeeName.value = currentUser.name; employeeName.readOnly = true; }
- const depositField = document.getElementById("deposit");
+  if (!isAdmin()) { 
+    employeeName.value = currentUser.name; 
+    employeeName.readOnly = true; 
+  }
+  const depositField = document.getElementById("deposit");
   if (depositField) depositField.value = "0";
- }
+  
+  // ✅ إخفاء معاينة الصورة والتحذير
+  clearPaymentImage();
+  const warningEl = document.getElementById("depositImageWarning");
+  if (warningEl) warningEl.style.display = "none";
+}
+
 function getVisibleOrders() { return orders; }
 
 function renderEmployeeFilter() {
@@ -729,7 +776,6 @@ function syncBulkSelectionUI(currentPageRows = []) {
     selectPage.indeterminate = selectedInPage > 0 && selectedInPage < pageIds.length;
   }
 }
-
 orderForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -740,10 +786,30 @@ orderForm.addEventListener("submit", async (e) => {
   const shipEl   = document.getElementById("shippingCompany");
   const areaEl   = document.getElementById("area");
   const priceEl  = document.getElementById("price");
+  const depositEl = document.getElementById("deposit");
   const statusEl = document.getElementById("status");
   const notesEl  = document.getElementById("orderNotes");
+  const paymentImageInput = document.getElementById("paymentImage");
+  const existingPaymentImage = document.getElementById("existingPaymentImage")?.value || "";
   
   const submitButton = document.getElementById("submitBtn");
+  
+  // قراءة الديبوزيت
+  const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
+  const imageFile = paymentImageInput?.files[0];
+  
+  // ✅ التحقق: إذا كان الديبوزيت > 0 لازم يكون فيه صورة
+  if (depositValue > 0 && !imageFile && !existingPaymentImage) {
+    alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع هو ${money(depositValue)}`);
+    if (paymentImageInput) paymentImageInput.focus();
+    return;
+  }
+  
+  // ✅ التحقق من صحة الصورة (إذا وجدت)
+  if (imageFile && !validateImageFile(imageFile)) {
+    return;
+  }
+  
   submitButton.disabled = true;
   submitButton.textContent = "جاري الحفظ...";
 
@@ -755,7 +821,7 @@ orderForm.addEventListener("submit", async (e) => {
     shipping_company: shipEl.value,
     area:             areaEl.value.trim(),
     price:            Number(priceEl.value),
-    deposit: Number($("deposit")?.value || 0),
+    deposit:          depositValue,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
     notes:            (notesEl.value || '').trim() || "لا توجد ملاحظات"
@@ -778,12 +844,12 @@ orderForm.addEventListener("submit", async (e) => {
       // تعديل أوردر موجود
       result = await supabaseClient.from("orders").update(orderData).eq("id", editId).select();
       if (result.error) throw result.error;
+      orderId = editId;
     } else {
-      // إضافة أوردر جديد - مهم جداً: use .select() عشان ترجع البيانات
+      // إضافة أوردر جديد
       result = await supabaseClient.from("orders").insert([orderData]).select();
       if (result.error) throw result.error;
       
-      // ✅ استخراج الـ ID من النتيجة
       if (result.data && result.data.length > 0) {
         orderId = result.data[0].id;
         console.log("✅ New order created with ID:", orderId);
@@ -792,23 +858,19 @@ orderForm.addEventListener("submit", async (e) => {
       }
     }
     
-    // ✅ رفع الصورة إذا وجدت وتم الحصول على orderId
-    const imageFile = document.getElementById("paymentImage")?.files[0];
-    const existingImage = document.getElementById("existingPaymentImage")?.value;
-    
+    // ✅ رفع الصورة إذا وجدت
     if (imageFile && orderId) {
       console.log("📸 Uploading image for order ID:", orderId);
       
       // حذف الصورة القديمة إذا وجدت (في حالة التعديل)
-      if (existingImage) {
-        await deletePaymentImage(existingImage);
+      if (existingPaymentImage) {
+        await deletePaymentImage(existingPaymentImage);
       }
       
       const imageUrl = await uploadPaymentImage(imageFile, orderId);
       console.log("📸 Image URL after upload:", imageUrl);
       
       if (imageUrl) {
-        // ✅ تحديث الأوردر برابط الصورة
         const { error: updateError } = await supabaseClient
           .from("orders")
           .update({ payment_image: imageUrl })
@@ -835,6 +897,48 @@ orderForm.addEventListener("submit", async (e) => {
     submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
   }
 });
+// ===== دوال التحقق من الصورة =====
+function validateImageFile(file) {
+  if (!file) return true;
+  
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+  const maxSize = 5 * 1024 * 1024; // 5 MB
+  
+  if (!allowedTypes.includes(file.type)) {
+    alert("❌ صيغة الصورة غير مدعومة. يرجى رفع صورة بصيغة JPG, PNG, WEBP أو GIF");
+    return false;
+  }
+  
+  if (file.size > maxSize) {
+    alert(`❌ حجم الصورة كبير جداً (${(file.size / 1024 / 1024).toFixed(2)} MB). الحد الأقصى 5 ميجابايت`);
+    return false;
+  }
+  
+  return true;
+}
+
+function checkDepositImageRequirement() {
+  const depositEl = document.getElementById("deposit");
+  const paymentImageInput = document.getElementById("paymentImage");
+  const existingPaymentImage = document.getElementById("existingPaymentImage")?.value || "";
+  const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
+  const warningEl = document.getElementById("depositImageWarning");
+  
+  if (!warningEl) return true;
+  
+  // ✅ التحقق من وجود ملف مرفوع فعلياً أو صورة موجودة مسبقاً
+  const hasFile = paymentImageInput && paymentImageInput.files && paymentImageInput.files.length > 0;
+  const hasExisting = existingPaymentImage && existingPaymentImage.length > 0;
+  
+  if (depositValue > 0 && !hasFile && !hasExisting) {
+    warningEl.style.display = "block";
+    warningEl.innerHTML = `⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع هو ${money(depositValue)}`;
+    return false;
+  } else {
+    warningEl.style.display = "none";
+    return true;
+  }
+}
 
 window.editOrder = function (id) {
   const o = orders.find(x => String(x.id) === String(id));
@@ -2059,7 +2163,24 @@ document.addEventListener("click", (e) => {
     if (shippingCompanyFilterMenu) shippingCompanyFilterMenu.classList.remove("show");
   }
 });
-
+// أضف هذا بعد تحميل الصفحة
+document.addEventListener('DOMContentLoaded', function() {
+  const depositInput = document.getElementById("deposit");
+  const paymentImageInput = document.getElementById("paymentImage");
+  
+  // مراقبة تغيير المبلغ المدفوع
+  if (depositInput) {
+    depositInput.addEventListener('input', checkDepositImageRequirement);
+  }
+  
+  // ✅ الإضافة الجديدة: مراقبة رفع الصورة
+  if (paymentImageInput) {
+    paymentImageInput.addEventListener('change', function() {
+      previewPaymentImage(this);
+      checkDepositImageRequirement();
+    });
+  }
+});
 // ===== بدء التشغيل =====
 initTheme();
 checkLogin();

@@ -142,16 +142,18 @@
                 <option value="">اختر اسم الدكتور</option>
               </select>
               <input id="customerName" placeholder="اسم العميل" required />
-              <input id="phone" placeholder="رقم الموبايل" required />
-
+              <input id="phone" type="tel" placeholder="رقم الموبايل (مثال: 01012345678)"  pattern="01[0125][0-9]{8}" maxlength="11" minlength="11" inputmode="numeric" required oninput="validatePhoneInput(this)" title="أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010, 011, 012, أو 015"/>
               <select id="shippingCompany" required>
                 <option value="">اختر شركة الشحن</option>
               </select>
 
               <input id="area" placeholder="المنطقة" required />
               <input id="price" type="number" placeholder="السعر" required />
-              <input id="deposit" type="number" placeholder="المدفوع مقدمًا (ديبوزيت)"  step="0.01" />
-             <div style="grid-column:span 2;">
+     <input id="deposit" type="number" placeholder="المدفوع مقدمًا (ديبوزيت)" step="0.01" />
+<div id="depositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:5px;">
+  ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
+</div>
+<div style="grid-column:span 2;">
   <input type="file" id="paymentImage" accept="image/*" style="padding:8px;background:var(--bg-input);" />
   <div id="paymentImagePreview" style="margin-top:8px;display:none;">
     <img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)" />
@@ -159,6 +161,7 @@
   </div>
   <input type="hidden" id="existingPaymentImage" />
 </div>
+
               <select id="status" required>
                 <option value="">اختر حالة الأوردر</option>
                 <option value="Transit">Transit</option>
@@ -606,7 +609,6 @@
   </footer>
 
 </div>
-
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
