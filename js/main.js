@@ -38,8 +38,8 @@ function isManager() { return currentUser && String(currentUser.role || "").toLo
 function canViewAdminReports() { return isAdmin() || isManager(); }
 function percent(p, t) { return t ? ((p / t) * 100).toFixed(1) + "%" : "0%"; }
 function percentNum(p, t) { return t ? ((p / t) * 100) : 0; }
-function isFakeDoctorOrder(o) { return o.fake_doctor === true || o.status === "Fake Doctor"; }
-function isFakeDeliveryUpdateOrder(o) { return o.fake_delivery_update === true || o.status === "Fake Delivery Update"; }
+function isFakeDoctorOrder(o) { return o.fake_doctor === true || String(o.status || "").toLowerCase().trim() === "fake doctor"; }
+function isFakeDeliveryUpdateOrder(o) { return o.fake_delivery_update === true || String(o.status || "").toLowerCase().trim() === "fake delivery update"; }
 function getFakeCount(list) { return list.filter(o => isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)).length; }
 function getFakeDoctorCount(list) { return list.filter(o => isFakeDoctorOrder(o)).length; }
 function getFakeDeliveryUpdateCount(list) { return list.filter(o => isFakeDeliveryUpdateOrder(o)).length; }
@@ -726,8 +726,7 @@ function renderOrders() {
     if (o.status === "Returned") statusClass = "chip-returned";
     else if (o.status === "Transit") statusClass = "chip-transit";
     else if (o.status === "Signed") statusClass = "chip-signed";
-    else if (o.status === "Fake Doctor" || o.status === "Fake Delivery Update") statusClass = "chip-fake";
-    
+    else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = "chip-fake";    
     const safeNotes = (o.notes || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const isChecked = selectedOrderIds.has(String(o.id));
     const deposit = Number(o.deposit || 0);
@@ -762,9 +761,9 @@ function renderOrders() {
   syncBulkSelectionUI(page.rows);
 }
 function syncBulkSelectionUI(currentPageRows = []) {
-  const bar = $("bulkDeleteBar");
-  const countEl = $("selectedOrdersCount");
-  const selectPage = $("selectPageOrders");
+  const bar = document.getElementById("bulkDeleteBar");
+  const countEl = document.getElementById("selectedOrdersCount");
+  const selectPage = document.getElementById("selectPageOrders");
   
   if (countEl) countEl.textContent = `${selectedOrderIds.size} عميل محدد`;
   if (bar) bar.classList.toggle("hidden", !isAdmin() || selectedOrderIds.size === 0);
@@ -824,6 +823,7 @@ orderForm.addEventListener("submit", async (e) => {
     deposit:          depositValue,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
+    fake_delivery_update:  statusEl.value === "Fake Delivery Update",
     notes:            (notesEl.value || '').trim() || "لا توجد ملاحظات"
   };
 
@@ -2107,6 +2107,7 @@ async function executeBulkImport() {
       payment_image: paymentImageUrl,
       status: finalStatus,
       fake_doctor: finalStatus === "Fake Doctor",
+      fake_delivery_update: finalStatus === "Fake Delivery Update",
       notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : ""
     };
     
