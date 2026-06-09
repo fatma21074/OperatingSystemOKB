@@ -744,7 +744,7 @@ function renderOrders() {
         <td>${o.customer_name || ""}</td>
         <td>${o.phone || ""}</td>
         <td>${o.shipping_company || ""}</td>
-        <td>${o.area || ""}</td>
+        <td class="region-cell">${o.area || ""}</td>
         <td>${money(price)}</td>
         <td>${deposit > 0 ? `<span class="deposit-badge">💰 ${money(deposit)}</span>` : "—"}</td>
         <td>${remaining > 0 ? money(remaining) : "—"}</td>
@@ -2182,6 +2182,42 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+// ===== Toggle Sidebar =====
+(function() {
+  function initSidebarToggle() {
+    const toggleBtn = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebar');
+    
+    if (!toggleBtn || !sidebar) {
+      setTimeout(initSidebarToggle, 200);
+      return;
+    }
+
+    try {
+      const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+      if (isCollapsed) {
+        sidebar.classList.add('collapsed');
+        toggleBtn.classList.add('active');
+      }
+    } catch(e) {}
+
+    toggleBtn.addEventListener('click', function() {
+      sidebar.classList.toggle('collapsed');
+      toggleBtn.classList.toggle('active');
+      
+      try {
+        const collapsed = sidebar.classList.contains('collapsed');
+        localStorage.setItem('sidebarCollapsed', collapsed);
+      } catch(e) {}
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSidebarToggle);
+  } else {
+    initSidebarToggle();
+  }
+})();
 // ===== بدء التشغيل =====
 initTheme();
 checkLogin();

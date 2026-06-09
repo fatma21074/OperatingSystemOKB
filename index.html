@@ -68,11 +68,22 @@
   <!-- ===== Top Header ===== -->
   <header class="app-header">
     <div class="app-brand">
+       <button id="sidebarToggle" class="sidebar-toggle-btn" title="إخفاء/إظهار القائمة">
+        <svg id="toggleIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
       <div class="brand-badge">OKB</div>
       <span>elokabypharmacy</span>
     </div>
 
     <div class="header-right">
+      
+      <!-- ✅ زرار إخفاء/إظهار القائمة -->
+     
+
       <div class="user-chip">
         <div class="avatar" id="userAvatar">U</div>
         <div class="user-info">
@@ -94,7 +105,7 @@
   <div class="app-body">
 
     <!-- ===== Sidebar ===== -->
-    <aside class="app-sidebar">
+    <aside id="sidebar" class="sidebar">
       <div class="sidebar-menu">
         <button class="menu-item mi-dashboard" onclick="showOrdersPage()" data-page="ordersPage">
           <span class="mi-icon">📦</span><span>Dashboard</span>
@@ -122,7 +133,6 @@
         </button>
       </div>
     </aside>
-
     <!-- ===== Main Content ===== -->
     <main class="app-content">
 
@@ -146,21 +156,21 @@
               <select id="shippingCompany" required>
                 <option value="">اختر شركة الشحن</option>
               </select>
-
+              
               <input id="area" placeholder="المنطقة" required />
               <input id="price" type="number" placeholder="السعر" required />
-     <input id="deposit" type="number" placeholder="المدفوع مقدمًا (ديبوزيت)" step="0.01" />
-<div id="depositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:5px;">
-  ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
-</div>
-<div style="grid-column:span 2;">
-  <input type="file" id="paymentImage" accept="image/*" style="padding:8px;background:var(--bg-input);" />
-  <div id="paymentImagePreview" style="margin-top:8px;display:none;">
-    <img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)" />
-    <button type="button" onclick="clearPaymentImage()" style="background:#EF4444;padding:4px 8px;font-size:11px;margin-top:4px">🗑 إزالة</button>
-  </div>
-  <input type="hidden" id="existingPaymentImage" />
-</div>
+             <input id="deposit" type="number" placeholder="المدفوع مقدمًا (ديبوزيت)" step="0.01" />
+              <div id="depositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:5px;">
+                ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
+              </div>
+             <div style="grid-column:span 2;">
+              <input type="file" id="paymentImage" accept="image/*" style="padding:8px;background:var(--bg-input);" />
+             <div id="paymentImagePreview" style="margin-top:8px;display:none;">
+            <img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)" />
+              <button type="button" onclick="clearPaymentImage()" style="background:#EF4444;padding:4px 8px;font-size:11px;margin-top:4px">🗑 إزالة</button>
+         </div>
+         <input type="hidden" id="existingPaymentImage" />
+            </div>
 
               <select id="status" required>
                 <option value="">اختر حالة الأوردر</option>
