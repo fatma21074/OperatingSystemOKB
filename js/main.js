@@ -38,8 +38,8 @@ function isManager() { return currentUser && String(currentUser.role || "").toLo
 function canViewAdminReports() { return isAdmin() || isManager(); }
 function percent(p, t) { return t ? ((p / t) * 100).toFixed(1) + "%" : "0%"; }
 function percentNum(p, t) { return t ? ((p / t) * 100) : 0; }
-function isFakeDoctorOrder(o) { return o.fake_doctor === true || String(o.status || "").toLowerCase().trim() === "fake doctor"; }
-function isFakeDeliveryUpdateOrder(o) { return o.fake_delivery_update === true || String(o.status || "").toLowerCase().trim() === "fake delivery update"; }
+function isFakeDeliveryUpdateOrder(o) { return String(o.status || "").toLowerCase().trim() === "fake delivery update"; }
+function isFakeDoctorOrder(o) { return String(o.status || "").toLowerCase().trim() === "fake doctor"; }
 function getFakeCount(list) { return list.filter(o => isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)).length; }
 function getFakeDoctorCount(list) { return list.filter(o => isFakeDoctorOrder(o)).length; }
 function getFakeDeliveryUpdateCount(list) { return list.filter(o => isFakeDeliveryUpdateOrder(o)).length; }
@@ -823,7 +823,7 @@ orderForm.addEventListener("submit", async (e) => {
     deposit:          depositValue,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    fake_delivery_update:  statusEl.value === "Fake Delivery Update",
+    // fake_delivery_update:  statusEl.value === "Fake Delivery Update",
     notes:            (notesEl.value || '').trim() || "لا توجد ملاحظات"
   };
 
