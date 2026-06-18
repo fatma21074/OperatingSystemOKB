@@ -1388,7 +1388,18 @@ function downloadCSV(fileName, headers, rows) {
   a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url);
 }
 
-function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor", "Customer", "Phone", "Shipping Company", "Area", "Price", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name, o.customer_name, o.phone, o.shipping_company, o.area, o.price, o.status, o.notes || "", o.created_at])); }
+function exportAllData() {
+  if (!orders.length) { alert("لا توجد بيانات للتصدير"); return; }
+  downloadCSV("orders-all.csv",
+    ["Employee", "Doctor", "Customer", "Phone", "Shipping Company", "Area", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"],
+    orders.map(o => {
+      const price = Number(o.price || 0);
+      const deposit = Number(o.deposit || 0);
+      const remaining = price - deposit;
+      return [o.employee_name, o.doctor_name, o.customer_name, o.phone, o.shipping_company, o.area, price, deposit, remaining, o.status, o.notes || "", o.created_at];
+    })
+  );
+}
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.fakeRate, x.returnRate])); }
 function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-rank.csv", ["Rank", "Shipping Company", "Total Orders", "Signed", "Returned", "Fake Delivery", "Return Rate", "Fake Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.returned, r.fakeDelivery, r.returnRate, r.fakeRate, r.score.toFixed(1)])); }
