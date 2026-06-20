@@ -1,5 +1,7 @@
 *{box-sizing:border-box}
-    html,body{margin:0;padding:0}
+    html,body{  height:100%;
+                 margin:0;
+                padding:0}
     
     /* ============ THEME VARIABLES ============ */
     :root {
@@ -552,8 +554,19 @@ td.notes-cell:empty::after{content:"—";color: var(--text-faint)}
     .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 
     /* ===== Login Page ===== */
-    .login-page-new{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#F8FAFB 0%,#F1F5F9 100%);font-family:'Inter',Arial,sans-serif;position:relative;overflow:hidden;padding:20px}
-    [data-theme="dark"] .login-page-new{background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%)}
+.login-page-new{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg,#F8FAFB 0%,#F1F5F9 100%);
+  font-family:'Inter',Arial,sans-serif;
+  overflow:auto;
+  padding:20px;
+  z-index:1000;
+}
+    [data-theme="dark"] .login-page-new{  background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);}
     .medical-bg-pattern{position:absolute;inset:0;opacity:0.06;pointer-events:none}
     .cross-icon{position:absolute;color:#0D9488;font-style:normal;font-weight:bold}
     .cross-1{top:10%;left:15%;font-size:48px}.cross-2{top:25%;right:20%;font-size:40px}
