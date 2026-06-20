@@ -33,9 +33,35 @@ let shippingDateTo = null;
 const $ = id => document.getElementById(id);
 function num(v) { return Number(v || 0).toLocaleString("en-US"); }
 function money(v) { return Number(v || 0).toLocaleString("en-US"); }
-function isAdmin() { return currentUser && String(currentUser.role || "").toLowerCase() === "admin"; }
-function isManager() { return currentUser && String(currentUser.role || "").toLowerCase() === "manager"; }
-function canViewAdminReports() { return isAdmin() || isManager(); }
+function enNumber(v) { return Number(v || 0).toLocaleString("en-US"); }
+function enMoney(v) { return Number(v || 0).toLocaleString("en-US"); }
+function isAdmin() { return currentUser && getRoleKey(currentUser.role) === "admin"; }
+function isManager() { return currentUser && getRoleKey(currentUser.role) === "manager"; }
+function isExecutiveAssistant() { return currentUser && getRoleKey(currentUser.role) === "executive_assistant"; }
+function getRoleKey(role) { return String(role || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); }
+function isSecretary() { const r = getRoleKey(currentUser && currentUser.role); return r === 'secretary' || r === 'receptionist'; }
+function isReceptionist() { return isSecretary(); } // Backward compatibility for old users saved as receptionist
+function isCashier() { return currentUser && getRoleKey(currentUser.role) === 'cashier'; }
+function isStoreManager() { return currentUser && getRoleKey(currentUser.role) === 'store_manager'; }
+function isAccountManager() { return currentUser && getRoleKey(currentUser.role) === 'account_manager'; }
+function canManageDailyLock() { return isAdmin() || isAccountManager(); }
+function canManageKhaznaAndTransfer() { return isAdmin() || isAccountManager(); }
+function canCollectOrders() { return isAdmin() || isAccountManager() || isCashier(); }
+function isAgent() { return currentUser && getRoleKey(currentUser.role) === "agent"; }
+function isOperationManager() { const r = getRoleKey(currentUser && currentUser.role); return r === "manager" || r === "operation_manager" || r === "delivery_manager"; }
+function canViewAdminReports() { return isAdmin() || isOperationManager(); }
+function canViewGlobalShippingDashboard() { return isAdmin() || isOperationManager() || isAgent() || isAccountManager(); }
+function canViewShippingRank() { return canViewGlobalShippingDashboard() || isStoreManager(); }
+function getCurrentUserManagedBranches() {
+  if (!currentUser || !currentUser.managed_branches) return [];
+  if (Array.isArray(currentUser.managed_branches)) return currentUser.managed_branches;
+  try { return JSON.parse(currentUser.managed_branches) || []; } catch(e) { return []; }
+}
+function canAccessBranch(branchName) {
+  if (isAdmin() || isManager() || isExecutiveAssistant() || isSecretary() || isAccountManager()) return true;
+  if (isStoreManager() || isCashier()) return getCurrentUserManagedBranches().includes(branchName);
+  return true; // default for agent/other roles - unrestricted unless specified
+}
 function percent(p, t) { return t ? ((p / t) * 100).toFixed(1) + "%" : "0%"; }
 function percentNum(p, t) { return t ? ((p / t) * 100) : 0; }
 function isFakeDeliveryUpdateOrder(o) { return String(o.status || "").toLowerCase().trim() === "fake delivery update"; }
@@ -43,6 +69,309 @@ function isFakeDoctorOrder(o) { return String(o.status || "").toLowerCase().trim
 function getFakeCount(list) { return list.filter(o => isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)).length; }
 function getFakeDoctorCount(list) { return list.filter(o => isFakeDoctorOrder(o)).length; }
 function getFakeDeliveryUpdateCount(list) { return list.filter(o => isFakeDeliveryUpdateOrder(o)).length; }
+
+
+// ===== Ticket ID / Barcode System =====
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function formatSequentialTicketId(value) {
+  const n = Math.max(1, Number(value || 1));
+  // أول 99,999 أوردر يظهروا 5 أرقام، وبعدها يزيد طبيعي 6 أرقام أو أكثر بدون حد
+  return String(n).padStart(5, '0');
+}
+
+function generateOrderBarcode(ticketId) {
+  const cleanTicket = onlyDigits(ticketId).padStart(5, '0');
+  // الباركود مبني على رقم التيكيت التسلسلي بالكامل، مش آخر 5 أرقام فقط
+  return `11000000000${cleanTicket}`;
+}
+
+function fallbackTicketIdFromOrder(order) {
+  const raw = onlyDigits(order?.id || order?.created_at || Date.now());
+  if (raw.length) return formatSequentialTicketId(Number(raw.slice(-8)) || 1);
+  return '00001';
+}
+
+function getTicketId(order) {
+  const ticket = onlyDigits(order?.ticket_id);
+  return ticket ? formatSequentialTicketId(Number(ticket)) : fallbackTicketIdFromOrder(order);
+}
+
+function getOrderBarcode(order) {
+  const barcode = onlyDigits(order?.order_barcode);
+  return barcode || generateOrderBarcode(getTicketId(order));
+}
+
+let ticketSequenceCache = null;
+
+function isNewTicketSequenceOrder(row) {
+  const meta = getOrderMeta(row);
+  return meta && meta.ticket_seq_v2 === true;
+}
+
+async function getCurrentMaxTicketNumberFromDB() {
+  let maxTicket = 0;
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('ticket_id,notes')
+      .range(from, to);
+
+    if (error) {
+      console.warn('Could not read existing ticket IDs:', error.message || error);
+      break;
+    }
+
+    // مهم: بنعدّ تسلسل التيكيت الجديد فقط، عشان الأوردرات القديمة العشوائية ما ترفعش العدّاد.
+    (data || []).forEach(row => {
+      if (!isNewTicketSequenceOrder(row)) return;
+      const n = Number(onlyDigits(row?.ticket_id));
+      if (Number.isFinite(n) && n > maxTicket) maxTicket = n;
+    });
+
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return maxTicket;
+}
+
+async function ticketExists(ids) {
+  const { data, error } = await supabaseClient
+    .from('orders')
+    .select('id')
+    .or(`ticket_id.eq.${ids.ticket_id},order_barcode.eq.${ids.order_barcode}`)
+    .limit(1);
+
+  if (error) {
+    console.warn('Ticket existence check failed:', error.message || error);
+    return false;
+  }
+  return !!(data && data.length);
+}
+
+async function reserveNextOrderIdentifiers() {
+  // الرقم المتسلسل يتم حجزه من Supabase Sequence مباشرة
+  // هذا يمنع التكرار حتى لو أكثر من فرع أنشأ أوردر في نفس اللحظة
+  const { data, error } = await supabaseClient.rpc('get_next_order_ticket');
+
+  if (error) {
+    console.error('Supabase ticket sequence error:', error);
+    throw new Error('تعذر حجز Ticket ID من Supabase: ' + (error.message || 'خطأ غير معروف'));
+  }
+
+  let payload = data || {};
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch (e) { payload = {}; }
+  }
+
+  const ticket_id = formatSequentialTicketId(payload.ticket_id || payload.ticket || payload.id);
+  const order_barcode = onlyDigits(payload.order_barcode) || generateOrderBarcode(ticket_id);
+
+  if (!ticket_id || !order_barcode) {
+    throw new Error('Supabase لم يرجع Ticket ID أو Barcode بشكل صحيح');
+  }
+
+  return { ticket_id, order_barcode };
+}
+
+// kept for backward compatibility with older code paths
+async function makeOrderIdentifiers() {
+  return reserveNextOrderIdentifiers();
+}
+
+async function assignOrderIdentifiers(orderId, attempts = 6) {
+  if (!orderId) return null;
+  for (let i = 0; i < attempts; i++) {
+    const ids = await reserveNextOrderIdentifiers();
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .update(ids)
+      .eq('id', orderId)
+      .select('ticket_id,order_barcode')
+      .single();
+    if (!error && data) return data;
+    console.warn('Ticket/barcode retry:', error?.message || error);
+  }
+  return null;
+}
+
+async function ensureOrderIdentifiers(order) {
+  if (!order?.id) return order;
+  if (order.ticket_id && order.order_barcode) return order;
+  const ids = await assignOrderIdentifiers(order.id);
+  if (ids) {
+    order.ticket_id = ids.ticket_id;
+    order.order_barcode = ids.order_barcode;
+  }
+  return order;
+}
+
+function matchesOrderSearch(order, search) {
+  const q = String(search || '').trim().toLowerCase();
+  if (!q) return true;
+  const qDigits = onlyDigits(q);
+  const fields = [
+    order?.employee_name,
+    order?.doctor_name,
+    order?.customer_name,
+    order?.phone,
+    order?.ticket_id,
+    order?.order_barcode,
+    getTicketId(order),
+    getOrderBarcode(order)
+  ].map(v => String(v || '').toLowerCase());
+  const textMatch = fields.some(v => v.includes(q));
+  const digitMatch = qDigits && fields.some(v => onlyDigits(v).includes(qDigits));
+  return textMatch || digitMatch;
+}
+
+// ===== Branch Fixed Shipping Company =====
+function getBranchShippingCompanyName(branchName) {
+  const map = {
+    'مدينة نصر': 'Nasr City Branch',
+    'اسكندرية': 'Alexandria Branch',
+    'طنطا': 'TanTa Branch',
+    'المنصورة': 'Mansoura Branch'
+  };
+  return map[branchName] || branchName || '';
+}
+
+function setBranchShippingSelectToCurrentBranch() {
+  const bShip = document.getElementById('bShippingCompany');
+  if (!bShip) return;
+  const fixedName = getBranchShippingCompanyName(currentBranchName);
+  bShip.innerHTML = fixedName ? `<option value="${fixedName}">${fixedName}</option>` : '<option value="">اختر شركة الشحن</option>';
+  bShip.value = fixedName;
+  bShip.disabled = true;
+  bShip.style.opacity = '0.85';
+  bShip.title = 'شركة الشحن مثبتة تلقائيًا حسب الفرع';
+}
+
+function setBranchStatusToDelivering() {
+  const bStatus = document.getElementById('bStatus');
+  if (!bStatus) return;
+  bStatus.value = 'Delivering';
+  bStatus.disabled = true;
+  bStatus.style.opacity = '0.85';
+  bStatus.title = 'حالة الأوردر مثبتة تلقائيًا على Delivering';
+}
+
+function canEditKhaznaShippingCost() {
+  return isAdmin() || isAccountManager();
+}
+
+function renderKhaznaShippingCostPermissionUI() {
+  const btn = document.getElementById('kShippingCostEditBtn');
+  const editBox = document.getElementById('kShippingCostEdit');
+  if (btn) btn.style.display = canEditKhaznaShippingCost() ? 'inline-flex' : 'none';
+  if (editBox && !canEditKhaznaShippingCost()) editBox.style.display = 'none';
+}
+
+
+// ===== تحكم مرات التحصيل للموظفين =====
+const COLLECT_META_PREFIX = "[COLLECT_META:";
+const COLLECT_META_REGEX = /\n?\[COLLECT_META:([\s\S]*?)\]\s*$/;
+
+const ORDER_META_PREFIX = "[ORDER_META:";
+const ORDER_META_REGEX = /\n?\[ORDER_META:([\s\S]*?)\]\s*$/;
+
+function getOrderMeta(order) {
+  const notes = String(order?.notes || "");
+  const match = notes.match(ORDER_META_REGEX);
+  if (!match) return { discount: 0, ticket_seq_v2: false };
+  try {
+    const parsed = JSON.parse(match[1]) || {};
+    return {
+      ...parsed,
+      discount: Number(parsed.discount || 0),
+      ticket_seq_v2: parsed.ticket_seq_v2 === true
+    };
+  }
+  catch(e) { return { discount: 0, ticket_seq_v2: false }; }
+}
+
+function stripOrderMeta(notes) {
+  return String(notes || "").replace(ORDER_META_REGEX, "").trim();
+}
+
+function buildNotesWithOrderMeta(notes, meta) {
+  const cleanNotes = stripOrderMeta(String(notes || "").replace(COLLECT_META_REGEX, "").trim());
+  const safeMeta = { ...(meta || {}), discount: Number(meta?.discount || 0) };
+  return `${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
+}
+
+
+function getOrderByIdAny(orderId) {
+  const pools = [branchOrders, khaznaOrders, orders];
+  for (const arr of pools) {
+    if (!Array.isArray(arr)) continue;
+    const found = arr.find(o => String(o.id) === String(orderId));
+    if (found) return found;
+  }
+  return null;
+}
+
+function getCollectMeta(order) {
+  const notes = String(order?.notes || "");
+  const match = notes.match(COLLECT_META_REGEX);
+  if (!match) return { count: 0, history: [] };
+  try {
+    const parsed = JSON.parse(match[1]);
+    return {
+      count: Number(parsed.count || 0),
+      history: Array.isArray(parsed.history) ? parsed.history : []
+    };
+  } catch (e) {
+    return { count: 0, history: [] };
+  }
+}
+
+function stripCollectMeta(notes) {
+  return stripOrderMeta(String(notes || "").replace(COLLECT_META_REGEX, "").trim());
+}
+
+function buildNotesWithCollectMeta(notes, meta) {
+  const cleanNotes = stripCollectMeta(notes);
+  const safeMeta = {
+    count: Number(meta?.count || 0),
+    history: Array.isArray(meta?.history) ? meta.history : []
+  };
+  return `${cleanNotes}${cleanNotes ? "\n" : ""}${COLLECT_META_PREFIX}${JSON.stringify(safeMeta)}]`;
+}
+
+function canCurrentUserCollect(order) {
+  if (isAdmin()) return true;
+  return getCollectMeta(order).count < 2;
+}
+
+function getCollectButtonHtml(order, src) {
+  if (!canCollectOrders()) return "";
+  if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) {
+    return disabledActionButton('$ تحصيل');
+  }
+  const meta = getCollectMeta(order);
+  const count = Number(meta.count || 0);
+
+  // الموظف بعد مرتين لا يظهر له زر التحصيل نهائيًا
+  if (!isAdmin() && count >= 2) return "";
+
+  const isSecondEmployeeTry = !isAdmin() && count === 1;
+  const collectPrefix = count > 0 ? String(count) : '$';
+  const label = `${collectPrefix} تحصيل`;
+  const opacity = isSecondEmployeeTry ? "opacity:.5;" : "";
+  const title = isSecondEmployeeTry
+    ? "آخر مرة متاحة للموظف لتعديل التحصيل"
+    : (isAdmin() && count >= 2 ? "تحصيل/تعديل متاح للأدمن فقط" : "تحصيل الأوردر");
+
+  return `<button title="${title}" onclick="openCollectModal('${order.id}','${String(order.customer_name||'').replace(/'/g,"\\'")}',${Number(order.price||0)},${Number(order.deposit||0)},'${src}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:linear-gradient(135deg,rgba(100,210,240,0.28),rgba(80,190,230,0.20));backdrop-filter:blur(10px);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(100,210,240,0.18);text-shadow:0 1px 2px rgba(0,0,0,0.2);${opacity}">${label}</button>`;
+}
 
 function handleEnter(e) { if (e.key === "Enter") login(); }
 
@@ -344,9 +673,9 @@ function viewPaymentImage(imageUrl) {
 
 // ===== دوال الثيم =====
 function initTheme() {
-  let savedTheme = 'light';
+  let savedTheme = 'dark';
   try {
-    savedTheme = sessionStorage.getItem('okb_theme') || 'light';
+    savedTheme = sessionStorage.getItem('okb_theme') || 'dark';
   } catch (e) { savedTheme = 'light'; }
   document.documentElement.setAttribute('data-theme', savedTheme);
   updateChartsTheme(savedTheme);
@@ -438,6 +767,11 @@ function resetDateFilter() {
   activeDateFrom = null; activeDateTo = null;
   $("fromDate").value = ""; $("toDate").value = "";
   $("activeDateBadge").classList.remove("visible");
+  if (searchInput) searchInput.value = "";
+  if (filterStatus) filterStatus.value = "الكل";
+  if (filterEmployee) filterEmployee.value = "الكل";
+  const shippingFilterEl = document.getElementById("filterShippingCompany");
+  if (shippingFilterEl) shippingFilterEl.value = "الكل";
   resetAllPages();
   renderOrders(); renderAnalytics(); renderRanks();
 }
@@ -461,7 +795,8 @@ async function login() {
     id: u.id,
     name: u.name,
     username: u.username,
-    role: u.role || (u.username === "admin" ? "admin" : "agent")
+    role: u.role || (u.username === "admin" ? "admin" : "agent"),
+    managed_branches: u.managed_branches || null
   };
   sessionStorage.setItem("okb_current_user", JSON.stringify(currentUser));
 
@@ -472,7 +807,7 @@ async function login() {
   await loadDoctors();
   await loadShippingSystems();
   await loadOrders();
-  if (isAdmin()) await loadUsers();
+  if (isAdmin() || isExecutiveAssistant()) { await loadUsers(); applyUsersFormRoleLock(); }
 
   hideAllPages();
   $("ordersPage").classList.remove("hidden");
@@ -501,7 +836,7 @@ async function checkLogin() {
     await loadDoctors();
     await loadShippingSystems();
     await loadOrders();
-    if (isAdmin()) await loadUsers();
+    if (isAdmin() || isExecutiveAssistant()) { await loadUsers(); applyUsersFormRoleLock(); }
     hideAllPages();
     $("ordersPage").classList.remove("hidden");
     setActiveMenu("ordersPage");
@@ -518,15 +853,50 @@ function togglePassword() {
 
 function setupUserView() {
   $("userNameHere").textContent = currentUser.name;
-  $("userRoleHere").textContent = currentUser.role;
+  $("userRoleHere").textContent = getRoleDisplayName(currentUser.role);
   const inline1 = $("userNameInline"), inline2 = $("userRoleInline");
   if (inline1) inline1.textContent = currentUser.name;
-  if (inline2) inline2.textContent = currentUser.role;
+  if (inline2) inline2.textContent = getRoleDisplayName(currentUser.role);
   const av = $("userAvatar");
   if (av) av.textContent = (currentUser.name || "U").trim().charAt(0).toUpperCase();
 
   document.querySelectorAll(".admin-only").forEach(el => el.classList.toggle("hidden", !isAdmin()));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
+  document.querySelectorAll(".accounting-only").forEach(el => el.classList.toggle("hidden", !canManageKhaznaAndTransfer()));
+  document.querySelectorAll(".branch-shipping-rank-only").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isOperationManager())));
+
+  // ===== صلاحيات الأدوار الجديدة (Executive Assistant / Secretary / Cashier / Store Manager) =====
+  // هذه الأدوار تشترك في: لا داشبورد ريبورت يومي، لا دكتور رانك، لا سيتنجز
+  const isRestrictedRole = isExecutiveAssistant() || isSecretary() || isCashier() || isStoreManager() || isAccountManager();
+  document.querySelectorAll(".restricted-role-hide").forEach(el => {
+    if (isRestrictedRole) el.classList.add("hidden");
+  });
+
+  // Shipping Rank: يظهر للـ Admin / Delivery Manager / Agent / Account Manager كداشبورد عام، ولـ Store Manager على فرعه فقط
+  document.querySelectorAll('[data-page="shippingRankPage"]').forEach(el => {
+    el.classList.toggle("hidden", !canViewShippingRank());
+  });
+
+  // Store Manager لا يرى Analysis، يرى Shipping Rank فقط الخاص بفروعه
+  document.querySelectorAll(".store-manager-hide").forEach(el => {
+    el.classList.toggle("hidden", isStoreManager());
+  });
+
+  // Users: تظهر لـ Executive Assistant بصلاحيات محدودة (حتى لو ليست admin)
+  document.querySelectorAll(".executive-assistant-show").forEach(el => {
+    if (isExecutiveAssistant()) el.classList.remove("hidden");
+  });
+
+  // Store Manager / Cashier: تقييد الفروع المرئية في OKB Stores على الفروع المُدارة فقط
+  if (isStoreManager() || isCashier()) {
+    const managed = getCurrentUserManagedBranches();
+    document.querySelectorAll(".okb-branch-btn").forEach(btn => {
+      const branchName = btn.dataset.branch;
+      btn.style.display = managed.includes(branchName) ? "" : "none";
+    });
+  } else {
+    document.querySelectorAll(".okb-branch-btn").forEach(btn => { btn.style.display = ""; });
+  }
 
   if (!isAdmin()) { employeeName.value = currentUser.name; employeeName.readOnly = true; } else employeeName.readOnly = false;
 }
@@ -626,18 +996,39 @@ function setActiveMenu(pageId) {
 }
 
 function hideAllPages() {
-  ["ordersPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage"].forEach(id => {
+  ["ordersPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "branchPage", "khaznaPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
 }
 
 function showOrdersPage() { hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); }
-function showAnalyticsPage() { hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-function showShippingRankPage() { if (!canViewAdminReports()) return; hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); setTimeout(() => { renderShippingRank(); renderShippingCharts(); }, 150); }
+function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
+function showShippingRankPage() { if (!canViewShippingRank()) return; branchShippingRankOverride = null; hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
 function showDoctorRankPage() { if (!canViewAdminReports()) return; hideAllPages(); $("doctorRankPage").classList.remove("hidden"); setActiveMenu("doctorRankPage"); setTimeout(() => { renderDoctorRank(); renderDoctorCharts(); }, 150); }
 function showBranchRankPage() { hideAllPages(); $("branchRankPage").classList.remove("hidden"); setActiveMenu("branchRankPage"); if (!$("reportFromDate").value || !$("reportToDate").value) { setReportMode("daily"); } else { updateReportTabs(); renderReport(); } }
-function showUsersPage() { if (!isAdmin()) return; hideAllPages(); $("usersPage").classList.remove("hidden"); setActiveMenu("usersPage"); loadUsers(); }
+function showUsersPage() {
+  if (!isAdmin() && !isExecutiveAssistant()) return;
+  hideAllPages(); $("usersPage").classList.remove("hidden"); setActiveMenu("usersPage"); loadUsers();
+  applyUsersFormRoleLock();
+}
+
+function applyUsersFormRoleLock() {
+  const roleSelect = $("newRole");
+  if (!roleSelect) return;
+  if (isExecutiveAssistant() && !isAdmin()) {
+    // قفل القائمة بالكامل على Secretary فقط لمساعد التنفيذي
+    Array.from(roleSelect.options).forEach(opt => {
+      opt.disabled = (opt.value !== "secretary");
+    });
+    roleSelect.value = "secretary";
+    roleSelect.disabled = true;
+    $("newUserBranchesWrap").classList.add("hidden");
+  } else {
+    Array.from(roleSelect.options).forEach(opt => { opt.disabled = false; });
+    roleSelect.disabled = false;
+  }
+}
 function showBranchsPage() { if (!isAdmin()) return; hideAllPages(); $("branchsPage").classList.remove("hidden"); setActiveMenu("branchsPage"); loadBranchs(); loadDoctors(); loadShippingSystems(); }
 
 function resetForm() { 
@@ -650,14 +1041,285 @@ function resetForm() {
   }
   const depositField = document.getElementById("deposit");
   if (depositField) depositField.value = "0";
-  
+  const qtyEl = document.getElementById("quantity");
+  if (qtyEl) qtyEl.value = "1";
+  const delivFeeEl = document.getElementById("deliveryFee");
+  if (delivFeeEl) delivFeeEl.value = "";
+  const unitPriceEl = document.getElementById("unitPrice");
+  const discountEl = document.getElementById("dashDiscountInput");
+  if (unitPriceEl) unitPriceEl.value = "";
+  if (discountEl) discountEl.value = "";
+  const priceEl = document.getElementById("price");
+  if (priceEl) priceEl.value = "";
+
+  clearProductCart('dash');
   // ✅ إخفاء معاينة الصورة والتحذير
   clearPaymentImage();
   const warningEl = document.getElementById("depositImageWarning");
   if (warningEl) warningEl.style.display = "none";
 }
 
-function getVisibleOrders() { return orders; }
+
+// ===== Smart Product Cart Logic =====
+let dashProducts = [];
+let branchProductsCart = [];
+
+function getCartArray(scope) {
+  return scope === 'branch' ? branchProductsCart : dashProducts;
+}
+
+function setCartArray(scope, arr) {
+  if (scope === 'branch') branchProductsCart = arr;
+  else dashProducts = arr;
+}
+
+function cartPrefix(scope) {
+  return scope === 'branch' ? 'branch' : 'dash';
+}
+
+function productCartToText(items) {
+  return (items || []).map((p, idx) => {
+    const name = String(p.name || '').trim();
+    const price = Number(p.price || 0);
+    const qty = Number(p.qty || 1);
+    const total = price * qty;
+    return `${idx + 1}) ${name} | ${price} × ${qty} = ${total}`;
+  }).join('\n');
+}
+
+function cartProductsTotal(scope) {
+  return getCartArray(scope).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0);
+}
+
+function syncProductCartTotals(scope) {
+  const prefix = cartPrefix(scope);
+  const productsTotal = cartProductsTotal(scope);
+  const delivery = Number(document.getElementById(prefix + 'DeliveryInput')?.value || 0);
+  const discount = Math.max(0, Number(document.getElementById(prefix + 'DiscountInput')?.value || 0));
+  const deposit = Number(document.getElementById(prefix + 'DepositInput')?.value || 0);
+  const grand = Math.max(0, productsTotal + delivery - discount);
+  const remaining = Math.max(0, grand - deposit);
+
+  const grandEl = document.getElementById(prefix + 'GrandTotal');
+  const remainingEl = document.getElementById(prefix + 'RemainingTotal');
+  if (grandEl) grandEl.textContent = money(grand);
+  if (remainingEl) remainingEl.textContent = money(remaining);
+
+  if (scope === 'branch') {
+    const bPrice = document.getElementById('bPrice');
+    const bDeposit = document.getElementById('bDeposit');
+    const bDelivery = document.getElementById('bDeliveryFee');
+    const bQty = document.getElementById('bQuantity');
+    const bUnit = document.getElementById('bUnitPrice');
+    const bNames = document.getElementById('bProductNames');
+    if (bPrice) bPrice.value = grand;
+    if (bDeposit) bDeposit.value = deposit;
+    if (bDelivery) bDelivery.value = delivery;
+    if (bQty) bQty.value = getCartArray(scope).reduce((s,p)=>s+Number(p.qty||1),0) || 1;
+    if (bUnit) bUnit.value = productsTotal;
+    if (bNames) bNames.value = productCartToText(getCartArray(scope));
+  } else {
+    const price = document.getElementById('price');
+    const depositEl = document.getElementById('deposit');
+    const deliveryEl = document.getElementById('deliveryFee');
+    const qtyEl = document.getElementById('quantity');
+    const unitEl = document.getElementById('unitPrice');
+    const namesEl = document.getElementById('productNames');
+    if (price) price.value = grand;
+    if (depositEl) depositEl.value = deposit;
+    if (deliveryEl) deliveryEl.value = delivery;
+    if (qtyEl) qtyEl.value = getCartArray(scope).reduce((s,p)=>s+Number(p.qty||1),0) || 1;
+    if (unitEl) unitEl.value = productsTotal;
+    if (namesEl) namesEl.value = productCartToText(getCartArray(scope));
+  }
+}
+
+function renderProductCart(scope) {
+  const prefix = cartPrefix(scope);
+  const listEl = document.getElementById(prefix + 'ProductCartList');
+  if (!listEl) return;
+  const items = getCartArray(scope);
+
+  if (!items.length) {
+    listEl.innerHTML = '<div class="smart-cart-empty">لسه مفيش منتجات في الكارت</div>';
+    syncProductCartTotals(scope);
+    return;
+  }
+
+  listEl.innerHTML = items.map((p, i) => {
+    const price = Number(p.price || 0);
+    const qty = Number(p.qty || 1);
+    const total = price * qty;
+    return `
+      <div class="smart-cart-row">
+        <div>
+          <div class="smart-prod-name">${escapeHTML(p.name)}</div>
+          <div class="smart-prod-meta">${money(price)} × ${qty}</div>
+        </div>
+        <div class="smart-qty-controls">
+          <button type="button" onclick="changeProductQty('${scope}', ${i}, -1)">-</button>
+          <span class="smart-qty-num">${qty}</span>
+          <button type="button" onclick="changeProductQty('${scope}', ${i}, 1)">+</button>
+        </div>
+        <div class="smart-prod-total">${money(total)}</div>
+        <button class="smart-del-btn" type="button" onclick="removeProductItem('${scope}', ${i})">×</button>
+      </div>`;
+  }).join('');
+
+  syncProductCartTotals(scope);
+}
+
+function escapeHTML(value) {
+  return String(value || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
+function addProductItem(scope) {
+  const prefix = cartPrefix(scope);
+  const nameEl = document.getElementById(prefix + 'ProductNameInput');
+  const priceEl = document.getElementById(prefix + 'ProductPriceInput');
+  const qtyEl = document.getElementById(prefix + 'ProductQtyInput');
+
+  const name = String(nameEl?.value || '').trim();
+  const price = Number(priceEl?.value || 0);
+  const qty = Math.max(1, Number(qtyEl?.value || 1));
+
+  if (!name) { alert('اكتب اسم المنتج'); nameEl?.focus(); return; }
+  if (!price || price <= 0) { alert('اكتب سعر القطعة'); priceEl?.focus(); return; }
+
+  const items = getCartArray(scope);
+  const existing = items.find(p => String(p.name || '').trim().toLowerCase() === name.toLowerCase() && Number(p.price || 0) === price);
+  if (existing) existing.qty = Number(existing.qty || 1) + qty;
+  else items.push({ name, price, qty });
+
+  setCartArray(scope, items);
+  if (nameEl) nameEl.value = '';
+  if (priceEl) priceEl.value = '';
+  if (qtyEl) qtyEl.value = '1';
+  nameEl?.focus();
+  renderProductCart(scope);
+}
+
+function changeProductQty(scope, index, delta) {
+  const items = getCartArray(scope);
+  if (!items[index]) return;
+  items[index].qty = Math.max(1, Number(items[index].qty || 1) + delta);
+  setCartArray(scope, items);
+  renderProductCart(scope);
+}
+
+function removeProductItem(scope, index) {
+  const items = getCartArray(scope);
+  items.splice(index, 1);
+  setCartArray(scope, items);
+  renderProductCart(scope);
+}
+
+function clearProductCart(scope) {
+  setCartArray(scope, []);
+  const prefix = cartPrefix(scope);
+  const delivery = document.getElementById(prefix + 'DeliveryInput');
+  const discount = document.getElementById(prefix + 'DiscountInput');
+  const deposit = document.getElementById(prefix + 'DepositInput');
+  if (delivery) delivery.value = '';
+  if (discount) discount.value = '';
+  if (deposit) deposit.value = '';
+  renderProductCart(scope);
+}
+
+function setProductCartFromOrder(scope, order) {
+  const text = String(order?.product_names || '').trim();
+  const items = [];
+
+  if (text) {
+    text.split(/\n+/).forEach(line => {
+      const clean = line.replace(/^\d+\)\s*/, '').trim();
+      const m = clean.match(/^(.*?)\s*\|\s*([\d.]+)\s*[×x]\s*(\d+)/);
+      if (m) items.push({ name: m[1].trim(), price: Number(m[2] || 0), qty: Number(m[3] || 1) });
+    });
+  }
+
+  if (!items.length && Number(order?.price || 0) > 0) {
+    const qty = Number(order?.quantity || 1);
+    const delivery = Number(order?.delivery_fee || 0);
+    const total = Number(order?.price || 0);
+    const unit = qty ? Math.max(0, (total - delivery) / qty) : total;
+    items.push({ name: order?.product_names || 'منتج', price: unit, qty });
+  }
+
+  setCartArray(scope, items);
+  const prefix = cartPrefix(scope);
+  const deliveryEl = document.getElementById(prefix + 'DeliveryInput');
+  const discountEl = document.getElementById(prefix + 'DiscountInput');
+  const depositEl = document.getElementById(prefix + 'DepositInput');
+  const meta = getOrderMeta(order);
+  if (deliveryEl) deliveryEl.value = Number(order?.delivery_fee || 0) || '';
+  if (discountEl) discountEl.value = Number(meta.discount || 0) || '';
+  if (depositEl) depositEl.value = Number(order?.deposit || 0) || '';
+  renderProductCart(scope);
+}
+
+function hasProducts(scope) {
+  return getCartArray(scope).length > 0;
+}
+
+
+// ===== حساب الإجمالي تلقائياً — داش بورد =====
+function calcDashTotal() { syncProductCartTotals('dash'); }
+
+// ===== حساب الإجمالي تلقائياً — صفحات الفروع =====
+function calcBranchTotal() { syncProductCartTotals('branch'); }
+
+// ===== Export صفحات الفروع =====
+function exportBranchOrders() {
+  if (!branchOrders || !branchOrders.length) { alert('لا توجد بيانات للتصدير'); return; }
+  const filtered = getBranchFilteredOrders ? getBranchFilteredOrders() : branchOrders;
+  if (!filtered.length) { alert('لا توجد بيانات مطابقة للفلتر الحالي'); return; }
+  downloadCSV('branch-orders-' + currentBranchName + '.csv',
+    ['#', 'الموظف', 'الدكتور', 'العميل', 'الموبايل', 'شركة الشحن', 'المنطقة', 'المنتجات', 'الكمية', 'سعر الوحدة', 'خدمة التوصيل', 'الخصم', 'الإجمالي', 'المدفوع', 'المتبقي', 'الحالة', 'ملاحظات', 'التاريخ'],
+    filtered.map((o, i) => {
+      const qty      = Number(o.quantity || 1);
+      const delivFee = Number(o.delivery_fee || 0);
+      const price    = Number(o.price || 0);
+      const deposit  = Number(o.deposit || 0);
+      const unitP    = qty > 0 ? (price - delivFee) / qty : price;
+      return [
+        i + 1,
+        o.employee_name || '',
+        o.doctor_name || '',
+        o.customer_name || '',
+        o.phone || '',
+        o.shipping_company || '',
+        o.area || '',
+        o.product_names || '',
+        qty,
+        unitP.toFixed(2),
+        delivFee,
+        getOrderMeta(o).discount || 0,
+        price,
+        deposit,
+        Math.max(0, price - deposit),
+        o.status || '',
+        cleanVisibleOrderNotes(o.notes || ''),
+        o.created_at || ''
+      ];
+    })
+  );
+}
+
+function getVisibleOrders() {
+  if (isCashier() || isStoreManager()) {
+    const managed = getCurrentUserManagedBranches();
+    if (!managed.length) return [];
+    const managedShippingCompanies = managed.map(getBranchShippingCompanyName);
+    return orders.filter(o => managed.includes(o.branch) || managedShippingCompanies.includes(o.shipping_company));
+  }
+  return orders;
+}
 
 function renderEmployeeFilter() {
   const current = filterEmployee.value, base = getVisibleOrders();
@@ -667,14 +1329,26 @@ function renderEmployeeFilter() {
   filterEmployee.value = employees.includes(current) ? current : "الكل";
 }
 
+function renderDashboardShippingFilter() {
+  const sel = document.getElementById("filterShippingCompany");
+  if (!sel) return;
+  const current = sel.value;
+  const companies = getShippingCompanyNames();
+  sel.innerHTML = `<option value="الكل">كل شركات الشحن</option>` + companies.map(c => `<option value="${c}">${c}</option>`).join("");
+  sel.value = companies.includes(current) ? current : "الكل";
+}
+
 function getFilteredOrders() {
   const search = searchInput.value.trim().toLowerCase(), statusFilter = filterStatus.value, employeeFilter = filterEmployee.value;
+  const shippingFilterEl = document.getElementById("filterShippingCompany");
+  const shippingFilter = shippingFilterEl ? shippingFilterEl.value : "الكل";
   return getVisibleOrders().filter(o => {
-    const matchSearch = String(o.employee_name || "").toLowerCase().includes(search) || String(o.doctor_name || "").toLowerCase().includes(search) || String(o.customer_name || "").toLowerCase().includes(search) || String(o.phone || "").toLowerCase().includes(search);
+    const matchSearch = matchesOrderSearch(o, search);
     const matchStatus = statusFilter === "الكل" || o.status === statusFilter;
     const matchEmployee = !isAdmin() || employeeFilter === "الكل" || o.employee_name === employeeFilter;
+    const matchShipping = shippingFilter === "الكل" || o.shipping_company === shippingFilter;
     const matchDate = isInDateRange(o);
-    return matchSearch && matchStatus && matchEmployee && matchDate;
+    return matchSearch && matchStatus && matchEmployee && matchShipping && matchDate;
   });
 }
 
@@ -707,11 +1381,12 @@ function renderStats(filtered) {
 
 function renderOrders() {
   renderEmployeeFilter();
+  renderDashboardShippingFilter();
   const filtered = getFilteredOrders();
   renderStats(filtered);
   
   if (!filtered.length) {
-    ordersTableBody.innerHTML = `<tr><td colspan="15" class="empty">No data found</td></tr>`;
+    ordersTableBody.innerHTML = `<tr><td colspan="17" class="empty">No data found</td></tr>`;
     syncBulkSelectionUI([]);
     renderPagination("ordersPagination", 0, "orders");
     return;
@@ -727,7 +1402,8 @@ function renderOrders() {
     else if (o.status === "Transit") statusClass = "chip-transit";
     else if (o.status === "Signed") statusClass = "chip-signed";
     else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = "chip-fake";    
-    const safeNotes = (o.notes || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const displayNotes = cleanVisibleOrderNotes(o.notes || '');
+    const safeNotes = displayNotes.replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const isChecked = selectedOrderIds.has(String(o.id));
     const deposit = Number(o.deposit || 0);
     const price = Number(o.price || 0);
@@ -750,7 +1426,7 @@ function renderOrders() {
         <td>${remaining > 0 ? money(remaining) : "—"}</td>
         <td>${paymentImage}</td>
         <td><span class="chip ${statusClass}">${o.status || ""}</span></td>
-        <td class="notes-cell" title="${safeNotes}">${o.notes || ''}</td>
+        <td class="notes-cell" title="${safeNotes}">${displayNotes || ''}</td>
         <td>${formatDate(o.created_at)}</td>
         <td><div style="display:flex;gap:4px"><button class="edit" style="padding:4px 10px;font-size:11px" onclick="editOrder('${o.id}')">تعديل</button>${isAdmin() ? `<button class="danger" style="padding:4px 10px;font-size:11px" onclick="deleteOrder('${o.id}')">حذف</button>` : ''}</div></td>
       </tr>`;
@@ -812,6 +1488,17 @@ orderForm.addEventListener("submit", async (e) => {
   submitButton.disabled = true;
   submitButton.textContent = "جاري الحفظ...";
 
+  if (!hasProducts('dash')) {
+    alert('أضف منتج واحد على الأقل في الأوردر');
+    submitButton.disabled = false;
+    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    return;
+  }
+  syncProductCartTotals('dash');
+  const qty        = Math.max(1, Number(document.getElementById("quantity")?.value || 1));
+  const delivFee   = Number(document.getElementById("deliveryFee")?.value || 0);
+  const totalPrice = Number(document.getElementById("price")?.value || 0);
+
   const orderData = {
     employee_name:    isAdmin() ? empEl.value.trim() : currentUser.name,
     doctor_name:      docEl.value.trim(),
@@ -819,12 +1506,14 @@ orderForm.addEventListener("submit", async (e) => {
     phone:            phoneEl.value.trim(),
     shipping_company: shipEl.value,
     area:             areaEl.value.trim(),
-    price:            Number(priceEl.value),
+    price:            totalPrice,
     deposit:          depositValue,
+    quantity:         qty,
+    delivery_fee:     delivFee,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    // fake_delivery_update:  statusEl.value === "Fake Delivery Update",
-    notes:            (notesEl.value || '').trim() || "لا توجد ملاحظات"
+    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: !editId }),
+    product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts)
   };
 
   if (!orderData.employee_name || !orderData.doctor_name || !orderData.customer_name 
@@ -841,12 +1530,21 @@ orderForm.addEventListener("submit", async (e) => {
     let result;
     
     if (editId) {
+      // منع تعديل أوردر Signed إلا للأدمن فقط
+      const existingOrder = orders.find(x => String(x.id) === String(editId));
+      if (existingOrder && String(existingOrder.status || '').trim() === 'Signed' && !isAdmin()) {
+        alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط');
+        submitButton.disabled = false;
+        submitButton.textContent = 'حفظ التعديل';
+        return;
+      }
       // تعديل أوردر موجود
       result = await supabaseClient.from("orders").update(orderData).eq("id", editId).select();
       if (result.error) throw result.error;
       orderId = editId;
     } else {
       // إضافة أوردر جديد
+      Object.assign(orderData, await reserveNextOrderIdentifiers());
       result = await supabaseClient.from("orders").insert([orderData]).select();
       if (result.error) throw result.error;
       
@@ -887,7 +1585,7 @@ orderForm.addEventListener("submit", async (e) => {
     
     resetForm();
     await loadOrders();
-    alert(editId ? "تم التعديل بنجاح" : "تم الإضافة بنجاح");
+    alert(editId ? "تم تعديل الاوردر بنجاح" : "تم الإضافة بنجاح");
     
   } catch (error) {
     console.error("❌ Error in form submission:", error);
@@ -940,9 +1638,31 @@ function checkDepositImageRequirement() {
   }
 }
 
+function checkBranchDepositImageRequirement() {
+  const depositEl = document.getElementById("bDeposit");
+  const paymentImageInput = document.getElementById("bPaymentImage");
+  const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
+  const warningEl = document.getElementById("bDepositImageWarning");
+
+  if (!warningEl) return true;
+
+  const hasFile = paymentImageInput && paymentImageInput.files && paymentImageInput.files.length > 0;
+
+  if (depositValue > 0 && !hasFile) {
+    warningEl.style.display = "block";
+    warningEl.innerHTML = `⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع هو ${money(depositValue)}`;
+    return false;
+  }
+
+  warningEl.style.display = "none";
+  return true;
+}
+
+
 window.editOrder = function (id) {
   const o = orders.find(x => String(x.id) === String(id));
   if (!o) return;
+  if (String(o.status || '').trim() === 'Signed' && !isAdmin()) { alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط'); return; }
   if (!isAdmin() && o.employee_name !== currentUser.name) { alert("غير مسموح بتعديل أوردرات موظف آخر"); return; }
   editId = id;
   employeeName.value = o.employee_name || "";
@@ -951,10 +1671,12 @@ window.editOrder = function (id) {
   phone.value = o.phone || "";
   shippingCompany.value = o.shipping_company || "";
   area.value = o.area || "";
-  price.value = o.price || "";
+
+  setProductCartFromOrder('dash', o);
+
   if($("deposit")) $("deposit").value = o.deposit || 0;
   status.value = o.status || "";
-  $('orderNotes').value = o.notes || '';
+  $('orderNotes').value = cleanVisibleOrderNotes(o.notes || '');
     // ✅ عرض الصورة الموجودة إن وجدت
   const existingImage = o.payment_image || "";
   const existingImageField = document.getElementById("existingPaymentImage");
@@ -1019,6 +1741,7 @@ function getShippingAnalysisRows(sourceOrders) {
     const transit = countStatus(list, "Transit");
     const returned = countStatus(list, "Returned");
     const fakeDelivery = getFakeDeliveryUpdateCount(list);
+    const delivering = countStatus(list, "Delivering");
     
     return { 
       company, 
@@ -1027,9 +1750,13 @@ function getShippingAnalysisRows(sourceOrders) {
       transit,
       returned,
       fakeDelivery,
-      fakeRate: percent(fakeDelivery, total), 
+      delivering,
+      conversionRate: percent(signed, total),
+      fakeRate: percent(fakeDelivery, total),
+      deliveringRate: percent(delivering, total),
       returnRate: percent(returned, total),
-      fakeRateNum: percentNum(fakeDelivery, total), 
+      fakeRateNum: percentNum(fakeDelivery, total),
+      deliveringRateNum: percentNum(delivering, total),
       returnRateNum: percentNum(returned, total) 
     };
   });
@@ -1055,6 +1782,7 @@ function getDoctorsAnalysisRows(sourceOrders) {
       returned,
       fakeDoctor,
       revenue, 
+      conversionRate: percent(signed, total),
       fakeRate: percent(fakeDoctor, total), 
       returnRate: percent(returned, total),
       fakeRateNum: percentNum(fakeDoctor, total), 
@@ -1122,10 +1850,11 @@ function renderAnalytics() {
         <td>${num(r.transit)}</td>
         <td>${num(r.returned)}</td>
         <td>${num(r.fakeDelivery)}</td>
+        <td>${r.conversionRate}</td>
         <td>${r.fakeRate}</td>
         <td>${r.returnRate}</td>
       </tr>`).join("")
-    : `<tr><td colspan="8" class="empty">No shipping data</td></tr>`;
+    : `<tr><td colspan="9" class="empty">No shipping data</td></tr>`;
 
   $("doctorsAnalyticsBody").innerHTML = docsPage.rows.length
     ? docsPage.rows.map(r => `
@@ -1137,10 +1866,11 @@ function renderAnalytics() {
         <td>${num(r.returned)}</td>
         <td>${num(r.fakeDoctor)}</td>
         <td>${money(r.revenue)}</td>
+        <td>${r.conversionRate}</td>
         <td>${r.fakeRate}</td>
         <td>${r.returnRate}</td>
       </tr>`).join("")
-    : `<tr><td colspan="9" class="empty">No doctors data</td></tr>`;
+    : `<tr><td colspan="10" class="empty">No doctors data</td></tr>`;
 
   renderPagination("shippingAnalysisPagination", ship.length, "shippingAnalysis");
   renderPagination("doctorsAnalysisPagination", docs.length, "doctorsAnalysis");
@@ -1196,7 +1926,8 @@ function resetShippingCompanyFilter() {
 }
 
 function getFilteredShippingRankRows() {
-  const q = (shippingRankSearch?.value || "").trim().toLowerCase();
+  const shippingRankSearchEl = document.getElementById("shippingRankSearch");
+  const q = (shippingRankSearchEl?.value || "").trim().toLowerCase();
   let rows = getShippingRankRows();
   if (selectedShippingCompanies.length) rows = rows.filter(r => selectedShippingCompanies.includes(r.company));
   if (q) rows = rows.filter(r => String(r.company || "").toLowerCase().includes(q));
@@ -1210,33 +1941,174 @@ function getFilteredDoctorRankRows() {
   return rows.filter(r => String(r.doctor || "").toLowerCase().includes(q));
 }
 
-function renderShippingRank() {
-  const rows = getFilteredShippingRankRows();
-  const page = getPaginatedRows(rows, "shippingRank");
+function updateShippingMiniDashboard() {
+  const DELIVERY_TARGET = 90;
+  const RETURN_TARGET = 10;
+  const src = getShippingFilteredOrders();
+  const total = src.length;
+  const signed = src.filter(o => o.status === "Signed").length;
+  const delivering = src.filter(o => o.status === "Delivering").length;
+  const returned = src.filter(o => o.status === "Returned").length;
+  const conversionNum = percentNum(signed, total);
+  const cancelNum = percentNum(returned, total);
+  const remainingToTarget = Math.max(0, DELIVERY_TARGET - conversionNum);
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  const setWidth = (id, value) => { const el = document.getElementById(id); if (el) el.style.width = Math.max(0, Math.min(100, value)) + "%"; };
 
-  $("shippingRankBody").innerHTML = page.rows.length
-    ? page.rows.map((r, i) => `<tr>
-        <td>${num(page.start + i + 1)}</td>
-        <td>${r.company}</td>
-        <td>${num(r.total)}</td>
-        <td>${num(r.signed)}</td>
-        <td>${num(r.returned)}</td>
-        <td>${num(r.fakeDelivery)}</td>
-        <td>${r.returnRate}</td>
-        <td>${r.fakeRate}</td>
-        <td>${r.score.toFixed(1)}</td>
-      </tr>`).join("")
-    : `<tr><td colspan="9" class="empty">No shipping rank data</td></tr>`;
+  setText("shipMiniTotalOrders", num(total));
+  setText("shipMiniSigned", num(signed));
+  setText("shipMiniDelivering", num(delivering));
+  setText("shipMiniTransit", num(delivering));
+  setText("shipMiniReturned", num(returned));
+  setText("shipMiniConversionRate", conversionNum.toFixed(1) + "%");
+  setText("shipMiniCancelRate", cancelNum.toFixed(1) + "%");
+  setText("shipMiniSignedSub", percent(signed, total) + " من الإجمالي");
+  setText("shipMiniDeliveringSub", percent(delivering, total) + " من الإجمالي");
+  setText("shipMiniReturnedSub", percent(returned, total) + " من الإجمالي");
 
-  renderPagination("shippingRankPagination", rows.length, "shippingRank");
+  setText("shipTargetCurrentConversion", conversionNum.toFixed(1) + "%");
+  setText("shipTargetCurrentConversionInline", conversionNum.toFixed(1) + "%");
+  setText("shipTargetCurrentConversionBig", conversionNum.toFixed(1) + "%");
+  setText("shipTargetRemaining", remainingToTarget.toFixed(1) + "%");
+  setText("shipTargetRemainingBig", remainingToTarget.toFixed(1) + "%");
+  setText("shipTargetCancelRate", cancelNum.toFixed(1) + "%");
+  setText("shipTargetCancelRateInline", cancelNum.toFixed(1) + "%");
+  setText("shipTargetCancelRateBig", cancelNum.toFixed(1) + "%");
+  setWidth("shipDeliveryProgress", conversionNum);
+  setWidth("shipRemainingProgress", (conversionNum / DELIVERY_TARGET) * 100);
+  setWidth("shipReturnProgress", cancelNum);
+  setWidth("shipPerformanceProgress", Math.min(100, (conversionNum / DELIVERY_TARGET) * 100));
 
-  const active = rows.filter(r => r.total > 0);
-  $("bestShippingInsight").textContent = active[0] ? active[0].company : "No data";
-  const worstReturn = [...active].sort((a, b) => b.returnRateNum - a.returnRateNum)[0];
-  const worstFake = [...active].sort((a, b) => b.fakeRateNum - a.fakeRateNum)[0];
-  $("worstReturnShippingInsight").textContent = worstReturn ? `${worstReturn.company} (${worstReturn.returnRate})` : "No data";
-  $("worstFakeShippingInsight").textContent = worstFake ? `${worstFake.company} (${worstFake.fakeRate})` : "No data";
+  const returnIsDanger = cancelNum > RETURN_TARGET;
+  const deliveryGood = conversionNum >= DELIVERY_TARGET;
+  setText("shipReturnStatusText", returnIsDanger ? "خطر" : "آمن");
+  setText("shipDeliveryStatusText", deliveryGood ? "محقق التارجت" : "تحتاج إلى تحسين");
+  setText("shipPerformanceStatus", returnIsDanger ? "خطر" : (deliveryGood ? "ممتاز" : "جيد"));
+  setText("shipPerformanceNote", returnIsDanger ? "المرتجعات تخطت الحد المسموح" : "مؤشراتك ضمن التارجت");
+
+  const perfStatus = document.getElementById("shipPerformanceStatus");
+  const cancelRate = document.getElementById("shipMiniCancelRate");
+  if (perfStatus) perfStatus.style.color = returnIsDanger ? "#EF4444" : (deliveryGood ? "#57D85A" : "#F59E0B");
+  if (cancelRate) cancelRate.style.color = returnIsDanger ? "#EF4444" : "#57D85A";
+
+  const scope = document.getElementById("shippingDashboardScope");
+  if (scope) {
+    if (branchShippingRankOverride) {
+      scope.textContent = `فرع ${branchShippingRankOverride}`;
+    } else if (isStoreManager()) {
+      const branches = getCurrentUserManagedBranches();
+      scope.textContent = branches.length ? branches.map(b => `فرع ${b}`).join(" / ") : "فروع المدير";
+    } else {
+      scope.textContent = "جميع الفروع";
+    }
+  }
+  const backBtn = document.getElementById('branchShippingBackBtn');
+  if (backBtn) backBtn.classList.toggle('hidden', !branchShippingRankOverride);
 }
+
+
+function getBranchPerformanceRows() {
+  const src = getShippingFilteredOrders();
+  const branchesMap = [
+    { branch: "مدينة نصر", company: "Nasr City Branch" },
+    { branch: "اسكندرية", company: "Alexandria Branch" },
+    { branch: "طنطا", company: "TanTa Branch" },
+    { branch: "المنصورة", company: "Mansoura Branch" }
+  ];
+
+  return branchesMap.map(item => {
+    const list = src.filter(o => o.shipping_company === item.company || o.shipping_company === item.branch);
+    const total = list.length;
+    const signed = countStatus(list, "Signed");
+    const delivering = countStatus(list, "Delivering");
+    const returned = countStatus(list, "Returned");
+    const conversionNum = percentNum(signed, total);
+    const returnNum = percentNum(returned, total);
+    return {
+      name: item.branch,
+      total,
+      signed,
+      delivering,
+      returned,
+      conversionRate: conversionNum.toFixed(1) + "%",
+      returnRate: returnNum.toFixed(1) + "%",
+      score: conversionNum - (returnNum * 1.5)
+    };
+  }).sort((a, b) => b.score - a.score);
+}
+
+function getShippingCompanyPerformanceRows() {
+  const branchCompanyNames = new Set([
+    "Mansoura Branch",
+    "TanTa Branch",
+    "Alexandria Branch",
+    "Nasr City Branch",
+    "مدينة نصر",
+    "اسكندرية",
+    "طنطا",
+    "المنصورة"
+  ]);
+  return getShippingRankRows()
+    .filter(r => !branchCompanyNames.has(String(r.company || '').trim()))
+    .map(r => ({
+      name: r.company,
+      total: r.total,
+      signed: r.signed,
+      delivering: r.delivering || 0,
+      returned: r.returned,
+      conversionRate: r.conversionRate,
+      returnRate: r.returnRate,
+      score: (r.signed ? percentNum(r.signed, r.total) : 0) - (r.returnRateNum * 1.5)
+    }))
+    .sort((a, b) => b.score - a.score);
+}
+
+function renderPerformanceRows(tbodyId, rows, emptyText) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+
+  const activeRows = rows.filter(r => Number(r.total || 0) > 0);
+  if (!activeRows.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">${emptyText}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = activeRows.map((r, i) => {
+    const returnValue = Number(String(r.returnRate || "0").replace("%", "")) || 0;
+    const conversionValue = Number(String(r.conversionRate || "0").replace("%", "")) || 0;
+    const returnColor = returnValue > 10 ? "#EF4444" : "#57D85A";
+    const conversionColor = conversionValue >= 90 ? "#57D85A" : "#F59E0B";
+    return `<tr>
+      <td>${num(i + 1)}</td>
+      <td>${r.name}</td>
+      <td>${num(r.total)}</td>
+      <td>${num(r.signed)}</td>
+      <td>${num(r.delivering || 0)}</td>
+      <td>${num(r.returned)}</td>
+      <td style="color:${conversionColor};font-weight:900">${r.conversionRate}</td>
+      <td style="color:${returnColor};font-weight:900">${r.returnRate}</td>
+      <td>${Number(r.score || 0).toFixed(1)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderGlobalShippingSections() {
+  const box = document.getElementById("globalShippingRankSections");
+  if (box) box.classList.toggle("hidden", isStoreManager());
+
+  if (isStoreManager()) return;
+
+  renderPerformanceRows("branchPerformanceBody", getBranchPerformanceRows(), "No branch performance data");
+  renderPerformanceRows("shippingCompanyPerformanceBody", getShippingCompanyPerformanceRows(), "No shipping company data");
+}
+
+function renderShippingRank() {
+  updateShippingMiniDashboard();
+  renderGlobalShippingSections();
+  const pagination = document.getElementById("shippingRankPagination");
+  if (pagination) pagination.innerHTML = "";
+}
+
 
 function renderDoctorRank() {
   const allRows = getDoctorRankRows();
@@ -1297,6 +2169,10 @@ function makeChart(id, type, labels, datasets) {
   });
 }
 
+function applyShippingDateFilter() {
+  onShippingFilterChange();
+}
+
 function onShippingFilterChange() {
   shippingDateFrom = $("shippingFromDate")?.value || null;
   shippingDateTo = $("shippingToDate")?.value || null;
@@ -1324,8 +2200,29 @@ function resetShippingDateFilter() {
 
 function getShippingFilteredOrders() {
   if (!orders || !orders.length) return [];
-  if (!shippingDateFrom && !shippingDateTo) return orders;
-  return orders.filter(o => {
+
+  let src = orders;
+
+  // لو الأدمن فتح Shipping Rank من داخل صفحة فرع، يرى هذا الفرع فقط
+  if (branchShippingRankOverride) {
+    const branchName = branchShippingRankOverride;
+    const branchShippingName = getBranchShippingCompanyName(branchName);
+    src = src.filter(o => o.branch === branchName || o.shipping_company === branchName || o.shipping_company === branchShippingName);
+  }
+  // Store Manager يشوف Shipping Rank الخاص بفروعه فقط
+  else if (isStoreManager()) {
+    const managedBranches = getCurrentUserManagedBranches();
+    const managedShippingNames = managedBranches.map(b => getBranchShippingCompanyName(b)).filter(Boolean);
+    src = src.filter(o =>
+      managedBranches.includes(o.branch) ||
+      managedBranches.includes(o.shipping_company) ||
+      managedShippingNames.includes(o.shipping_company)
+    );
+  }
+
+  if (!shippingDateFrom && !shippingDateTo) return src;
+
+  return src.filter(o => {
     const raw = o.created_at; if (!raw) return true;
     const d = raw.split("T")[0];
     if (shippingDateFrom && shippingDateTo) return d >= shippingDateFrom && d <= shippingDateTo;
@@ -1335,42 +2232,56 @@ function getShippingFilteredOrders() {
 }
 
 function renderShippingCharts() {
-  let rows = getShippingRankRows();
-  if (selectedShippingCompanies.length) rows = rows.filter(r => selectedShippingCompanies.includes(r.company));
-  rows = rows.filter(r => r.total > 0);
-  rows.sort((a, b) => b.total - a.total);
-
+  const src = getShippingFilteredOrders();
   destroyChart("shippingBarChart");
-  if (!rows.length) return;
+  destroyChart("shippingConversionLineChart");
+  destroyChart("shippingStatusDoughnutChart");
+  destroyChart("shippingReturnLineChart");
 
-  const wrap = document.getElementById("shippingBarChartWrap");
-  const minH = Math.max(300, rows.length * 55 + 80);
-  wrap.style.height = minH + "px";
-
-  const ctx = $("shippingBarChart");
-  if (!ctx) return;
-  const labels = rows.map(r => r.company);
-
-  charts["shippingBarChart"] = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        { label: "Total Orders", data: rows.map(r => r.total), backgroundColor: "#3B82F6", borderRadius: 5, borderSkipped: false },
-        { label: "Returned", data: rows.map(r => r.returned), backgroundColor: "#EF4444", borderRadius: 5, borderSkipped: false },
-        { label: "Fake Delivery", data: rows.map(r => r.fakeDelivery), backgroundColor: "#F59E0B", borderRadius: 5, borderSkipped: false }
-      ]
-    },
-    options: {
-      indexAxis: "y", responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.x}` } } },
-      scales: {
-        x: { beginAtZero: true, grid: { color: "rgba(15,23,42,0.07)" }, ticks: { color: "#64748B", font: { size: 12 } }, border: { display: false } },
-        y: { grid: { display: false }, ticks: { color: "#0F172A", font: { size: 13 } }, border: { display: false } }
-      }
-    }
+  const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+  const gridColor = isDark ? 'rgba(148,163,184,0.13)' : 'rgba(15,23,42,0.08)';
+  const textColor = isDark ? '#CBD5E1' : '#334155';
+  const toDay = (iso) => {
+    if (!iso) return '';
+    const raw = String(iso).split('T')[0];
+    const parts = raw.split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}` : raw;
+  };
+  const byDate = {};
+  src.forEach(o => {
+    const d = toDay(o.created_at) || '—';
+    if (!byDate[d]) byDate[d] = { total: 0, signed: 0, returned: 0, delivering: 0 };
+    byDate[d].total += 1;
+    if (o.status === 'Signed') byDate[d].signed += 1;
+    if (o.status === 'Returned') byDate[d].returned += 1;
+    if (o.status === 'Delivering') byDate[d].delivering += 1;
   });
+  const labels = Object.keys(byDate).sort((a,b) => {
+    const [da,ma] = a.split('/').map(Number);
+    const [db,mb] = b.split('/').map(Number);
+    return (ma*100+da) - (mb*100+db);
+  });
+  const conversionData = labels.map(d => Number(percentNum(byDate[d].signed, byDate[d].total).toFixed(1)));
+  const returnData = labels.map(d => Number(percentNum(byDate[d].returned, byDate[d].total).toFixed(1)));
+  const signed = src.filter(o => o.status === 'Signed').length;
+  const delivering = src.filter(o => o.status === 'Delivering').length;
+  const returned = src.filter(o => o.status === 'Returned').length;
+  const others = Math.max(0, src.length - signed - delivering - returned);
+  const baseLineOptions = (maxY = 100) => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { color: textColor, padding: 16, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}%` } } },
+    scales: { x: { ticks: { color: textColor, font: { size: 12 } }, grid: { color: gridColor }, border: { display: false } }, y: { beginAtZero: true, max: maxY, ticks: { color: textColor, callback: v => v + '%' }, grid: { color: gridColor }, border: { display: false } } }
+  });
+  const convCtx = document.getElementById('shippingConversionLineChart');
+  if (convCtx) charts['shippingConversionLineChart'] = new Chart(convCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل التسليم', data: conversionData, borderColor: '#57D85A', backgroundColor: 'rgba(87,216,90,.15)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 90%', data: labels.map(() => 90), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(100) });
+  const doughnutCtx = document.getElementById('shippingStatusDoughnutChart');
+  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, src.length)})` } } } } });
+  const returnCtx = document.getElementById('shippingReturnLineChart');
+  if (returnCtx) charts['shippingReturnLineChart'] = new Chart(returnCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل المرتجعات', data: returnData, borderColor: '#FF5555', backgroundColor: 'rgba(239,68,68,.12)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 10%', data: labels.map(() => 10), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(25) });
 }
+
 
 function renderDoctorCharts() {
   const rows = getDoctorRankRows().slice(0, 10), labels = rows.map(r => r.doctor);
@@ -1388,50 +2299,84 @@ function downloadCSV(fileName, headers, rows) {
   a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url);
 }
 
-function exportAllData() {
-  if (!orders.length) { alert("لا توجد بيانات للتصدير"); return; }
-  downloadCSV("orders-all.csv",
-    ["Employee", "Doctor", "Customer", "Phone", "Shipping Company", "Area", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"],
-    orders.map(o => {
-      const price = Number(o.price || 0);
-      const deposit = Number(o.deposit || 0);
-      const remaining = price - deposit;
-      return [o.employee_name, o.doctor_name, o.customer_name, o.phone, o.shipping_company, o.area, price, deposit, remaining, o.status, o.notes || "", o.created_at];
-    })
-  );
-}
-function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.fakeRate, r.returnRate])); }
-function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.fakeRate, x.returnRate])); }
-function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-rank.csv", ["Rank", "Shipping Company", "Total Orders", "Signed", "Returned", "Fake Delivery", "Return Rate", "Fake Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.returned, r.fakeDelivery, r.returnRate, r.fakeRate, r.score.toFixed(1)])); }
+function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor", "Customer", "Phone", "Shipping Company", "Area", "Products", "Delivery Fee", "Discount", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name, o.customer_name, o.phone, o.shipping_company, o.area, o.product_names || "", o.delivery_fee || 0, getOrderMeta(o).discount || 0, o.price, o.deposit || 0, Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)), o.status, stripCollectMeta(o.notes || ""), o.created_at])); }
+function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
+function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
+function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-dashboard.csv", ["Rank", "Shipping Company", "Total Order", "Signed", "Delivering", "Returned", "Conversion Rate", "Cancel Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.delivering, r.returned, r.conversionRate, r.returnRate, r.score.toFixed(1)])); }
 function exportDoctorRank() { const r = getDoctorRankRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctor-rank.csv", ["Rank", "Doctor", "Total Orders", "Signed", "Returned", "Fake", "Total Revenue", "Fake Rate", "Return Rate", "Score"], r.map((x, i) => [i + 1, x.doctor, x.total, x.signed, x.returned, x.fakeDoctor, x.revenue, x.fakeRate, x.returnRate, x.score.toFixed(1)])); }
 
 // ===== دوال المستخدمين =====
+function onNewRoleChange() {
+  const role = $("newRole").value;
+  $("newUserBranchesWrap").classList.toggle("hidden", !(role === "store_manager" || role === "cashier"));
+}
+
+function getSelectedNewUserBranches() {
+  return Array.from(document.querySelectorAll(".new-user-branch-cb:checked")).map(cb => cb.value);
+}
+
 userForm.addEventListener("submit", async (e) => {
-  e.preventDefault(); if (!isAdmin()) { alert("غير مسموح"); return; }
-  const userData = { name: newUserName.value.trim(), username: newUsername.value.trim(), password: newPassword.value.trim(), role: newRole.value, active: true };
+  e.preventDefault();
+  if (!isAdmin() && !isExecutiveAssistant()) { alert("غير مسموح"); return; }
+
+  const execOnly = isExecutiveAssistant() && !isAdmin();
+
+  let role = execOnly ? "secretary" : newRole.value;
+
+  const userData = { name: newUserName.value.trim(), username: newUsername.value.trim(), password: newPassword.value.trim(), role: role, active: true };
+
+  if (!execOnly && (role === "store_manager" || role === "cashier")) {
+    const branches = getSelectedNewUserBranches();
+    if (!branches.length) { alert("اختر فرع واحد على الأقل لـ Store Manager / Cashier"); return; }
+    userData.managed_branches = JSON.stringify(branches);
+  }
+
   if (!userData.name || !userData.username || !userData.password || !userData.role) { alert("املى كل بيانات المستخدم"); return; }
   const { error } = await supabaseClient.from("user").insert([userData]);
   if (error) { alert("مشكلة في إضافة المستخدم: " + error.message); return; }
-  userForm.reset(); await loadUsers(); alert("تم إضافة المستخدم بنجاح");
+  userForm.reset(); $("newUserBranchesWrap").classList.add("hidden"); applyUsersFormRoleLock(); await loadUsers(); alert("تم إضافة المستخدم بنجاح" + (execOnly ? " (Secretary)" : ""));
 });
+
+function getRoleDisplayName(role) {
+  const map = { admin: "Admin", manager: "Operation Manager", operation_manager: "Operation Manager", delivery_manager: "Operation Manager", agent: "Agent", executive_assistant: "Executive Assistant", receptionist: "Secretary", secretary: "Secretary", cashier: "Cashier", store_manager: "Store Manager", account_manager: "Account Manager" };
+  return map[String(role || "").toLowerCase()] || role || "";
+}
 
 function renderUsers() {
   if (!users.length) {
-    usersTableBody.innerHTML = `<tr><td colspan="5" class="empty">No users found</td></tr>`;
+    usersTableBody.innerHTML = `<tr><td colspan="6" class="empty">No users found</td></tr>`;
     return;
   }
-  usersTableBody.innerHTML = users.map(u => `
+  usersTableBody.innerHTML = users.map(u => {
+    let managedBranchesText = "—";
+    if (["store_manager", "cashier"].includes(String(u.role || "").toLowerCase())) {
+      try {
+        const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
+        managedBranchesText = arr.length ? arr.join(", ") : "—";
+      } catch (e) { managedBranchesText = "—"; }
+    }
+
+    // Executive Assistant: لا يمكنه تعديل صلاحية أو حذف أي يوزر
+    const canManageThisUser = isAdmin();
+
+    const actions = `
+        ${canManageThisUser ? `<button class="${u.active === false ? 'success' : 'yellow'}" style="padding:5px 10px;font-size:11px" onclick="toggleUserActive('${u.id}', ${u.active !== false})">${u.active === false ? 'تفعيل' : 'تعطيل'}</button>` : ''}
+        ${canManageThisUser ? `<button class="danger" style="padding:5px 10px;font-size:11px" onclick="deleteUser('${u.id}', '${(u.name || '').replace(/'/g, "\\'")}')">حذف</button>` : ''}
+        ${isAdmin() ? `<button class="edit" style="padding:5px 10px;font-size:11px" onclick="openEditRoleModal('${u.id}')">✏️ تعديل الصلاحية</button>` : ''}
+        ${!canManageThisUser && !isAdmin() ? '<span style="font-size:11px;color:var(--text-muted);">—</span>' : ''}
+      `;
+
+    return `
     <tr>
       <td>${u.name || ""}</td>
       <td>${u.username || ""}</td>
-      <td>${u.role || ""}</td>
+      <td>${getRoleDisplayName(u.role)}</td>
+      <td style="font-size:12px;">${managedBranchesText}</td>
       <td><span class="chip ${u.active === false ? 'chip-cancelled' : 'chip-confirmed'}">${u.active === false ? "false" : "true"}</span></td>
-      <td><div style="display:flex;gap:6px;align-items:center">
-        <button class="${u.active === false ? 'success' : 'yellow'}" style="padding:5px 10px;font-size:11px" onclick="toggleUserActive('${u.id}', ${u.active !== false})">${u.active === false ? 'تفعيل' : 'تعطيل'}</button>
-        <button class="danger" style="padding:5px 10px;font-size:11px" onclick="deleteUser('${u.id}', '${(u.name || '').replace(/'/g, "\\'")}')">حذف</button>
-      </div></td>
+      <td><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${actions}</div></td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
 window.deleteUser = async function (id, name) {
@@ -1455,6 +2400,67 @@ window.toggleUserActive = async function (id, currentActive) {
   alert(`تم ${action} المستخدم بنجاح ✅`);
   await loadUsers();
 };
+
+// ===== تعديل صلاحية المستخدم (Admin Only) =====
+function onEditRoleChange() {
+  const role = $("editRoleSelect").value;
+  $("editRoleBranchesWrap").classList.toggle("hidden", !(role === "store_manager" || role === "cashier"));
+}
+
+window.openEditRoleModal = function (id) {
+  if (!isAdmin()) { alert("غير مسموح — هذه الميزة للأدمن فقط"); return; }
+  const u = users.find(x => String(x.id) === String(id));
+  if (!u) return;
+
+  $("editRoleUserId").value = u.id;
+  $("editRoleUserName").textContent = `المستخدم: ${u.name} (${u.username})`;
+  $("editRoleSelect").value = String(u.role || "agent").toLowerCase();
+
+  document.querySelectorAll(".edit-role-branch-cb").forEach(cb => cb.checked = false);
+  if (["store_manager", "cashier"].includes(String(u.role || "").toLowerCase())) {
+    try {
+      const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
+      document.querySelectorAll(".edit-role-branch-cb").forEach(cb => { cb.checked = arr.includes(cb.value); });
+    } catch (e) {}
+  }
+  onEditRoleChange();
+
+  $("editRoleModal").style.display = "flex";
+};
+
+function closeEditRoleModal() {
+  $("editRoleModal").style.display = "none";
+}
+
+async function saveEditedRole() {
+  if (!isAdmin()) { alert("غير مسموح"); return; }
+  const id = $("editRoleUserId").value;
+  const newRoleVal = $("editRoleSelect").value;
+
+  const updateData = { role: newRoleVal };
+  if (newRoleVal === "store_manager" || newRoleVal === "cashier") {
+    const branches = Array.from(document.querySelectorAll(".edit-role-branch-cb:checked")).map(cb => cb.value);
+    if (!branches.length) { alert("اختر فرع واحد على الأقل لـ Store Manager / Cashier"); return; }
+    updateData.managed_branches = JSON.stringify(branches);
+  } else {
+    updateData.managed_branches = null;
+  }
+
+  const { error } = await supabaseClient.from("user").update(updateData).eq("id", id);
+  if (error) { alert("مشكلة في تحديث الصلاحية: " + error.message); return; }
+
+  closeEditRoleModal();
+  alert("✅ تم تحديث صلاحية المستخدم بنجاح");
+  await loadUsers();
+
+  // لو الأدمن عدل صلاحية حسابه هو نفسه، نحدث الـ session
+  if (currentUser && String(currentUser.id) === String(id)) {
+    currentUser.role = newRoleVal;
+    currentUser.managed_branches = updateData.managed_branches || null;
+    sessionStorage.setItem("okb_current_user", JSON.stringify(currentUser));
+    setupUserView();
+  }
+}
 
 // ===== دوال الفروع =====
 function renderBranchs() {
@@ -2119,7 +3125,8 @@ async function executeBulkImport() {
       status: finalStatus,
       fake_doctor: finalStatus === "Fake Doctor",
       fake_delivery_update: finalStatus === "Fake Delivery Update",
-      notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : ""
+      notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : "",
+      ...(await reserveNextOrderIdentifiers())
     };
     
     console.log("📦 Final Order Object:", orderObj);
@@ -2165,8 +3172,11 @@ async function executeBulkImport() {
 searchInput.addEventListener("input", () => { pageState.orders = 1; renderOrders(); });
 filterStatus.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
 filterEmployee.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
+const filterShippingCompanyEl = document.getElementById("filterShippingCompany");
+if (filterShippingCompanyEl) filterShippingCompanyEl.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
 exportBtn.addEventListener("click", exportData);
-if (shippingRankSearch) shippingRankSearch.addEventListener("input", () => { pageState.shippingRank = 1; renderShippingRank(); renderShippingCharts(); });
+const shippingRankSearchEl = document.getElementById("shippingRankSearch");
+if (shippingRankSearchEl) shippingRankSearchEl.addEventListener("input", () => { pageState.shippingRank = 1; renderShippingRank(); renderShippingCharts(); });
 if (doctorRankSearch) doctorRankSearch.addEventListener("input", () => { pageState.doctorRank = 1; renderDoctorRank(); });
 if (doctorsAnalysisSearch) doctorsAnalysisSearch.addEventListener("input", () => { pageState.doctorsAnalysis = 1; renderAnalytics(); });
 
@@ -2221,6 +3231,21 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('sidebarCollapsed', collapsed);
       } catch(e) {}
     });
+
+    function collapseSidebarAfterMenuClick() {
+      sidebar.classList.add('collapsed');
+      toggleBtn.classList.add('active');
+      try { localStorage.setItem('sidebarCollapsed', true); } catch(e) {}
+    }
+
+    sidebar.addEventListener('click', function(e) {
+      const targetBtn = e.target.closest('button');
+      if (!targetBtn) return;
+      if (targetBtn.classList.contains('okb-stores-btn')) return;
+      if (targetBtn.classList.contains('menu-item') || targetBtn.classList.contains('okb-branch-btn')) {
+        setTimeout(collapseSidebarAfterMenuClick, 120);
+      }
+    });
   }
 
   if (document.readyState === 'loading') {
@@ -2229,6 +3254,1909 @@ document.addEventListener('DOMContentLoaded', function() {
     initSidebarToggle();
   }
 })();
+
+// ===== OKB Stores — Branch Page Logic =====
+let currentBranchName = '';
+let branchShippingRankOverride = null;
+let branchOrders = [];
+let branchActiveDateFrom = null;
+let branchActiveDateTo = null;
+let branchPageNum = 1;
+
+function toggleOKBStores(btn) {
+  const menu = document.getElementById('okbBranchesMenu');
+  const arrow = btn.querySelector('.okb-arrow');
+  if (!menu) return;
+  const isOpen = menu.style.display !== 'none' && menu.style.display !== '';
+  menu.style.display = isOpen ? 'none' : 'flex';
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
+async function openBranchPage(branchName) {
+  if (!canAccessBranch(branchName)) { alert('غير مسموح لك بالدخول لهذا الفرع'); return; }
+  currentBranchName = branchName;
+  branchPageNum = 1;
+  branchActiveDateFrom = null;
+  branchActiveDateTo = null;
+
+  // إخفاء كل الصفحات
+  hideAllPages();
+
+  // إظهار صفحة الفرع
+  const bp = document.getElementById('branchPage');
+  if (bp) bp.classList.remove('hidden');
+
+  // عنوان الصفحة
+  const title = document.getElementById('branchPageTitle');
+  if (title) title.textContent = '📦 Dashboard — فرع ' + branchName;
+
+  // sync user info
+  const uName = document.getElementById('userNameHere');
+  const uRole = document.getElementById('userRoleHere');
+  if (uName) { const el = document.getElementById('branchUserNameInline'); if(el) el.textContent = uName.textContent; }
+  if (uRole) { const el = document.getElementById('branchUserRoleInline'); if(el) el.textContent = uRole.textContent; }
+
+  // ملء الدكاترة وشركات الشحن
+  const bDoc = document.getElementById('bDoctorName');
+  if (bDoc) {
+    bDoc.innerHTML = '<option value="">اختر اسم الدكتور</option>' + doctorsList.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+  }
+  setBranchShippingSelectToCurrentBranch();
+  setBranchStatusToDelivering();
+
+  // قفل اسم الموظف على اليوزر الحالي فقط — لا يمكن تسجيل أوردر بأي اسم غير اسم الحساب المسجل دخوله
+  const bEmpEl = document.getElementById('bEmployeeName');
+  if (bEmpEl && currentUser) {
+    bEmpEl.value = currentUser.name;
+    bEmpEl.readOnly = true;
+  }
+
+  clearProductCart('branch');
+  // تحميل أوردرات الفرع
+  await loadBranchOrders();
+
+  // إزالة active من sidebar
+  document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+}
+
+async function loadBranchOrders() {
+  const { data, error } = await supabaseClient
+    .from('orders')
+    .select('*')
+    .eq('branch', currentBranchName)
+    .order('created_at', { ascending: false });
+
+  if (error) { alert('مشكلة في تحميل أوردرات الفرع: ' + error.message); return; }
+  branchOrders = data || [];
+  await loadBranchDailyLocks();
+  renderBranchOrders();
+}
+
+function getBranchFilteredOrders() {
+  const search = (document.getElementById('bSearchInput')?.value || '').trim().toLowerCase();
+  const statusFilter = document.getElementById('bFilterStatus')?.value || 'الكل';
+  const empFilter = document.getElementById('bFilterEmployee')?.value || 'الكل';
+
+  return branchOrders.filter(o => {
+    const matchSearch = matchesOrderSearch(o, search);
+    const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
+    const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
+    const matchDate = (() => {
+      if (!branchActiveDateFrom && !branchActiveDateTo) return true;
+      const d = (o.created_at || '').split('T')[0];
+      if (branchActiveDateFrom && branchActiveDateTo) return d >= branchActiveDateFrom && d <= branchActiveDateTo;
+      if (branchActiveDateFrom) return d >= branchActiveDateFrom;
+      return d <= branchActiveDateTo;
+    })();
+    return matchSearch && matchStatus && matchEmp && matchDate;
+  });
+}
+
+
+function canChangeBranchOrderStatus() {
+  const role = getRoleKey(currentUser && currentUser.role);
+  return isAdmin() || isAccountManager() || isStoreManager();
+}
+
+function cleanVisibleOrderNotes(notes) {
+  return String(notes || '')
+    .replace(ORDER_META_REGEX, '')
+    .replace(COLLECT_META_REGEX, '')
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(line => line && line !== 'لا توجد ملاحظات')
+    .join('\n')
+    .trim();
+}
+
+function appendVisibleOrderNote(notes, addition) {
+  const original = String(notes || '');
+  const orderMetaMatch = original.match(ORDER_META_REGEX);
+  const collectMetaMatch = original.match(COLLECT_META_REGEX);
+  let clean = cleanVisibleOrderNotes(original);
+  clean = clean ? `${clean}\n${addition}` : addition;
+  if (collectMetaMatch) clean += `\n${COLLECT_META_PREFIX}${collectMetaMatch[1]}]`;
+  if (orderMetaMatch) clean += `\n${ORDER_META_PREFIX}${orderMetaMatch[1]}]`;
+  return clean;
+}
+
+function getBranchStatusButtonHtml(order) {
+  if (!canChangeBranchOrderStatus()) return '';
+  if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) {
+    return disabledActionButton('إلغاء', 'هذه اليومية مقفولة');
+  }
+  if (order.status === 'Returned') {
+    return `<span class="branch-cancel-disabled" title="الأوردر ملغي بالفعل">ملغي</span>`;
+  }
+  if (order.status === 'Signed' && !isAdmin()) {
+    return `<span class="branch-cancel-disabled" title="لا يمكن إلغاء أوردر Signed إلا للأدمن فقط">Signed</span>`;
+  }
+  return `<button onclick="openBranchCancelStatusModal('${order.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#EF4444,#B91C1C);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(239,68,68,.25);">إلغاء</button>`;
+}
+
+function openBranchCancelStatusModal(orderId) {
+  const order = branchOrders.find(x => String(x.id) === String(orderId));
+  if (!order) return;
+  if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
+  if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
+  if (order.status === 'Signed' && !isAdmin()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
+
+  let modal = document.getElementById('branchCancelStatusModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'branchCancelStatusModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;align-items:center;justify-content:center;padding:18px;';
+    modal.innerHTML = `
+      <div style="width:420px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl;">
+        <h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary);">إلغاء الأوردر</h3>
+        <p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px;"></p>
+        <label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800;">سبب الإلغاء <span style="color:#EF4444">*</span></label>
+        <textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px;"></textarea>
+        <div style="display:flex;gap:10px;justify-content:flex-start;">
+          <button id="branchCancelConfirmBtn" onclick="confirmBranchCancelStatus()" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:900;">إلغاء أوردر العميل</button>
+          <button onclick="closeBranchCancelStatusModal()" style="background:var(--bg-soft);color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px 18px;font-weight:800;">إغلاق</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  modal.dataset.orderId = orderId;
+  const customer = document.getElementById('branchCancelModalCustomer');
+  if (customer) customer.textContent = `العميل: ${order.customer_name || '—'} | الحالة الحالية: ${order.status || '—'}`;
+  const reason = document.getElementById('branchCancelReasonInput');
+  if (reason) reason.value = '';
+  modal.style.display = 'flex';
+  setTimeout(() => reason && reason.focus(), 50);
+}
+
+function closeBranchCancelStatusModal() {
+  const modal = document.getElementById('branchCancelStatusModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function confirmBranchCancelStatus() {
+  const modal = document.getElementById('branchCancelStatusModal');
+  const orderId = modal?.dataset?.orderId;
+  const reasonEl = document.getElementById('branchCancelReasonInput');
+  const reason = String(reasonEl?.value || '').trim();
+  if (!orderId) return;
+  if (!reason) { alert('لازم تكتب سبب الإلغاء قبل تحويل الأوردر Returned'); reasonEl?.focus(); return; }
+
+  const order = branchOrders.find(x => String(x.id) === String(orderId));
+  if (!order) return;
+  if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
+  if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
+  if (order.status === 'Signed' && !isAdmin()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
+
+  const noteLine = `سبب الإلغاء: ${reason}`;
+  const newNotes = appendVisibleOrderNote(order.notes || '', noteLine);
+  const btn = document.getElementById('branchCancelConfirmBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'جاري الحفظ...'; }
+
+  const { error } = await supabaseClient
+    .from('orders')
+    .update({ status: 'Returned', notes: newNotes })
+    .eq('id', orderId);
+
+  if (btn) { btn.disabled = false; btn.textContent = 'إلغاء أوردر العميل'; }
+  if (error) { alert('مشكلة في تعديل الحالة: ' + error.message); return; }
+
+  closeBranchCancelStatusModal();
+  await loadBranchOrders();
+  await loadOrders();
+  alert('تم تحويل الأوردر إلى Returned وإضافة سبب الإلغاء في الملاحظات');
+}
+
+
+function openBranchShippingRankFromBranch() {
+  if (!(isAdmin() || isOperationManager())) { alert('زر Shipping Rank من صفحة الفرع متاح للأدمن و Operation Manager فقط'); return; }
+  if (!currentBranchName) { alert('افتح صفحة فرع أولاً'); return; }
+  branchShippingRankOverride = currentBranchName;
+  hideAllPages();
+  const page = document.getElementById('shippingRankPage');
+  if (page) page.classList.remove('hidden');
+  const backBtn = document.getElementById('branchShippingBackBtn');
+  if (backBtn) backBtn.classList.remove('hidden');
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  const appContent = document.querySelector('.app-content');
+  if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  setTimeout(() => {
+    renderShippingRank();
+    renderShippingCharts();
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    const appContent = document.querySelector('.app-content');
+    if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, 120);
+}
+
+function closeBranchShippingRankToBranch() {
+  const branchName = branchShippingRankOverride || currentBranchName;
+  branchShippingRankOverride = null;
+  const backBtn = document.getElementById('branchShippingBackBtn');
+  if (backBtn) backBtn.classList.add('hidden');
+  if (branchName) openBranchPage(branchName);
+  else showOrdersPage();
+}
+
+function renderBranchOrders() {
+  const filtered = getBranchFilteredOrders();
+
+  // stats
+  const rev = filtered.reduce((s, o) => s + Number(o.price || 0), 0);
+  const dep = filtered.reduce((s, o) => s + Number(o.deposit || 0), 0);
+  const setEl = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  setEl('bTotalOrders', filtered.length);
+  setEl('bReturnedOrders', filtered.filter(o => o.status === 'Returned').length);
+  setEl('bFakeDoctorOrders', filtered.filter(o => isFakeDoctorOrder(o)).length);
+  setEl('bFakeDeliveryUpdateOrders', filtered.filter(o => isFakeDeliveryUpdateOrder(o)).length);
+  setEl('bTotalSigned', filtered.filter(o => o.status === 'Signed').length);
+  setEl('bPickedUpOrders', filtered.filter(o => o.status === 'Picked-up').length);
+  setEl('bInTransitOrders', filtered.filter(o => o.status === 'Transit' || o.status === 'In transit').length);
+  setEl('bDeliveringOrders', filtered.filter(o => o.status === 'Delivering').length);
+  setEl('bReturningOrders', filtered.filter(o => o.status === 'Returning').length);
+  setEl('bTotalRevenue', money(rev));
+  setEl('bTotalDeposit', money(dep));
+
+  // employee filter
+  const empSel = document.getElementById('bFilterEmployee');
+  if (empSel) {
+    const curEmp = empSel.value;
+    const employees = [...new Set(branchOrders.map(o => o.employee_name).filter(Boolean))];
+    empSel.innerHTML = '<option value="الكل">كل الموظفين</option>' + employees.map(e => `<option value="${e}">${e}</option>`).join('');
+    empSel.value = employees.includes(curEmp) ? curEmp : 'الكل';
+  }
+
+  // table
+  const tbody = document.getElementById('branchOrdersTableBody');
+  if (!tbody) return;
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="15" class="empty">لا توجد أوردرات لهذا الفرع</td></tr>';
+    return;
+  }
+
+  const PAGE = 20;
+  const totalPages = Math.ceil(filtered.length / PAGE);
+  if (branchPageNum > totalPages) branchPageNum = totalPages;
+  const start = (branchPageNum - 1) * PAGE;
+  const rows = filtered.slice(start, start + PAGE);
+
+  let html = '';
+  rows.forEach((o, i) => {
+    let statusClass = 'chip-transit';
+    if (o.status === 'Returned') statusClass = 'chip-returned';
+    else if (o.status === 'Signed') statusClass = 'chip-signed';
+    else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = 'chip-fake';
+    const price = Number(o.price || 0);
+    const deposit = Number(o.deposit || 0);
+    const remaining = price - deposit;
+    const paymentBtn = o.payment_image
+      ? `<button onclick="viewPaymentImage('${o.payment_image}')" style="background:#0D9488;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;border:none;cursor:pointer;">📷 عرض</button>`
+      : `<label style="cursor:pointer;background:#6366f1;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;border-radius:6px;">📎 إرفاق<input type="file" accept="image/*" style="display:none;" onchange="attachBranchPayment(this,'${o.id}')"/></label>`;
+    const lockedByDaily = isOrderLockedByDaily(o);
+    const isSignedOrder = o.status === 'Signed';
+    const transferBtn = !canManageKhaznaAndTransfer()
+      ? ''
+      : (o.transferred
+        ? `<span class="chip" style="font-size:10px;background:#374151;color:#9ca3af;">✓ محوّل</span>`
+        : (lockedByDaily
+          ? disabledActionButton('🔄 تحويل', 'هذه اليومية مقفولة')
+          : (isSignedOrder
+            ? disabledActionButton('🔄 تحويل', 'لا يمكن تحويل أوردر تم تسليمه (Signed)')
+            : `<button onclick="transferBranchOrder('${o.id}')" style="background:#f59e0b;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;border:none;cursor:pointer;white-space:nowrap;">🔄 تحويل</button>`)));
+    html += `<tr>
+      <td>${num(start + i + 1)}</td>
+      <td>${o.employee_name || ''}</td>
+      <td>${o.doctor_name || ''}</td>
+      <td>${o.customer_name || ''}</td>
+      <td>${o.phone || ''}</td>
+      <td>${o.shipping_company || ''}</td>
+      <td class="branch-area-cell">${o.area || ''}</td>
+      <td>${money(price)}</td>
+      <td>${deposit > 0 ? '<span class="deposit-badge">💰 ' + money(deposit) + '</span>' : '—'}</td>
+      <td>${remaining > 0 ? money(remaining) : '—'}</td>
+      <td>${paymentBtn}</td>
+      <td><span class="chip ${statusClass}">${o.status || ''}</span></td>
+      <td class="branch-notes-cell">${cleanVisibleOrderNotes(o.notes || '')}</td>
+      <td>${formatDate(o.created_at)}</td>
+      <td class="branch-actions-cell">
+        <div style="display:flex;gap:5px;align-items:center;">
+          ${getCollectButtonHtml(o, 'branch')}
+          ${transferBtn}
+          <button onclick="printBranchOrderReceipt('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🧾 إيصال</button>
+          ${getBranchStatusButtonHtml(o)}
+        </div>
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+
+  // pagination
+  const pag = document.getElementById('branchOrdersPagination');
+  if (pag) {
+    if (filtered.length <= PAGE) { pag.innerHTML = ''; return; }
+    let ph = `<button onclick="changeBranchPage(${branchPageNum - 1})" ${branchPageNum===1?'disabled':''}>Prev</button>`;
+    for (let p = 1; p <= totalPages; p++) ph += `<button class="${p===branchPageNum?'active':''}" onclick="changeBranchPage(${p})">${p}</button>`;
+    ph += `<button onclick="changeBranchPage(${branchPageNum + 1})" ${branchPageNum===totalPages?'disabled':''}>Next</button>`;
+    ph += `<span class="pagination-info">Page ${branchPageNum} of ${totalPages} | Total ${num(filtered.length)}</span>`;
+    pag.innerHTML = ph;
+  }
+}
+
+function changeBranchPage(p) {
+  branchPageNum = p;
+  renderBranchOrders();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function applyBranchDateFilter() {
+  const from = document.getElementById('bFromDate')?.value;
+  const to = document.getElementById('bToDate')?.value;
+  if (!from && !to) { alert('اختر تاريخ من أو إلى على الأقل'); return; }
+  branchActiveDateFrom = from || null;
+  branchActiveDateTo = to || null;
+  branchPageNum = 1;
+  const badge = document.getElementById('bActiveDateBadge');
+  if (badge) {
+    let label = '📅 ';
+    if (branchActiveDateFrom && branchActiveDateTo) label += branchActiveDateFrom + ' → ' + branchActiveDateTo;
+    else if (branchActiveDateFrom) label += 'من ' + branchActiveDateFrom;
+    else label += 'حتى ' + branchActiveDateTo;
+    badge.textContent = label;
+    badge.classList.add('visible');
+  }
+  renderBranchOrders();
+}
+
+function resetBranchDateFilter() {
+  branchActiveDateFrom = null;
+  branchActiveDateTo = null;
+  const f = document.getElementById('bFromDate'); if(f) f.value = '';
+  const t = document.getElementById('bToDate'); if(t) t.value = '';
+  const badge = document.getElementById('bActiveDateBadge');
+  if (badge) badge.classList.remove('visible');
+  branchPageNum = 1;
+  renderBranchOrders();
+}
+
+function editBranchOrder(id) {
+  const o = branchOrders.find(x => String(x.id) === String(id));
+  if (!o) return;
+  if (isOrderLockedByDaily(o)) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
+  alert('تعديل الأوردر يتم من الـ Dashboard الرئيسي');
+}
+
+// ===== submit form لصفحة الفرع =====
+document.addEventListener('DOMContentLoaded', function() {
+  const branchForm = document.getElementById('branchOrderForm');
+  if (!branchForm) return;
+
+  // search & filter listeners
+  const bSearch = document.getElementById('bSearchInput');
+  if (bSearch) {
+    bSearch.addEventListener('input', () => { branchPageNum = 1; renderBranchOrders(); });
+    bSearch.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        branchPageNum = 1;
+        renderBranchOrders();
+      }
+    });
+  }
+  const bFStatus = document.getElementById('bFilterStatus');
+  if (bFStatus) bFStatus.addEventListener('change', () => { branchPageNum = 1; renderBranchOrders(); });
+  const bFEmp = document.getElementById('bFilterEmployee');
+  if (bFEmp) bFEmp.addEventListener('change', () => { branchPageNum = 1; renderBranchOrders(); });
+
+  const khaznaSearch = document.getElementById('khaznaBarcodeSearch');
+  if (khaznaSearch) khaznaSearch.addEventListener('input', () => { renderKhaznaStats(); renderKhaznaOrders(); });
+  const khaznaStatus = document.getElementById('khaznaFilterStatus');
+  if (khaznaStatus) khaznaStatus.addEventListener('change', () => { renderKhaznaStats(); renderKhaznaOrders(); });
+  const khaznaEmployee = document.getElementById('khaznaFilterEmployee');
+  if (khaznaEmployee) khaznaEmployee.addEventListener('change', () => { renderKhaznaStats(); renderKhaznaOrders(); });
+
+  branchForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const empEl   = document.getElementById('bEmployeeName');
+    const docEl   = document.getElementById('bDoctorName');
+    const custEl  = document.getElementById('bCustomerName');
+    const phoneEl = document.getElementById('bPhone');
+    const shipEl  = document.getElementById('bShippingCompany');
+    const areaEl  = document.getElementById('bArea');
+    const priceEl = document.getElementById('bPrice');
+    const depEl   = document.getElementById('bDeposit');
+    const statEl  = document.getElementById('bStatus');
+    const notesEl = document.getElementById('bOrderNotes');
+    const submitBtn = branchForm.querySelector('button[type="submit"]');
+
+    if (!hasProducts('branch')) {
+      alert('أضف منتج واحد على الأقل في الأوردر');
+      return;
+    }
+    syncProductCartTotals('branch');
+    const bQty       = Math.max(1, Number(document.getElementById('bQuantity')?.value || 1));
+    const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
+    const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
+
+    const orderData = {
+      employee_name:    (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
+      doctor_name:      docEl?.value.trim() || '',
+      customer_name:    custEl?.value.trim() || '',
+      phone:            phoneEl?.value.trim() || '',
+      shipping_company: getBranchShippingCompanyName(currentBranchName) || shipEl?.value || '',
+      area:             areaEl?.value.trim() || '',
+      price:            bTotalPrice,
+      deposit:          Number(depEl?.value || 0),
+      quantity:         bQty,
+      delivery_fee:     bDelivFee,
+      status:           'Delivering',
+      fake_doctor:      false,
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: true }),
+      product_names:    document.getElementById('bProductNames')?.value.trim() || '',
+      branch:           currentBranchName,
+      transferred:      false
+    };
+
+    const branchPaymentInput = document.getElementById('bPaymentImage');
+    const branchPaymentFile = branchPaymentInput?.files?.[0];
+    if (Number(orderData.deposit || 0) > 0 && !branchPaymentFile) {
+      checkBranchDepositImageRequirement();
+      alert(`⚠️ الأوردر مدفوع بمبلغ ${money(orderData.deposit)} — لازم ترفق سكرين شوت إثبات الدفع قبل حفظ الأوردر`);
+      branchPaymentInput?.focus();
+      return;
+    }
+    if (branchPaymentFile && !validateImageFile(branchPaymentFile)) {
+      return;
+    }
+
+    if (!orderData.employee_name || !orderData.doctor_name || !orderData.customer_name
+        || !orderData.phone || !orderData.shipping_company || !orderData.area
+        || !orderData.price || !orderData.status) {
+      alert('من فضلك املى كل البيانات');
+      return;
+    }
+
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'جاري الحفظ...'; }
+
+    try {
+      Object.assign(orderData, await reserveNextOrderIdentifiers());
+      const { data: inserted, error } = await supabaseClient.from('orders').insert([orderData]).select().single();
+      if (error) throw error;
+      // رفع صورة الدفع لو موجودة
+      const payImgInput = document.getElementById('bPaymentImage');
+      if (payImgInput?.files[0] && inserted?.id) {
+        const imgUrl = await uploadPaymentImage(payImgInput.files[0], inserted.id);
+        if (imgUrl) {
+          await supabaseClient.from('orders').update({ payment_image: imgUrl }).eq('id', inserted.id);
+        }
+      }
+      branchForm.reset();
+      clearProductCart('branch');
+      clearBranchPaymentImage();
+      setBranchShippingSelectToCurrentBranch();
+      setBranchStatusToDelivering();
+      alert('✅ تم إضافة الأوردر بنجاح');
+      await loadBranchOrders();
+    } catch (err) {
+      alert('مشكلة في الحفظ: ' + err.message);
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'إضافة الأوردر'; }
+    }
+  });
+});
+
+
+// ===== Branch Payment Attach =====
+async function attachBranchPayment(input, orderId) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!validateImageFile(file)) { input.value = ''; return; }
+  const btn = input.parentElement;
+  btn.textContent = 'جاري الرفع...';
+  const url = await uploadPaymentImage(file, orderId);
+  if (!url) { btn.innerHTML = '📎 إرفاق<input type="file" accept="image/*" style="display:none;" onchange="attachBranchPayment(this,\''+orderId+'\')"/>'; return; }
+  const { error } = await supabaseClient.from('orders').update({ payment_image: url }).eq('id', orderId);
+  if (error) { alert('خطأ في الحفظ: ' + error.message); return; }
+  await loadBranchOrders();
+}
+
+// ===== Branch Payment Preview =====
+function previewBranchPaymentImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!validateImageFile(file)) { input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('bPaymentImagePreview');
+    const img = document.getElementById('bPaymentPreviewImg');
+    if (preview && img) {
+      img.src = e.target.result;
+      preview.style.display = 'flex';
+    }
+    const warning = document.getElementById('bDepositImageWarning');
+    if (warning) warning.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearBranchPaymentImage() {
+  const input = document.getElementById('bPaymentImage');
+  const preview = document.getElementById('bPaymentImagePreview');
+  const warning = document.getElementById('bDepositImageWarning');
+  if (input) input.value = '';
+  if (preview) preview.style.display = 'none';
+  if (warning) warning.style.display = 'none';
+}
+
+// ===== Transfer Order =====
+let transferOrderId = null;
+
+function transferBranchOrder(orderId) {
+  if (!canManageKhaznaAndTransfer()) { alert('زر التحويل متاح للأدمن و Account Manager فقط'); return; }
+  const o = branchOrders.find(x => String(x.id) === String(orderId)) || khaznaOrders.find(x => String(x.id) === String(orderId));
+  if (o && isOrderLockedByDaily(o)) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
+  if (o && o.status === 'Signed') { alert('لا يمكن تحويل أوردر تم تسليمه بالفعل (Signed) لشركة شحن أخرى.'); return; }
+  transferOrderId = orderId;
+  const sel = document.getElementById('transferShippingSelect');
+  if (sel) {
+    const names = getShippingCompanyNames();
+    sel.innerHTML = '<option value="">اختر شركة الشحن...</option>' +
+      names.map(name => `<option value="${name}">${name}</option>`).join('');
+  }
+  const modal = document.getElementById('transferModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeTransferModal() {
+  transferOrderId = null;
+  const modal = document.getElementById('transferModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function confirmTransfer() {
+  if (!canManageKhaznaAndTransfer()) { alert('زر التحويل متاح للأدمن و Account Manager فقط'); return; }
+  const shipping = document.getElementById('transferShippingSelect')?.value;
+  if (!shipping) { alert('اختر شركة الشحن أولاً'); return; }
+  if (!transferOrderId) return;
+
+  const confirmBtn = document.querySelector('#transferModal button:last-child');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'جاري التحويل...'; }
+
+  const { error } = await supabaseClient.from('orders').update({
+    transferred: true,
+    transferred_to: shipping,
+    shipping_company: shipping,
+    branch: null
+  }).eq('id', transferOrderId);
+
+  if (error) {
+    alert('مشكلة في التحويل: ' + error.message);
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ تأكيد التحويل'; }
+    return;
+  }
+
+  closeTransferModal();
+  alert('✅ تم تحويل الأوردر لـ ' + shipping + ' بنجاح');
+  await loadBranchOrders();
+  if (typeof loadOrders === 'function') await loadOrders();
+}
+
+
+// ============================================================
+// ===== KHAZNA PAGE =====
+// ============================================================
+let khaznaOrders = [];
+let khaznaShippingCost = 0;
+let khaznaSelectedIds = new Set();
+let khaznaLockInfo = null;
+let branchDailyLocks = {};
+
+
+function getOrderDateKey(order) {
+  return getOrderAccountingDateKey(order);
+}
+
+function getOrderAccountingDateISO(order) {
+  // في الخزنة/قفل اليومية بنحاسب الأوردر على تاريخ التحصيل لو اتحصل، مش تاريخ إنشاء الأوردر.
+  // لو مفيش تحصيل مسجل قديم، بنرجع لتاريخ إنشاء الأوردر عشان السيستم يفضل شغال مع الداتا القديمة.
+  const lastCollect = (typeof getLatestCollectEntry === 'function') ? getLatestCollectEntry(order) : null;
+  if (order && String(order.status || '') === 'Signed' && lastCollect && lastCollect.at) return String(lastCollect.at);
+  return String(order?.created_at || '');
+}
+
+function getOrderAccountingDateKey(order) {
+  return String(getOrderAccountingDateISO(order) || '').split('T')[0] || '';
+}
+
+function isOrderInAccountingDateRange(order, from, to) {
+  const d = getOrderAccountingDateKey(order);
+  if (!d) return false;
+  if (from && to) return d >= from && d <= to;
+  if (from) return d >= from;
+  if (to) return d <= to;
+  return true;
+}
+
+function getKhaznaSelectedDate() {
+  const from = document.getElementById('khaznaFromDate')?.value || '';
+  const to = document.getElementById('khaznaToDate')?.value || '';
+  if (from && to && from === to) return from;
+  if (from && !to) return from;
+  if (!from && to) return to;
+  return '';
+}
+
+function dailyLockStorageKey(branchName, date) {
+  return `okb_daily_lock_${encodeURIComponent(branchName || '')}_${date}`;
+}
+
+async function fetchDailyLock(branchName, date) {
+  if (!branchName || !date) return null;
+  try {
+    const { data, error } = await supabaseClient
+      .from('khazna_lock')
+      .select('*')
+      .eq('branch', branchName)
+      .eq('lock_date', date)
+      .maybeSingle();
+    if (!error) return data || null;
+    console.warn('khazna_lock fetch fallback:', error.message);
+  } catch(e) {
+    console.warn('khazna_lock fetch exception:', e.message);
+  }
+  try {
+    const raw = localStorage.getItem(dailyLockStorageKey(branchName, date));
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+async function loadBranchDailyLocks() {
+  branchDailyLocks = {};
+  if (!currentBranchName) return;
+  try {
+    const { data, error } = await supabaseClient
+      .from('khazna_lock')
+      .select('*')
+      .eq('branch', currentBranchName);
+    if (!error && Array.isArray(data)) {
+      data.forEach(l => { if (l.lock_date) branchDailyLocks[l.lock_date] = l; });
+      return;
+    }
+    console.warn('khazna_lock branch fallback:', error?.message || error);
+  } catch(e) {
+    console.warn('khazna_lock branch exception:', e.message);
+  }
+  try {
+    Object.keys(localStorage).forEach(k => {
+      const prefix = `okb_daily_lock_${encodeURIComponent(currentBranchName)}_`;
+      if (!k.startsWith(prefix)) return;
+      const item = JSON.parse(localStorage.getItem(k) || 'null');
+      if (item?.lock_date) branchDailyLocks[item.lock_date] = item;
+    });
+  } catch(e) {}
+}
+
+function isOrderLockedByDaily(order) {
+  const d = getOrderDateKey(order);
+  if (!d) return false;
+  if (khaznaLockInfo && khaznaLockInfo.branch === currentBranchName && khaznaLockInfo.lock_date === d) return true;
+  return !!branchDailyLocks[d];
+}
+
+function disabledActionButton(label, tooltip) {
+  return `<button class="action-disabled" disabled title="${tooltip || 'هذه اليومية مقفولة'}" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:#64748b;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${label}</button>`;
+}
+
+function renderKhaznaLockUI() {
+  renderKhaznaShippingCostPermissionUI();
+  const date = getKhaznaSelectedDate();
+  const lockBtn = document.getElementById('lockDailyBtn');
+  const unlockBtn = document.getElementById('unlockDailyBtn');
+  const lockBadge = document.getElementById('khaznaLockBadge');
+  const isSingleDate = !!date;
+  const isLocked = !!khaznaLockInfo;
+
+  if (lockBtn) lockBtn.style.display = (isSingleDate && !isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+  if (unlockBtn) unlockBtn.style.display = (isSingleDate && isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+
+  if (lockBadge) {
+    if (isLocked) {
+      const lockedAt = khaznaLockInfo.locked_at ? formatDate(khaznaLockInfo.locked_at) : (khaznaLockInfo.created_at ? formatDate(khaznaLockInfo.created_at) : '—');
+      const by = khaznaLockInfo.locked_by || khaznaLockInfo.locked_by_name || 'User';
+      lockBadge.textContent = `🔒 هذه اليومية مقفولة بتاريخ ${lockedAt} بواسطة ${by}`;
+      lockBadge.classList.add('visible');
+    } else {
+      lockBadge.textContent = '';
+      lockBadge.classList.remove('visible');
+    }
+  }
+}
+
+async function refreshKhaznaLockState() {
+  const date = getKhaznaSelectedDate();
+  khaznaLockInfo = date ? await fetchDailyLock(currentBranchName, date) : null;
+  if (khaznaLockInfo && !khaznaLockInfo.branch) khaznaLockInfo.branch = currentBranchName;
+  renderKhaznaLockUI();
+}
+
+async function lockKhaznaDay() {
+  if (!canManageDailyLock()) { alert('قفل اليومية متاح للأدمن و Account Manager فقط'); return; }
+  const date = getKhaznaSelectedDate();
+  if (!date) { alert('اختار يوم واحد فقط لقفل اليومية'); return; }
+  const msg = `هل أنت متأكد من قفل يومية ${date} لفرع ${currentBranchName}؟\nلن يمكن تعديل أو حذف أي أوردر بتاريخ هذا اليوم بعد القفل.`;
+  if (!confirm(msg)) return;
+
+  const payload = {
+    branch: currentBranchName,
+    lock_date: date,
+    locked_by: currentUser?.name || currentUser?.username || 'User',
+    locked_at: new Date().toISOString()
+  };
+
+  let saved = false;
+  try {
+    const { error } = await supabaseClient.from('khazna_lock').insert([payload]);
+    if (!error) saved = true;
+    else if (!String(error.message || '').toLowerCase().includes('duplicate')) console.warn('khazna_lock insert fallback:', error.message);
+  } catch(e) {
+    console.warn('khazna_lock insert exception:', e.message);
+  }
+
+  if (!saved) {
+    try { localStorage.setItem(dailyLockStorageKey(currentBranchName, date), JSON.stringify(payload)); } catch(e) {}
+  }
+
+  khaznaLockInfo = payload;
+  branchDailyLocks[date] = payload;
+  renderKhaznaLockUI();
+  renderKhaznaOrders();
+  if (typeof renderBranchOrders === 'function') renderBranchOrders();
+  alert('✅ تم قفل اليومية بنجاح');
+}
+
+async function unlockKhaznaDay() {
+  if (!canManageDailyLock()) { alert('فتح القفل متاح للأدمن و Account Manager فقط'); return; }
+  const date = getKhaznaSelectedDate();
+  if (!date) { alert('اختار يوم واحد فقط'); return; }
+  if (!confirm(`هل تريد فتح قفل يومية ${date} لفرع ${currentBranchName}؟`)) return;
+
+  try {
+    await supabaseClient.from('khazna_lock').delete().eq('branch', currentBranchName).eq('lock_date', date);
+  } catch(e) { console.warn('khazna_lock delete exception:', e.message); }
+  try { localStorage.removeItem(dailyLockStorageKey(currentBranchName, date)); } catch(e) {}
+
+  khaznaLockInfo = null;
+  delete branchDailyLocks[date];
+  renderKhaznaLockUI();
+  renderKhaznaOrders();
+  if (typeof renderBranchOrders === 'function') renderBranchOrders();
+  alert('✅ تم فتح القفل');
+}
+
+function openKhaznaPage() {
+  if (!canManageKhaznaAndTransfer()) { alert('الخزنة متاحة للأدمن و Account Manager فقط'); return; }
+  renderKhaznaShippingCostPermissionUI();
+  hideAllPages();
+  document.getElementById('khaznaPage').classList.remove('hidden');
+  document.getElementById('khaznaTitle').textContent = currentBranchName;
+  // تعيين تاريخ اليوم تلقائياً
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('khaznaFromDate').value = today;
+  document.getElementById('khaznaToDate').value = today;
+  khaznaSelectedIds = new Set();
+  khaznaShippingCost = 0;
+  if (document.getElementById('khaznaBarcodeSearch')) document.getElementById('khaznaBarcodeSearch').value = '';
+  if (document.getElementById('khaznaFilterStatus')) document.getElementById('khaznaFilterStatus').value = 'Signed';
+  if (document.getElementById('khaznaFilterEmployee')) document.getElementById('khaznaFilterEmployee').value = 'الكل';
+  loadKhaznaData();
+}
+
+function closeKhaznaPage() {
+  hideAllPages();
+  document.getElementById('branchPage').classList.remove('hidden');
+  document.getElementById('khaznaTitle').textContent = currentBranchName;
+}
+
+async function loadKhaznaData() {
+  const from = document.getElementById('khaznaFromDate').value;
+  const to   = document.getElementById('khaznaToDate').value;
+  if (!from && !to) { alert('اختر تاريخ أولاً'); return; }
+
+  const badge = document.getElementById('khaznaBadge');
+  badge.style.display = 'inline-block';
+  badge.textContent = from === to ? '📅 ' + from : '📅 ' + (from || 'البداية') + ' → ' + (to || 'النهاية');
+
+  // مهم: الخزنة بتتفلتر بتاريخ التحصيل وليس تاريخ إنشاء الأوردر.
+  // لذلك بنجيب أوردرات Signed للفرع، وبعدها بنفلتر محليًا حسب آخر تحصيل مسجل داخل COLLECT_META.
+  let query = supabaseClient
+    .from('orders')
+    .select('*')
+    .eq('branch', currentBranchName)
+    .eq('status', 'Signed')
+    .order('created_at', { ascending: false });
+
+  const { data, error } = await query;
+  if (error) { alert('خطأ: ' + error.message); return; }
+
+  khaznaOrders = (data || [])
+    .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
+    .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
+
+  khaznaSelectedIds = new Set();
+  await refreshKhaznaLockState();
+  renderKhaznaEmployeeFilter();
+  renderKhaznaStats();
+  renderKhaznaOrders();
+}
+
+function resetKhaznaFilter() {
+  document.getElementById('khaznaFromDate').value = '';
+  document.getElementById('khaznaToDate').value = '';
+  document.getElementById('khaznaBadge').style.display = 'none';
+  khaznaOrders = [];
+  khaznaShippingCost = 0;
+  khaznaSelectedIds = new Set();
+  khaznaLockInfo = null;
+  renderKhaznaLockUI();
+  renderKhaznaEmployeeFilter();
+  renderKhaznaStats();
+  renderKhaznaOrders();
+}
+
+function getLatestCollectEntry(order) {
+  const meta = getCollectMeta(order);
+  const history = Array.isArray(meta.history) ? meta.history : [];
+  return history.length ? history[history.length - 1] : null;
+}
+
+function getKhaznaShippingTotal() {
+  const autoShipping = khaznaOrders.reduce((sum, order) => {
+    const last = getLatestCollectEntry(order);
+    return sum + Number(last?.shipping || 0);
+  }, 0);
+  return autoShipping + Number(khaznaShippingCost || 0);
+}
+
+function getKhaznaTransfersTotal() {
+  return khaznaOrders.reduce((sum, order) => {
+    const last = getLatestCollectEntry(order);
+    const method = last && last.payment_method ? String(last.payment_method).toLowerCase() : '';
+    if (method === 'instapay' || method === 'wallet') {
+      return sum + Number(last.sales || order.price || 0);
+    }
+    return sum;
+  }, 0);
+}
+
+function getKhaznaFilteredOrders() {
+  const search = (document.getElementById('khaznaBarcodeSearch')?.value || '').trim().toLowerCase();
+  const statusFilter = document.getElementById('khaznaFilterStatus')?.value || 'الكل';
+  const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
+
+  return khaznaOrders.filter(o => {
+    if (o.status !== 'Signed') return false;
+    const barcode = String(o.order_barcode || '').toLowerCase();
+    const ticket = String(o.ticket_id || '').toLowerCase();
+    const id = String(o.id || '').toLowerCase();
+    const matchSearch = !search ||
+      barcode.includes(search) ||
+      ticket.includes(search) ||
+      id.includes(search) ||
+      String(o.customer_name || '').toLowerCase().includes(search) ||
+      String(o.phone || '').toLowerCase().includes(search) ||
+      String(o.employee_name || '').toLowerCase().includes(search);
+    const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
+    const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
+    return matchSearch && matchStatus && matchEmp;
+  });
+}
+
+function renderKhaznaEmployeeFilter() {
+  const empSel = document.getElementById('khaznaFilterEmployee');
+  if (!empSel) return;
+  const current = empSel.value;
+  const employees = [...new Set(khaznaOrders.map(o => o.employee_name).filter(Boolean))];
+  empSel.innerHTML = '<option value="الكل">كل الموظفين</option>' + employees.map(e => `<option value="${e}">${e}</option>`).join('');
+  empSel.value = employees.includes(current) ? current : 'الكل';
+}
+
+function renderKhaznaStats() {
+  renderKhaznaEmployeeFilter();
+  const visibleKhaznaOrders = getKhaznaFilteredOrders();
+  const totalSales = visibleKhaznaOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+  const originalKhaznaOrdersForCalc = khaznaOrders;
+  khaznaOrders = visibleKhaznaOrders;
+  const shippingTotal = getKhaznaShippingTotal();
+  const transfersTotal = getKhaznaTransfersTotal();
+  khaznaOrders = originalKhaznaOrdersForCalc;
+  const net = totalSales - shippingTotal - transfersTotal;
+
+  const fmt = v => enMoney(v);
+  const setEl = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+
+  setEl('kTotalSales',      fmt(totalSales));
+  setEl('kShippingCost',    fmt(shippingTotal));
+  setEl('kTransfers',       fmt(transfersTotal));
+  setEl('kNetAmount',       fmt(net));
+  setEl('kOrderCount',      visibleKhaznaOrders.length);
+  setEl('kMatchSales',      fmt(totalSales));
+  setEl('kMatchShipping',   fmt(shippingTotal));
+  setEl('kMatchTransfers',  fmt(transfersTotal));
+  setEl('kMatchNet',        fmt(net));
+
+  const statusEl = document.getElementById('kMatchStatus');
+  if (statusEl) {
+    if (net > 0) {
+      statusEl.textContent = '✅ الخزنة في رصيد';
+      statusEl.style.background = 'rgba(16,185,129,0.2)';
+      statusEl.style.color = '#10b981';
+    } else if (net < 0) {
+      statusEl.textContent = '⚠️ عجز في الخزنة';
+      statusEl.style.background = 'rgba(239,68,68,0.2)';
+      statusEl.style.color = '#ef4444';
+    } else {
+      statusEl.textContent = '= متطابق';
+      statusEl.style.background = 'rgba(99,102,241,0.2)';
+      statusEl.style.color = '#6366f1';
+    }
+  }
+}
+
+function editShippingCost() {
+  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن و Account Manager فقط'); return; }
+  if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
+  document.getElementById('kShippingCostEdit').style.display = 'block';
+  document.getElementById('kShippingCostInput').value = khaznaShippingCost || '';
+  document.getElementById('kShippingCostInput').focus();
+}
+
+function saveShippingCost() {
+  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن و Account Manager فقط'); return; }
+  if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
+  const val = Number(document.getElementById('kShippingCostInput').value || 0);
+  khaznaShippingCost = val;
+  document.getElementById('kShippingCostEdit').style.display = 'none';
+  renderKhaznaStats();
+}
+
+function cancelShippingCost() {
+  document.getElementById('kShippingCostEdit').style.display = 'none';
+}
+
+function renderKhaznaOrders() {
+  const tbody = document.getElementById('khaznaOrdersBody');
+  if (!tbody) return;
+  renderKhaznaEmployeeFilter();
+  const visibleKhaznaOrders = getKhaznaFilteredOrders();
+  if (!visibleKhaznaOrders.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">لا توجد أوردرات في هذه الفترة</td></tr>';
+    return;
+  }
+  let rows = '';
+  visibleKhaznaOrders.forEach((o, i) => {
+    const price = Number(o.price || 0);
+    const deposit = Number(o.deposit || 0);
+    const remaining = price - deposit;
+    let statusClass = 'chip-transit';
+    if (o.status === 'Returned') statusClass = 'chip-returned';
+    else if (o.status === 'Signed') statusClass = 'chip-signed';
+    const lockedByDaily = isOrderLockedByDaily(o);
+    rows += `<tr>
+      <td>${i + 1}</td>
+      <td>${o.customer_name || ''}</td>
+      <td>${o.phone || ''}</td>
+      <td>${enMoney(price)}</td>
+      <td>${deposit > 0 ? enMoney(deposit) : '—'}</td>
+      <td>${remaining > 0 ? enMoney(remaining) : '—'}</td>
+      <td><span class="chip ${statusClass}" style="font-size:10px;">${o.status || ''}</span></td>
+      <td style="font-size:11px;">${formatDate(getOrderAccountingDateISO(o))}</td>
+      <td class="branch-actions-cell">
+        <div style="display:flex;gap:5px;align-items:center;">
+          ${getCollectButtonHtml(o, 'khazna')}
+          ${lockedByDaily ? '<span class="chip" style="font-size:10px;background:#78350f;color:#fbbf24;">🔒 مقفول</span>' : ''}
+          <button onclick="printSingleOrder('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🧾 إيصال</button>
+        </div>
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows;
+}
+
+function toggleKhaznaOrder(checkbox, id) {
+  if (checkbox.checked) khaznaSelectedIds.add(String(id));
+  else khaznaSelectedIds.delete(String(id));
+}
+
+function toggleAllKhaznaOrders(masterCb) {
+  document.querySelectorAll('.khazna-check').forEach(cb => {
+    cb.checked = masterCb.checked;
+    if (masterCb.checked) khaznaSelectedIds.add(cb.dataset.id);
+    else khaznaSelectedIds.delete(cb.dataset.id);
+  });
+}
+
+function selectAllKhaznaOrders() {
+  document.querySelectorAll('.khazna-check').forEach(cb => {
+    cb.checked = true;
+    khaznaSelectedIds.add(cb.dataset.id);
+  });
+  document.getElementById('khaznaSelectAll').checked = true;
+}
+
+function parseReceiptProducts(text) {
+  const lines = String(text || '').split(/\n+/).map(x => x.trim()).filter(Boolean);
+  return lines.map(line => {
+    const clean = line.replace(/^\d+\)\s*/, '').trim();
+    const m = clean.match(/^(.*?)\s*\|\s*([\d.]+)\s*[×x]\s*(\d+)/);
+    if (m) return { name: m[1].trim(), price: Number(m[2] || 0), qty: Number(m[3] || 1) };
+    return { name: clean, price: 0, qty: 1 };
+  });
+}
+
+// ============================================================
+// ===== PRINT RECEIPT =====
+// ============================================================
+function generateReceiptHTML(order, branchName) {
+  const qty       = Number(order.quantity || 1);
+  const delivFee  = Number(order.delivery_fee || 0);
+  const price     = Number(order.price || 0);
+  const unitPrice = qty > 0 ? (price - delivFee) / qty : price;
+  const deposit   = Number(order.deposit || 0);
+  const remaining = price - deposit;
+  const discount  = Number(getOrderMeta(order).discount || 0);
+  const products  = parseReceiptProducts(order.product_names || '');
+  const productsTotal = products.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0) || Math.max(0, price - delivFee + discount);
+  const ticketId  = getTicketId(order);
+  const barcode1  = getOrderBarcode(order);
+  const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
+  const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString('ar-EG') + ' ' + new Date(order.created_at).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'}) : '';
+
+  const productRows = products.length > 0
+    ? products.map(p => `
+        <tr>
+          <td style="padding:3px 0;font-size:11px;border-bottom:1px dashed #ccc;">${escapeHTML(p.name)}</td>
+          <td style="padding:3px 0;font-size:11px;text-align:center;border-bottom:1px dashed #ccc;">${p.qty}</td>
+          <td style="padding:3px 0;font-size:11px;text-align:center;border-bottom:1px dashed #ccc;">0</td>
+          <td style="padding:3px 0;font-size:11px;text-align:right;border-bottom:1px dashed #ccc;">${enMoney(p.price * p.qty)}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="4" style="padding:3px 0;font-size:11px;text-align:center;">—</td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>إيصال — ${order.customer_name}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Courier New', monospace;
+    width: 80mm;
+    margin: 0 auto;
+    padding: 8px;
+    background: #fff;
+    color: #000;
+    font-size: 12px;
+  }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; font-weight: bold; padding: 2px 0; }
+  .total-table td { padding: 3px 6px; font-size: 12px; }
+  .total-table .label { font-weight: bold; }
+  .total-table .value { text-align: left; font-weight: bold; }
+  .barcode-text {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-align: center;
+    margin: 4px 0 2px;
+    font-weight: bold;
+  }
+  .barcode-bars {
+    font-family: 'Libre Barcode 128', 'Courier New', monospace;
+    font-size: 36px;
+    text-align: center;
+    line-height: 1;
+    letter-spacing: -1px;
+    overflow: hidden;
+    display: block;
+  }
+  .footer-note { font-size: 11px; text-align: center; line-height: 1.6; margin: 6px 0; }
+  @media print {
+    body { width: 80mm; }
+    @page { size: 80mm auto; margin: 0; }
+  }
+
+/* ===== Professional Shipping Rank Dashboard ===== */
+.shipping-dashboard-shell{background:linear-gradient(135deg,rgba(2,6,23,.92),rgba(15,23,42,.96));border:1px solid rgba(59,130,246,.18);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
+.shipping-dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.shipping-dashboard-title{display:flex;align-items:center;gap:10px}.shipping-dashboard-title h1{margin:0!important;font-size:26px!important;color:#F8FAFC!important;font-weight:900}.shipping-dashboard-title .dash-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.15);border:1px solid rgba(147,197,253,.25);font-size:20px}.shipping-dashboard-subtitle{margin:6px 0 0!important;color:#CBD5E1!important;font-size:13px!important}
+.shipping-target-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}.shipping-target-card{min-height:170px;border-radius:18px;padding:20px;position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(2,6,23,.78));border:1px solid rgba(148,163,184,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.20)}.shipping-target-card:after{content:"";position:absolute;inset:auto -30px -45px auto;width:130px;height:130px;border-radius:50%;background:rgba(59,130,246,.12);filter:blur(6px)}.shipping-target-card.good{border-color:rgba(34,197,94,.42)}.shipping-target-card.blue{border-color:rgba(59,130,246,.42)}.shipping-target-card.bad{border-color:rgba(239,68,68,.42)}.shipping-target-card.warn{border-color:rgba(245,158,11,.42)}
+.ship-card-label{font-size:15px;font-weight:900;color:#E2E8F0;margin-bottom:10px;display:flex;align-items:center;gap:8px}.ship-card-number{font-size:42px;line-height:1;font-weight:900;letter-spacing:-1px;margin:8px 0;color:#F8FAFC}.ship-card-number.green{color:#57D85A}.ship-card-number.blue{color:#3B82F6}.ship-card-number.red{color:#FF5555}.ship-card-number.orange{color:#F59E0B}.ship-card-note{font-size:13px;color:#CBD5E1;margin-top:8px}.ship-progress{height:7px;border-radius:99px;background:rgba(148,163,184,.18);overflow:hidden;margin-top:16px}.ship-progress span{display:block;height:100%;border-radius:99px;background:#57D85A;width:0;transition:width .3s ease}.ship-progress.blue span{background:#3B82F6}.ship-progress.red span{background:#FF5555}.ship-progress.orange span{background:#F59E0B}
+.shipping-kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:18px 0;border:1px solid rgba(148,163,184,.18);border-radius:18px;overflow:hidden;background:rgba(15,23,42,.70)}.shipping-kpi-item{padding:18px 14px;display:flex;align-items:center;gap:12px;border-left:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-left:0}.shipping-kpi-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;background:rgba(59,130,246,.18)}.shipping-kpi-label{font-size:13px;color:#CBD5E1;font-weight:800;margin-bottom:4px}.shipping-kpi-value{font-size:26px;font-weight:900;color:#F8FAFC;line-height:1.1}.shipping-kpi-sub{font-size:11px;color:#94A3B8;margin-top:4px}
+.shipping-charts-grid{display:grid;grid-template-columns:1.1fr .9fr 1.1fr;gap:14px;margin-top:16px}.shipping-chart-card{background:linear-gradient(135deg,rgba(15,23,42,.90),rgba(2,6,23,.72));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:18px;min-height:330px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.shipping-chart-card h2{margin:0 0 14px!important;color:#F8FAFC!important;font-size:16px!important;font-weight:900}.shipping-chart-box{position:relative;height:260px;width:100%}.shipping-note-card{display:flex;align-items:center;gap:14px;margin-top:16px;border:1px solid rgba(59,130,246,.22);background:rgba(15,23,42,.62);border-radius:16px;padding:14px 16px;color:#CBD5E1;font-size:13px}.shipping-note-icon{width:34px;height:34px;min-width:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563EB;color:#fff;font-weight:900}
+@media(max-width:1200px){.shipping-target-grid{grid-template-columns:repeat(2,1fr)}.shipping-kpi-strip{grid-template-columns:repeat(3,1fr)}.shipping-charts-grid{grid-template-columns:1fr}}@media(max-width:720px){.shipping-target-grid,.shipping-kpi-strip{grid-template-columns:1fr}.shipping-kpi-item{border-left:0;border-bottom:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-bottom:0}}
+
+
+
+/* ===== Branch Orders Table Professional Wrap ===== */
+#branchOrdersTableBody td.branch-area-cell,
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:220px;
+  min-width:150px;
+  white-space:normal!important;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  line-height:1.45;
+  vertical-align:top;
+}
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:260px;
+  color:var(--text-muted);
+  font-size:12px;
+}
+#branchOrdersTableBody td.branch-actions-cell{
+  min-width:190px;
+  white-space:normal!important;
+}
+#branchOrdersTableBody td.branch-actions-cell > div{
+  flex-wrap:wrap;
+  justify-content:flex-start;
+}
+.branch-cancel-disabled{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:5px 10px;
+  border-radius:8px;
+  background:rgba(100,116,139,.22);
+  color:var(--text-muted);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header -->
+  <div class="center bold" style="font-size:16px;margin-bottom:2px;">صيدليات العقبي</div>
+  <div class="center" style="font-size:11px;">0223051430 - 012 02 7777 04</div>
+  <div class="center" style="font-size:10px;margin-bottom:2px;">مبيعات توصيل طلبات</div>
+  <div class="center" style="font-size:10px;">فرع ${branchName}</div>
+
+  <div class="divider-solid"></div>
+
+  <!-- Order Info -->
+  <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;">
+    <span>Ticket ID: <strong>${ticketId}</strong></span>
+    <span>Time: ${orderDate}</span>
+  </div>
+  <div style="font-size:10px;margin-bottom:4px;">العميل: <strong>${order.customer_name || ''}</strong></div>
+  <div style="font-size:10px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>
+  <div style="font-size:10px;margin-bottom:6px;">العنوان: <strong>${order.area || ''}</strong></div>
+
+  <div class="divider"></div>
+
+  <!-- Products Table -->
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:right;">المنتج</th>
+        <th style="text-align:center;">كمية</th>
+        <th style="text-align:center;">خصم</th>
+        <th style="text-align:right;">سعر</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${productRows}
+    </tbody>
+  </table>
+
+  <div class="divider"></div>
+
+  <!-- Totals -->
+  <table class="total-table">
+    <tr>
+      <td class="label">سعر المنتجات</td>
+      <td class="value">${enMoney(productsTotal)}.00</td>
+    </tr>
+    <tr>
+      <td class="label">خصم</td>
+      <td class="value">${discount}.00</td>
+    </tr>
+    <tr>
+      <td class="label">خدمة التوصيل</td>
+      <td class="value">${delivFee > 0 ? enMoney(delivFee) + '.00' : '0.00'}</td>
+    </tr>
+    <tr style="border-top:1px solid #000;">
+      <td class="label bold" style="font-size:13px;">الإجمالي</td>
+      <td class="value bold" style="font-size:13px;">${enMoney(price)}.00</td>
+    </tr>
+    <tr>
+      <td class="label">المدفوع</td>
+      <td class="value">${deposit > 0 ? enMoney(deposit) + '.00' : '0.00'}</td>
+    </tr>
+    <tr style="background:#f0f0f0;">
+      <td class="label bold">الباقي</td>
+      <td class="value bold">${remaining > 0 ? enMoney(remaining) + '.00' : '0.00'}</td>
+    </tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <!-- Footer -->
+  <div class="footer-note">
+    توصيل الطلبات للمنازل<br>
+    الاستبدال والاسترجاع خلال 14 يوم<br>
+    مع تمنياتنا بدوام الصحة والعافية
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Barcode -->
+  <div class="barcode-bars">${barcode1}</div>
+  <div class="barcode-text">${barcode1}</div>
+
+  <div style="text-align:center;font-size:10px;color:#555;margin-top:6px;">Printed: ${printDate}</div>
+  <div style="margin-bottom:16px;"></div>
+</body>
+</html>`;
+}
+
+async function printSingleOrder(orderId) {
+  let order = khaznaOrders.find(o => String(o.id) === String(orderId));
+  if (!order) return;
+  order = await ensureOrderIdentifiers(order);
+  const win = window.open('', '_blank', 'width=400,height=700');
+  win.document.write(generateReceiptHTML(order, currentBranchName));
+  win.document.close();
+  win.onload = () => { win.focus(); };
+}
+
+async function printSelectedOrders() {
+  if (!khaznaSelectedIds.size) { alert('اختر أوردر واحد على الأقل للطباعة'); return; }
+  const selected = [];
+  for (const o of khaznaOrders.filter(o => khaznaSelectedIds.has(String(o.id)))) selected.push(await ensureOrderIdentifiers(o));
+  const win = window.open('', '_blank', 'width=400,height=700');
+  let combined = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
+  <style>@media print { .page-break { page-break-after: always; } }
+
+/* ===== Branch Orders Table Professional Wrap ===== */
+#branchOrdersTableBody td.branch-area-cell,
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:220px;
+  min-width:150px;
+  white-space:normal!important;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  line-height:1.45;
+  vertical-align:top;
+}
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:260px;
+  color:var(--text-muted);
+  font-size:12px;
+}
+#branchOrdersTableBody td.branch-actions-cell{
+  min-width:190px;
+  white-space:normal!important;
+}
+#branchOrdersTableBody td.branch-actions-cell > div{
+  flex-wrap:wrap;
+  justify-content:flex-start;
+}
+.branch-cancel-disabled{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:5px 10px;
+  border-radius:8px;
+  background:rgba(100,116,139,.22);
+  color:var(--text-muted);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+</style></head><body>`;
+  selected.forEach((o, idx) => {
+    const doc = new DOMParser().parseFromString(generateReceiptHTML(o, currentBranchName), 'text/html');
+    combined += '<div class="page-break">' + doc.body.innerHTML + '</div>';
+  });
+  combined += '</body></html>';
+  win.document.write(combined);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+}
+
+function printKhaznaReport() {
+  const from = document.getElementById('khaznaFromDate').value || '—';
+  const to   = document.getElementById('khaznaToDate').value   || '—';
+
+  // نفس الأرقام الظاهرة في داش بورد الخزنة بعد الفلاتر والبحث
+  const reportOrders = getKhaznaFilteredOrders();
+  const originalKhaznaOrdersForCalc = khaznaOrders;
+  khaznaOrders = reportOrders;
+  const totalSales = reportOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+  const shippingTotal = getKhaznaShippingTotal();
+  const transfersTotal = getKhaznaTransfersTotal();
+  const net = totalSales - shippingTotal - transfersTotal;
+  khaznaOrders = originalKhaznaOrdersForCalc;
+
+  const printDate = new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+
+  const orderRows = reportOrders.map((o,i) => `
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:4px;">${i+1}</td>
+      <td style="padding:4px;">${o.customer_name || ''}</td>
+      <td style="padding:4px;">${o.phone || ''}</td>
+      <td style="padding:4px;font-size:10px;">${o.product_names || '—'}</td>
+      <td style="padding:4px;text-align:right;">${enMoney(o.price)}</td>
+      <td style="padding:4px;text-align:right;">${Number(o.deposit||0) > 0 ? enMoney(o.deposit) : '—'}</td>
+      <td style="padding:4px;text-align:center;"><span style="background:#e5e7eb;padding:2px 6px;border-radius:4px;font-size:10px;">${o.status||''}</span></td>
+    </tr>`).join('');
+
+  const reportHTML = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><title>تقرير الخزنة</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; color: #000; font-size: 13px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
+  .stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-box { border: 1px solid #ddd; border-radius: 8px; padding: 12px 20px; text-align: center; min-width: 140px; }
+  .stat-box .label { font-size: 11px; color: #777; }
+  .stat-box .value { font-size: 20px; font-weight: bold; direction:ltr; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th { background: #f3f4f6; padding: 6px; font-size: 12px; text-align: right; }
+  td { direction:ltr; }
+  @media print { @page { size: A4; margin: 15mm; } }
+
+/* ===== Professional Shipping Rank Dashboard ===== */
+.shipping-dashboard-shell{background:linear-gradient(135deg,rgba(2,6,23,.92),rgba(15,23,42,.96));border:1px solid rgba(59,130,246,.18);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
+.shipping-dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.shipping-dashboard-title{display:flex;align-items:center;gap:10px}.shipping-dashboard-title h1{margin:0!important;font-size:26px!important;color:#F8FAFC!important;font-weight:900}.shipping-dashboard-title .dash-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.15);border:1px solid rgba(147,197,253,.25);font-size:20px}.shipping-dashboard-subtitle{margin:6px 0 0!important;color:#CBD5E1!important;font-size:13px!important}
+.shipping-target-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}.shipping-target-card{min-height:170px;border-radius:18px;padding:20px;position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(2,6,23,.78));border:1px solid rgba(148,163,184,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.20)}.shipping-target-card:after{content:"";position:absolute;inset:auto -30px -45px auto;width:130px;height:130px;border-radius:50%;background:rgba(59,130,246,.12);filter:blur(6px)}.shipping-target-card.good{border-color:rgba(34,197,94,.42)}.shipping-target-card.blue{border-color:rgba(59,130,246,.42)}.shipping-target-card.bad{border-color:rgba(239,68,68,.42)}.shipping-target-card.warn{border-color:rgba(245,158,11,.42)}
+.ship-card-label{font-size:15px;font-weight:900;color:#E2E8F0;margin-bottom:10px;display:flex;align-items:center;gap:8px}.ship-card-number{font-size:42px;line-height:1;font-weight:900;letter-spacing:-1px;margin:8px 0;color:#F8FAFC}.ship-card-number.green{color:#57D85A}.ship-card-number.blue{color:#3B82F6}.ship-card-number.red{color:#FF5555}.ship-card-number.orange{color:#F59E0B}.ship-card-note{font-size:13px;color:#CBD5E1;margin-top:8px}.ship-progress{height:7px;border-radius:99px;background:rgba(148,163,184,.18);overflow:hidden;margin-top:16px}.ship-progress span{display:block;height:100%;border-radius:99px;background:#57D85A;width:0;transition:width .3s ease}.ship-progress.blue span{background:#3B82F6}.ship-progress.red span{background:#FF5555}.ship-progress.orange span{background:#F59E0B}
+.shipping-kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:18px 0;border:1px solid rgba(148,163,184,.18);border-radius:18px;overflow:hidden;background:rgba(15,23,42,.70)}.shipping-kpi-item{padding:18px 14px;display:flex;align-items:center;gap:12px;border-left:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-left:0}.shipping-kpi-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;background:rgba(59,130,246,.18)}.shipping-kpi-label{font-size:13px;color:#CBD5E1;font-weight:800;margin-bottom:4px}.shipping-kpi-value{font-size:26px;font-weight:900;color:#F8FAFC;line-height:1.1}.shipping-kpi-sub{font-size:11px;color:#94A3B8;margin-top:4px}
+.shipping-charts-grid{display:grid;grid-template-columns:1.1fr .9fr 1.1fr;gap:14px;margin-top:16px}.shipping-chart-card{background:linear-gradient(135deg,rgba(15,23,42,.90),rgba(2,6,23,.72));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:18px;min-height:330px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.shipping-chart-card h2{margin:0 0 14px!important;color:#F8FAFC!important;font-size:16px!important;font-weight:900}.shipping-chart-box{position:relative;height:260px;width:100%}.shipping-note-card{display:flex;align-items:center;gap:14px;margin-top:16px;border:1px solid rgba(59,130,246,.22);background:rgba(15,23,42,.62);border-radius:16px;padding:14px 16px;color:#CBD5E1;font-size:13px}.shipping-note-icon{width:34px;height:34px;min-width:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563EB;color:#fff;font-weight:900}
+@media(max-width:1200px){.shipping-target-grid{grid-template-columns:repeat(2,1fr)}.shipping-kpi-strip{grid-template-columns:repeat(3,1fr)}.shipping-charts-grid{grid-template-columns:1fr}}@media(max-width:720px){.shipping-target-grid,.shipping-kpi-strip{grid-template-columns:1fr}.shipping-kpi-item{border-left:0;border-bottom:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-bottom:0}}
+
+
+
+/* ===== Branch Orders Table Professional Wrap ===== */
+#branchOrdersTableBody td.branch-area-cell,
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:220px;
+  min-width:150px;
+  white-space:normal!important;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  line-height:1.45;
+  vertical-align:top;
+}
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:260px;
+  color:var(--text-muted);
+  font-size:12px;
+}
+#branchOrdersTableBody td.branch-actions-cell{
+  min-width:190px;
+  white-space:normal!important;
+}
+#branchOrdersTableBody td.branch-actions-cell > div{
+  flex-wrap:wrap;
+  justify-content:flex-start;
+}
+.branch-cancel-disabled{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:5px 10px;
+  border-radius:8px;
+  background:rgba(100,116,139,.22);
+  color:var(--text-muted);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+</style>
+</head>
+<body>
+  <h1>🏦 تقرير الخزنة — فرع ${currentBranchName}</h1>
+  <div class="meta">الفترة: ${from} → ${to} | طُبع في: ${printDate}</div>
+  <div class="stats">
+    <div class="stat-box"><div class="label">إجمالي المبيعات</div><div class="value" style="color:#6366f1;">${enMoney(totalSales)}</div></div>
+    <div class="stat-box"><div class="label">مصروفات الشحن</div><div class="value" style="color:#ef4444;">${enMoney(shippingTotal)}</div></div>
+    <div class="stat-box"><div class="label">التحويلات</div><div class="value" style="color:#a855f7;">${enMoney(transfersTotal)}</div></div>
+    <div class="stat-box"><div class="label">صافي اليومية</div><div class="value" style="color:#10b981;">${enMoney(net)}</div></div>
+    <div class="stat-box"><div class="label">عدد الأوردرات</div><div class="value" style="color:#f59e0b;">${enNumber(reportOrders.length)}</div></div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>العميل</th><th>الموبايل</th><th>المنتجات</th><th>السعر</th><th>المدفوع</th><th>الحالة</th></tr></thead>
+    <tbody>${orderRows}</tbody>
+  </table>
+  <div style="margin-top:20px;border-top:2px solid #000;padding-top:10px;font-weight:bold;font-size:15px;direction:ltr;text-align:right;">
+    Net = ${enMoney(totalSales)} - ${enMoney(shippingTotal)} - ${enMoney(transfersTotal)} = <span style="color:#10b981;">${enMoney(net)}</span>
+  </div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  win.document.write(reportHTML);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+}
+
+async function printBranchOrderReceipt(orderId) {
+  let order = branchOrders.find(o => String(o.id) === String(orderId));
+  if (!order) { alert('مش لاقي بيانات الأوردر دا للطباعة'); return; }
+  order = await ensureOrderIdentifiers(order);
+  const win = window.open('', '_blank', 'width=400,height=700');
+  win.document.write(generateReceiptHTML(order, currentBranchName || order.branch || ''));
+  win.document.close();
+  win.onload = () => { win.focus(); };
+}
+
+// ===== تحصيل الأوردر =====
+let _collectOrderId   = null;
+let _collectOrderSrc  = null; // 'branch' | 'khazna'
+let _collectPaymentMethod = 'COD';
+let _collectExistingProof = '';
+
+
+function selectCollectPaymentMethod(method) {
+  _collectPaymentMethod = method || 'COD';
+  ['COD','Instapay','Wallet'].forEach(m => {
+    const el = document.getElementById('collectPay' + m);
+    if (el) el.checked = (m === _collectPaymentMethod);
+  });
+  const proofWrap = document.getElementById('collectProofWrap');
+  const proofHint = document.getElementById('collectProofHint');
+  if (proofWrap) proofWrap.style.display = (_collectPaymentMethod === 'COD') ? 'none' : 'block';
+  if (proofHint) {
+    proofHint.textContent = _collectPaymentMethod === 'COD'
+      ? ''
+      : '⚠️ يجب إرفاق إثبات الدفع قبل تأكيد التحصيل.';
+  }
+}
+
+function previewCollectProof(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!validateImageFile(file)) { input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('collectProofPreview');
+    const img = document.getElementById('collectProofImg');
+    if (preview && img) {
+      img.src = e.target.result;
+      preview.style.display = 'flex';
+    }
+    const hint = document.getElementById('collectProofHint');
+    if (hint) hint.textContent = '✅ تم اختيار إثبات الدفع.';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearCollectProof() {
+  const input = document.getElementById('collectProofInput');
+  const preview = document.getElementById('collectProofPreview');
+  if (input) input.value = '';
+  if (preview) preview.style.display = 'none';
+  const hint = document.getElementById('collectProofHint');
+  if (hint && _collectPaymentMethod !== 'COD') hint.textContent = '⚠️ يجب إرفاق إثبات الدفع قبل تأكيد التحصيل.';
+}
+
+function getLatestCollectPaymentMethod(order) {
+  const last = getLatestCollectEntry(order);
+  return last && last.payment_method ? String(last.payment_method) : 'COD';
+}
+
+function openCollectModal(orderId, customerName, price, deposit, src) {
+  if (!canCollectOrders()) { alert('زر التحصيل متاح للكاشير والأدمن ومدير الحسابات فقط'); return; }
+  const lockedOrder = getOrderByIdAny(orderId);
+  if (lockedOrder && isOrderLockedByDaily(lockedOrder)) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
+  const order = getOrderByIdAny(orderId);
+  if (order && !canCurrentUserCollect(order)) {
+    alert('تم استهلاك مرتين التحصيل المتاحة للموظف. أي تعديل جديد يتم من خلال الأدمن فقط.');
+    return;
+  }
+
+  _collectOrderId  = orderId;
+  _collectOrderSrc = src || 'branch';
+  document.getElementById('collectOrderModal').style.display = 'flex';
+  document.getElementById('collectCustomerLabel').textContent = customerName ? `العميل: ${customerName}` : 'تسوية المبلغ المحصّل من المندوب';
+
+  const remaining = Math.max(Number(price || 0) - Number(deposit || 0), 0);
+  const meta = order ? getCollectMeta(order) : { history: [] };
+  const last = meta.history && meta.history.length ? meta.history[meta.history.length - 1] : null;
+  document.getElementById('collectSalesInput').value    = last ? Number(last.sales || 0) : (remaining > 0 ? remaining : (Number(price||0) || ''));
+  document.getElementById('collectShippingInput').value = last ? Number(last.shipping || 0) : '';
+
+  _collectExistingProof = order && order.payment_image ? String(order.payment_image) : '';
+  const proofInput = document.getElementById('collectProofInput');
+  if (proofInput) proofInput.value = '';
+  const proofPreview = document.getElementById('collectProofPreview');
+  const proofImg = document.getElementById('collectProofImg');
+  if (_collectExistingProof && proofPreview && proofImg) {
+    proofImg.src = _collectExistingProof;
+    proofPreview.style.display = 'flex';
+  } else if (proofPreview) {
+    proofPreview.style.display = 'none';
+  }
+  selectCollectPaymentMethod(last && last.payment_method ? last.payment_method : 'COD');
+  calcCollect();
+}
+
+function closeCollectModal() {
+  document.getElementById('collectOrderModal').style.display = 'none';
+  _collectOrderId  = null;
+  _collectOrderSrc = null;
+  _collectPaymentMethod = 'COD';
+  _collectExistingProof = '';
+  clearCollectProof();
+}
+
+function calcCollect() {
+  const sales    = parseFloat(document.getElementById('collectSalesInput').value)    || 0;
+  const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
+  const net      = sales - shipping;
+
+  const cSalesEl = document.getElementById('cSales');
+  const cShippingEl = document.getElementById('cShipping');
+  const cRatioEl = document.getElementById('cRatio');
+  const cMarginEl = document.getElementById('cMargin');
+
+  if (cSalesEl) cSalesEl.textContent = sales.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+  if (cShippingEl) cShippingEl.textContent = shipping.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+  document.getElementById('cNet').textContent = net.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+
+  const ratio  = sales > 0 ? ((shipping / sales) * 100).toFixed(1) : 0;
+  const margin = sales > 0 ? ((net / sales) * 100).toFixed(1)      : 0;
+  if (cRatioEl) cRatioEl.textContent = ratio + '%';
+  if (cMarginEl) cMarginEl.textContent = margin + '%';
+
+  const box    = document.getElementById('collectNetBox');
+  const status = document.getElementById('cStatus');
+  const netEl  = document.getElementById('cNet');
+
+  if (net > 0) {
+    box.style.borderColor  = 'rgba(16,185,129,0.4)';
+    box.style.background   = 'rgba(16,185,129,0.06)';
+    netEl.style.color      = '#10b981';
+    status.textContent     = '✅ جاهز للتحصيل';
+    status.style.background= 'rgba(16,185,129,0.15)';
+    status.style.color     = '#10b981';
+  } else if (net < 0) {
+    box.style.borderColor  = 'rgba(239,68,68,0.4)';
+    box.style.background   = 'rgba(239,68,68,0.06)';
+    netEl.style.color      = '#ef4444';
+    status.textContent     = '⚠️ عجز — راجع المصاريف';
+    status.style.background= 'rgba(239,68,68,0.15)';
+    status.style.color     = '#ef4444';
+  } else {
+    box.style.borderColor  = 'rgba(100,116,139,0.3)';
+    box.style.background   = 'var(--bg-soft)';
+    netEl.style.color      = 'var(--text-muted)';
+    status.textContent     = 'أدخل البيانات';
+    status.style.background= 'var(--bg-soft)';
+    status.style.color     = 'var(--text-muted)';
+  }
+}
+
+async function confirmCollectOrder() {
+  if (!canCollectOrders()) { alert('زر التحصيل متاح للكاشير والأدمن ومدير الحسابات فقط'); return; }
+  if (!_collectOrderId) return;
+
+  const sales    = parseFloat(document.getElementById('collectSalesInput').value)    || 0;
+  const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
+  const net      = sales - shipping;
+  const customerLabel = document.getElementById('collectCustomerLabel').textContent;
+  const paymentMethod = _collectPaymentMethod || 'COD';
+  const proofInput = document.getElementById('collectProofInput');
+  const proofFile = proofInput && proofInput.files && proofInput.files.length ? proofInput.files[0] : null;
+
+  if (paymentMethod !== 'COD' && !proofFile && !_collectExistingProof) {
+    alert('⚠️ لازم ترفق إثبات الدفع الأول لو طريقة الدفع Instapay أو Wallet.');
+    if (proofInput) proofInput.focus();
+    return;
+  }
+
+  if (proofFile && !validateImageFile(proofFile)) return;
+
+  const confirmBtn = document.querySelector('#collectOrderModal button[onclick="confirmCollectOrder()"]');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'جاري التحصيل...'; }
+
+  try {
+    const currentOrder = getOrderByIdAny(_collectOrderId);
+    if (currentOrder && !canCurrentUserCollect(currentOrder)) {
+      alert('تم استهلاك مرتين التحصيل المتاحة للموظف. أي تعديل جديد يتم من خلال الأدمن فقط.');
+      return;
+    }
+
+    const oldNotes = currentOrder ? String(currentOrder.notes || '') : '';
+    const meta = currentOrder ? getCollectMeta(currentOrder) : { count: 0, history: [] };
+    const newCount = Number(meta.count || 0) + 1;
+    const updatedMeta = {
+      count: newCount,
+      history: [
+        ...(Array.isArray(meta.history) ? meta.history : []),
+        {
+          at: new Date().toISOString(),
+          by: currentUser ? (currentUser.name || currentUser.username || 'User') : 'User',
+          role: currentUser ? (currentUser.role || '') : '',
+          sales,
+          shipping,
+          net,
+          payment_method: paymentMethod,
+          proof_url: _collectExistingProof || ''
+        }
+      ]
+    };
+    let proofUrl = _collectExistingProof;
+    if (proofFile) {
+      const uploadedUrl = await uploadPaymentImage(proofFile, _collectOrderId);
+      if (!uploadedUrl) throw new Error('فشل رفع إثبات الدفع');
+      proofUrl = uploadedUrl;
+      const h = updatedMeta.history;
+      if (h && h.length) h[h.length - 1].proof_url = proofUrl;
+    }
+
+    const updatedNotes = buildNotesWithCollectMeta(oldNotes, updatedMeta);
+
+    // تحديث حالة الأوردر لـ Signed وتسجيل عدد مرات التحصيل في قاعدة البيانات
+    const { error } = await supabaseClient
+      .from('orders')
+      .update({ status: 'Signed', notes: updatedNotes, payment_image: proofUrl || null })
+      .eq('id', _collectOrderId);
+
+    if (error) throw error;
+
+    // تحديث الأوردر محليًا في الـ arrays عشان الداش بورد يتحدث
+    [branchOrders, khaznaOrders, orders].forEach(arr => {
+      if (!Array.isArray(arr)) return;
+      const idx = arr.findIndex(o => String(o.id) === String(_collectOrderId));
+      if (idx !== -1) {
+        arr[idx].status = 'Signed';
+        arr[idx].notes = updatedNotes;
+        arr[idx].payment_image = proofUrl || arr[idx].payment_image || null;
+      }
+    });
+
+    // مصروفات الشحن في الخزنة يتم حسابها تلقائيًا من آخر تحصيل مسجل لكل أوردر
+
+    // إعادة رسم الجداول والداش بورد
+    if (typeof renderBranchOrders === 'function') renderBranchOrders();
+    if (typeof renderKhaznaOrders === 'function') renderKhaznaOrders();
+    if (typeof renderKhaznaStats  === 'function') renderKhaznaStats();
+    if (typeof renderOrders       === 'function') renderOrders();
+    if (typeof renderAnalytics    === 'function') renderAnalytics();
+
+    alert(`✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي المبيعات: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed`);
+    closeCollectModal();
+
+  } catch(err) {
+    alert('حصلت مشكلة في تحديث الأوردر: ' + err.message);
+  } finally {
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ تحصيل الأوردر'; }
+  }
+}
+
+// ===== مطابقة اليومية =====
+function openDailyReconciliationModal() {
+  const modal = document.getElementById('dailyReconciliationModal');
+  modal.style.display = 'flex';
+
+  // Auto-fill from existing khazna data
+  const salesEl  = document.getElementById('kTotalSales');
+  const shipEl   = document.getElementById('kShippingCost');
+  const countEl  = document.getElementById('kOrderCount');
+
+  const salesVal  = parseFloat((salesEl  ? salesEl.textContent  : '0').replace(/[^\d.]/g,'')) || 0;
+  const shipVal   = parseFloat((shipEl   ? shipEl.textContent   : '0').replace(/[^\d.]/g,'')) || 0;
+  const countVal  = parseInt  ((countEl  ? countEl.textContent  : '0').replace(/[^\d]/g,''))  || 0;
+
+  document.getElementById('reconcileSales').value    = salesVal  || '';
+  document.getElementById('reconcileShipping').value = shipVal   || '';
+  document.getElementById('rOrderCount').textContent = countVal;
+
+  calcReconcile();
+}
+
+function closeDailyReconciliationModal() {
+  document.getElementById('dailyReconciliationModal').style.display = 'none';
+}
+
+function calcReconcile() {
+  const sales    = parseFloat(document.getElementById('reconcileSales').value)    || 0;
+  const shipping = parseFloat(document.getElementById('reconcileShipping').value) || 0;
+  const net      = sales - shipping;
+
+  document.getElementById('rSales').textContent    = sales.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+  document.getElementById('rShipping').textContent = shipping.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+  document.getElementById('rNet').textContent      = net.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+
+  const ratio  = sales > 0 ? ((shipping / sales) * 100).toFixed(1) : 0;
+  const margin = sales > 0 ? ((net / sales) * 100).toFixed(1)      : 0;
+  document.getElementById('rExpenseRatio').textContent = ratio  + '%';
+  document.getElementById('rMargin').textContent       = margin + '%';
+
+  const box    = document.getElementById('reconcileResultBox');
+  const status = document.getElementById('rStatus');
+  const netEl  = document.getElementById('rNet');
+
+  if (net > 0) {
+    box.style.borderColor  = 'rgba(16,185,129,0.4)';
+    box.style.background   = 'rgba(16,185,129,0.06)';
+    netEl.style.color      = '#10b981';
+    status.textContent     = '✅ مطابق — جاهز للتسليم';
+    status.style.background= 'rgba(16,185,129,0.15)';
+    status.style.color     = '#10b981';
+  } else if (net < 0) {
+    box.style.borderColor  = 'rgba(239,68,68,0.4)';
+    box.style.background   = 'rgba(239,68,68,0.06)';
+    netEl.style.color      = '#ef4444';
+    status.textContent     = '⚠️ عجز في الخزنة';
+    status.style.background= 'rgba(239,68,68,0.15)';
+    status.style.color     = '#ef4444';
+  } else {
+    box.style.borderColor  = 'rgba(100,116,139,0.3)';
+    box.style.background   = 'var(--bg-soft)';
+    netEl.style.color      = 'var(--text-muted)';
+    status.textContent     = 'أدخل البيانات للحساب';
+    status.style.background= 'var(--bg-soft)';
+    status.style.color     = 'var(--text-muted)';
+  }
+}
+
+function printReconciliationReport() {
+  const sales    = parseFloat(document.getElementById('reconcileSales').value)    || 0;
+  const shipping = parseFloat(document.getElementById('reconcileShipping').value) || 0;
+  const net      = sales - shipping;
+  const orders   = document.getElementById('rOrderCount').textContent || '0';
+  const ratio    = document.getElementById('rExpenseRatio').textContent || '0%';
+  const margin   = document.getElementById('rMargin').textContent     || '0%';
+  const branchName = typeof currentBranchName !== 'undefined' ? currentBranchName : '—';
+  const printDate  = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+
+  const fromVal = document.getElementById('khaznaFromDate') ? document.getElementById('khaznaFromDate').value || '—' : '—';
+  const toVal   = document.getElementById('khaznaToDate')   ? document.getElementById('khaznaToDate').value   || '—' : '—';
+
+  const statusText = net > 0 ? '✅ مطابق — جاهز للتسليم' : net < 0 ? '⚠️ عجز في الخزنة' : '—';
+  const netColor   = net >= 0 ? '#10b981' : '#ef4444';
+
+  const html = `<!DOCTYPE html><html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><title>مطابقة اليومية</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:30px;color:#111;font-size:14px;max-width:700px;margin:0 auto;}
+  h1{font-size:22px;margin-bottom:4px;color:#111;}
+  .meta{font-size:12px;color:#666;margin-bottom:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+  .box{border:1px solid #ddd;border-radius:10px;padding:16px;text-align:center;}
+  .box .lbl{font-size:11px;color:#888;margin-bottom:6px;}
+  .box .val{font-size:22px;font-weight:bold;}
+  .net-box{border:2px solid ${netColor};border-radius:14px;padding:22px;text-align:center;margin-bottom:18px;background:#f9f9f9;}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .info-box{border:1px solid #e5e7eb;border-radius:8px;padding:12px;text-align:center;background:#f9fafb;}
+  .info-box .lbl{font-size:10px;color:#888;}
+  .info-box .val{font-size:16px;font-weight:bold;margin-top:4px;}
+  .formula{text-align:center;padding:10px;color:#555;font-size:13px;border-top:1px dashed #ccc;border-bottom:1px dashed #ccc;margin:14px 0;}
+  @media print{@page{size:A5;margin:12mm;}body{padding:0;}}
+
+/* ===== Professional Shipping Rank Dashboard ===== */
+.shipping-dashboard-shell{background:linear-gradient(135deg,rgba(2,6,23,.92),rgba(15,23,42,.96));border:1px solid rgba(59,130,246,.18);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
+.shipping-dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.shipping-dashboard-title{display:flex;align-items:center;gap:10px}.shipping-dashboard-title h1{margin:0!important;font-size:26px!important;color:#F8FAFC!important;font-weight:900}.shipping-dashboard-title .dash-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.15);border:1px solid rgba(147,197,253,.25);font-size:20px}.shipping-dashboard-subtitle{margin:6px 0 0!important;color:#CBD5E1!important;font-size:13px!important}
+.shipping-target-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}.shipping-target-card{min-height:170px;border-radius:18px;padding:20px;position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(2,6,23,.78));border:1px solid rgba(148,163,184,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.20)}.shipping-target-card:after{content:"";position:absolute;inset:auto -30px -45px auto;width:130px;height:130px;border-radius:50%;background:rgba(59,130,246,.12);filter:blur(6px)}.shipping-target-card.good{border-color:rgba(34,197,94,.42)}.shipping-target-card.blue{border-color:rgba(59,130,246,.42)}.shipping-target-card.bad{border-color:rgba(239,68,68,.42)}.shipping-target-card.warn{border-color:rgba(245,158,11,.42)}
+.ship-card-label{font-size:15px;font-weight:900;color:#E2E8F0;margin-bottom:10px;display:flex;align-items:center;gap:8px}.ship-card-number{font-size:42px;line-height:1;font-weight:900;letter-spacing:-1px;margin:8px 0;color:#F8FAFC}.ship-card-number.green{color:#57D85A}.ship-card-number.blue{color:#3B82F6}.ship-card-number.red{color:#FF5555}.ship-card-number.orange{color:#F59E0B}.ship-card-note{font-size:13px;color:#CBD5E1;margin-top:8px}.ship-progress{height:7px;border-radius:99px;background:rgba(148,163,184,.18);overflow:hidden;margin-top:16px}.ship-progress span{display:block;height:100%;border-radius:99px;background:#57D85A;width:0;transition:width .3s ease}.ship-progress.blue span{background:#3B82F6}.ship-progress.red span{background:#FF5555}.ship-progress.orange span{background:#F59E0B}
+.shipping-kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:18px 0;border:1px solid rgba(148,163,184,.18);border-radius:18px;overflow:hidden;background:rgba(15,23,42,.70)}.shipping-kpi-item{padding:18px 14px;display:flex;align-items:center;gap:12px;border-left:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-left:0}.shipping-kpi-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;background:rgba(59,130,246,.18)}.shipping-kpi-label{font-size:13px;color:#CBD5E1;font-weight:800;margin-bottom:4px}.shipping-kpi-value{font-size:26px;font-weight:900;color:#F8FAFC;line-height:1.1}.shipping-kpi-sub{font-size:11px;color:#94A3B8;margin-top:4px}
+.shipping-charts-grid{display:grid;grid-template-columns:1.1fr .9fr 1.1fr;gap:14px;margin-top:16px}.shipping-chart-card{background:linear-gradient(135deg,rgba(15,23,42,.90),rgba(2,6,23,.72));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:18px;min-height:330px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.shipping-chart-card h2{margin:0 0 14px!important;color:#F8FAFC!important;font-size:16px!important;font-weight:900}.shipping-chart-box{position:relative;height:260px;width:100%}.shipping-note-card{display:flex;align-items:center;gap:14px;margin-top:16px;border:1px solid rgba(59,130,246,.22);background:rgba(15,23,42,.62);border-radius:16px;padding:14px 16px;color:#CBD5E1;font-size:13px}.shipping-note-icon{width:34px;height:34px;min-width:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563EB;color:#fff;font-weight:900}
+@media(max-width:1200px){.shipping-target-grid{grid-template-columns:repeat(2,1fr)}.shipping-kpi-strip{grid-template-columns:repeat(3,1fr)}.shipping-charts-grid{grid-template-columns:1fr}}@media(max-width:720px){.shipping-target-grid,.shipping-kpi-strip{grid-template-columns:1fr}.shipping-kpi-item{border-left:0;border-bottom:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-bottom:0}}
+
+
+
+/* ===== Branch Orders Table Professional Wrap ===== */
+#branchOrdersTableBody td.branch-area-cell,
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:220px;
+  min-width:150px;
+  white-space:normal!important;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  line-height:1.45;
+  vertical-align:top;
+}
+#branchOrdersTableBody td.branch-notes-cell{
+  max-width:260px;
+  color:var(--text-muted);
+  font-size:12px;
+}
+#branchOrdersTableBody td.branch-actions-cell{
+  min-width:190px;
+  white-space:normal!important;
+}
+#branchOrdersTableBody td.branch-actions-cell > div{
+  flex-wrap:wrap;
+  justify-content:flex-start;
+}
+.branch-cancel-disabled{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:5px 10px;
+  border-radius:8px;
+  background:rgba(100,116,139,.22);
+  color:var(--text-muted);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+</style></head>
+<body>
+  <h1>⚖️ مطابقة اليومية — ${branchName}</h1>
+  <div class="meta">الفترة: ${fromVal} → ${toVal} &nbsp;|&nbsp; طُبع في: ${printDate}</div>
+  <div class="grid">
+    <div class="box"><div class="lbl">💰 إجمالي مبيعات التوصيل</div><div class="val" style="color:#6366f1;">${sales.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div></div>
+    <div class="box"><div class="lbl">🚚 إجمالي مصروفات الشحنات</div><div class="val" style="color:#ef4444;">${shipping.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div></div>
+  </div>
+  <div class="formula">إجمالي المبيعات (${sales.toLocaleString('ar-EG')}) − مصاريف الشحن (${shipping.toLocaleString('ar-EG')}) = صافي الخزنة</div>
+  <div class="net-box">
+    <div style="font-size:12px;color:#555;margin-bottom:8px;">💵 صافي الخزنة (المبلغ المحصّل من المندوب)</div>
+    <div style="font-size:36px;font-weight:bold;color:${netColor};">${net.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div>
+    <div style="margin-top:8px;font-size:13px;font-weight:bold;color:${netColor};">${statusText}</div>
+  </div>
+  <div class="info-grid">
+    <div class="info-box"><div class="lbl">عدد الأوردرات</div><div class="val" style="color:#f59e0b;">${orders}</div></div>
+    <div class="info-box"><div class="lbl">نسبة المصاريف</div><div class="val" style="color:#ef4444;">${ratio}</div></div>
+    <div class="info-box"><div class="lbl">هامش الربح</div><div class="val" style="color:#10b981;">${margin}</div></div>
+  </div>
+  <div style="margin-top:24px;border-top:2px solid #000;padding-top:12px;font-size:13px;color:#555;text-align:center;">توقيع المحاسب: ________________ &nbsp;&nbsp;&nbsp; توقيع المندوب: ________________</div>
+</body></html>`;
+
+  const win = window.open('','_blank','width=750,height:700');
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+}
+
 // ===== بدء التشغيل =====
 initTheme();
 checkLogin();
+
+// ===== Fallback للزوم 75% في المتصفحات التي لا تدعم CSS zoom (مثل Firefox) =====
+(function applyZoomFallback() {
+  const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+  if (isFirefox) {
+    document.documentElement.style.zoom = '';
+    document.body.style.transformOrigin = 'top right';
+    document.body.style.transform = 'scale(0.75)';
+    document.body.style.width = '133.33%';
+  }
+})();
+
+function filterKhaznaBarcode(){ renderKhaznaStats(); renderKhaznaOrders(); }
