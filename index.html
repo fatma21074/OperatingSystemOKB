@@ -870,6 +870,170 @@
 </div>
 </div>
 </div>
+<!-- ===== مودال تحصيل الأوردر ===== -->
+<div id="collectOrderModal" onclick="if(event.target===this)closeCollectModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:0 24px 64px rgba(0,0,0,0.55);direction:rtl;">
+<!-- Header -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+<div style="display:flex;align-items:center;gap:10px;">
+<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.20));border:1px solid rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;backdrop-filter:blur(8px);">$</div>
+<div>
+<h3 style="margin:0;font-size:17px;color:var(--text-primary);">تحصيل الأوردر</h3>
+<p id="collectCustomerLabel" style="margin:2px 0 0;font-size:12px;color:var(--text-muted);">تسوية المبلغ المحصّل من المندوب</p>
+</div>
+</div>
+<button onclick="closeCollectModal()" style="background:var(--bg-soft);border:1px solid var(--border-color);color:var(--text-muted);width:34px;height:34px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">✕</button>
+</div>
+<!-- Summary Fields -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+<div style="background:var(--bg-soft);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:14px;">
+<label style="display:block;font-size:11px;color:#6366f1;font-weight:700;margin-bottom:6px;">💰 إجمالي مبيعات التوصيل</label>
+<input id="collectSalesInput" oninput="calcCollect()" placeholder="0.00" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid rgba(99,102,241,0.35);background:var(--bg-card);color:var(--text-primary);font-size:15px;font-weight:700;text-align:center;outline:none;" type="number"/>
+</div>
+<div style="background:var(--bg-soft);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:14px;">
+<label style="display:block;font-size:11px;color:#ef4444;font-weight:700;margin-bottom:6px;">🚚 إجمالي مصروف الشحنات</label>
+<input id="collectShippingInput" oninput="calcCollect()" placeholder="0.00" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid rgba(239,68,68,0.35);background:var(--bg-card);color:var(--text-primary);font-size:15px;font-weight:700;text-align:center;outline:none;" type="number"/>
+</div>
+</div>
+<!-- Payment Method -->
+<div style="background:var(--bg-soft);border:1px solid var(--border-color);border-radius:12px;padding:14px;margin-bottom:18px;">
+<label style="display:block;font-size:12px;color:var(--text-muted);font-weight:700;margin-bottom:10px;">💳 طريقة التحصيل</label>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+<label style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:10px;border:1px solid rgba(99,102,241,0.25);background:var(--bg-card);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-primary);">
+<input checked="" id="collectPayCOD" onchange="selectCollectPaymentMethod('COD')" style="width:auto;" type="checkbox"/> COD
+          </label>
+<label style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:10px;border:1px solid rgba(16,185,129,0.25);background:var(--bg-card);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-primary);">
+<input id="collectPayInstapay" onchange="selectCollectPaymentMethod('Instapay')" style="width:auto;" type="checkbox"/> Instapay
+          </label>
+<label style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:10px;border:1px solid rgba(245,158,11,0.25);background:var(--bg-card);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-primary);">
+<input id="collectPayWallet" onchange="selectCollectPaymentMethod('Wallet')" style="width:auto;" type="checkbox"/> Wallet
+          </label>
+</div>
+<div id="collectProofWrap" style="display:none;padding:10px;border-radius:10px;border:1px solid rgba(16,185,129,0.25);background:rgba(16,185,129,0.05);">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+<span id="collectProofHint" style="font-size:11px;color:#ef4444;font-weight:700;">⚠️ يجب إرفاق إثبات الدفع قبل تأكيد التحصيل.</span>
+<label style="cursor:pointer;background:#6366f1;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;">
+              📎 Attach
+              <input accept="image/*" id="collectProofInput" onchange="previewCollectProof(this)" style="display:none;" type="file">
+</input></label>
+</div>
+<div id="collectProofPreview" style="display:none;align-items:center;gap:10px;margin-top:8px;">
+<img id="collectProofImg" style="max-width:85px;max-height:85px;border-radius:8px;border:1px solid var(--border-color);"/>
+<button onclick="clearCollectProof()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
+</div>
+</div>
+</div>
+<!-- Mini Dashboard -->
+<div style="background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));border:1px solid var(--border-color);border-radius:14px;padding:18px;margin-bottom:18px;">
+<h4 style="margin:0 0 14px;font-size:13px;color:var(--text-muted);text-align:center;font-weight:600;">📊 ملخص التحصيل</h4>
+<div id="collectNetBox" style="text-align:center;padding:16px;border-radius:12px;border:2px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.06);transition:all 0.3s;">
+<p style="margin:0 0 5px;font-size:11px;color:var(--text-muted);">💵 المبلغ المحصّل من المندوب</p>
+<strong id="cNet" style="font-size:28px;color:#10b981;display:block;margin-bottom:4px;">0.00 ج.م</strong>
+<span id="cStatus" style="display:inline-block;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(16,185,129,0.15);color:#10b981;">جاهز للتحصيل</span>
+</div>
+</div>
+<!-- Actions -->
+<div style="display:flex;gap:10px;justify-content:flex-end;">
+<button onclick="closeCollectModal()" style="padding:10px 18px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إلغاء</button>
+<button onclick="confirmCollectOrder()" style="padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.22));backdrop-filter:blur(12px);color:#fff;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 14px rgba(100,210,240,0.2);text-shadow:0 1px 2px rgba(0,0,0,0.2);">✅ تحصيل الأوردر</button>
+</div>
+</div>
+</div>
+<!-- ===== مودال مطابقة اليومية ===== -->
+<div id="dailyReconciliationModal" onclick="if(event.target===this)closeDailyReconciliationModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:20px;padding:28px;width:100%;max-width:580px;box-shadow:0 24px 64px rgba(0,0,0,0.55);direction:rtl;max-height:90vh;overflow-y:auto;">
+<!-- Header -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+<div style="display:flex;align-items:center;gap:10px;">
+<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.20));border:1px solid rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;font-size:20px;backdrop-filter:blur(8px);">⚖️</div>
+<div>
+<h3 style="margin:0;font-size:17px;color:var(--text-primary);">مطابقة اليومية</h3>
+<p style="margin:2px 0 0;font-size:12px;color:var(--text-muted);">جرد وتسوية المبالغ المحصّلة من المندوب</p>
+</div>
+</div>
+<button onclick="closeDailyReconciliationModal()" style="background:var(--bg-soft);border:1px solid var(--border-color);color:var(--text-muted);width:34px;height:34px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">✕</button>
+</div>
+<!-- Input Fields -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+<!-- إجمالي مبيعات التوصيل -->
+<div style="background:var(--bg-soft);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:16px;">
+<label style="display:block;font-size:12px;color:#6366f1;font-weight:700;margin-bottom:8px;">💰 إجمالي مبيعات التوصيل</label>
+<div style="position:relative;">
+<input id="reconcileSales" oninput="calcReconcile()" placeholder="0.00" style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.4);background:var(--bg-card);color:var(--text-primary);font-size:16px;font-weight:700;text-align:center;outline:none;" type="number">
+<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-muted);">ج.م</span>
+</input></div>
+<p style="margin:6px 0 0;font-size:11px;color:var(--text-muted);text-align:center;">المبلغ الإجمالي للأوردرات</p>
+</div>
+<!-- إجمالي مصروف الشحنات -->
+<div style="background:var(--bg-soft);border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:16px;">
+<label style="display:block;font-size:12px;color:#ef4444;font-weight:700;margin-bottom:8px;">🚚 إجمالي مصروف الشحنات</label>
+<div style="position:relative;">
+<input id="reconcileShipping" oninput="calcReconcile()" placeholder="0.00" style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid rgba(239,68,68,0.4);background:var(--bg-card);color:var(--text-primary);font-size:16px;font-weight:700;text-align:center;outline:none;" type="number">
+<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-muted);">ج.م</span>
+</input></div>
+<p style="margin:6px 0 0;font-size:11px;color:var(--text-muted);text-align:center;">مصاريف شركات الشحن</p>
+</div>
+</div>
+<!-- Mini Dashboard -->
+<div id="reconcileDashboard" style="background:linear-gradient(135deg,var(--bg-soft) 0%,var(--bg-card) 100%);border:1px solid var(--border-color);border-radius:16px;padding:20px;margin-bottom:20px;">
+<h4 style="margin:0 0 16px;font-size:14px;color:var(--text-muted);text-align:center;font-weight:600;">📊 ملخص المطابقة</h4>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+<div style="text-align:center;padding:12px;background:var(--bg-card);border-radius:12px;border:1px solid rgba(99,102,241,0.2);">
+<p style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">إجمالي المبيعات</p>
+<strong id="rSales" style="font-size:20px;color:#6366f1;">0.00 ج.م</strong>
+</div>
+<div style="text-align:center;padding:12px;background:var(--bg-card);border-radius:12px;border:1px solid rgba(239,68,68,0.2);">
+<p style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">مصاريف الشحن</p>
+<strong id="rShipping" style="font-size:20px;color:#ef4444;">0.00 ج.م</strong>
+</div>
+</div>
+<!-- Divider with formula -->
+<div style="display:flex;align-items:center;gap:8px;margin:12px 0;color:var(--text-muted);font-size:12px;">
+<div style="flex:1;height:1px;background:var(--border-color);"></div>
+<span>المبيعات − المصاريف = صافي الخزنة</span>
+<div style="flex:1;height:1px;background:var(--border-color);"></div>
+</div>
+<!-- Net Result -->
+<div id="reconcileResultBox" style="text-align:center;padding:18px;border-radius:14px;border:2px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.06);transition:all 0.3s;">
+<p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">💵 صافي الخزنة (المبلغ المحصّل من المندوب)</p>
+<strong id="rNet" style="font-size:32px;color:#10b981;display:block;margin-bottom:6px;">0.00 ج.م</strong>
+<span id="rStatus" style="display:inline-block;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(16,185,129,0.15);color:#10b981;">جاهز للجرد</span>
+</div>
+<!-- Additional Info -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;">
+<div style="text-align:center;padding:10px;background:var(--bg-soft);border-radius:10px;">
+<p style="margin:0 0 3px;font-size:10px;color:var(--text-muted);">عدد الأوردرات</p>
+<strong id="rOrderCount" style="font-size:16px;color:#f59e0b;">0</strong>
+</div>
+<div style="text-align:center;padding:10px;background:var(--bg-soft);border-radius:10px;">
+<p style="margin:0 0 3px;font-size:10px;color:var(--text-muted);">نسبة المصاريف</p>
+<strong id="rExpenseRatio" style="font-size:16px;color:#ef4444;">0%</strong>
+</div>
+<div style="text-align:center;padding:10px;background:var(--bg-soft);border-radius:10px;">
+<p style="margin:0 0 3px;font-size:10px;color:var(--text-muted);">هامش الربح</p>
+<strong id="rMargin" style="font-size:16px;color:#10b981;">0%</strong>
+</div>
+</div>
+</div>
+<!-- Actions -->
+<div style="display:flex;gap:10px;justify-content:flex-end;">
+<button onclick="closeDailyReconciliationModal()" style="padding:10px 20px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إغلاق</button>
+<button onclick="printReconciliationReport()" style="padding:10px 20px;border-radius:10px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">🖨️ طباعة المطابقة</button>
+</div>
+</div>
+</div>
+<!-- ===== Transfer Order Modal ===== -->
+<div id="transferModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
+<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;padding:28px;width:360px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+<h3 style="margin:0 0 16px;font-size:16px;">🔄 تحويل الأوردر لشركة شحن</h3>
+<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">اختر شركة الشحن اللي هتحول عليها الأوردر — هيظهر في تقرير الشحن بس.</p>
+<select id="transferShippingSelect" style="width:100%;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;color:var(--text-main);font-size:14px;margin-bottom:16px;">
+<option value="">اختر شركة الشحن...</option>
+</select>
+<div style="display:flex;gap:10px;justify-content:flex-end;">
+<button onclick="closeTransferModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">إلغاء</button>
+<button onclick="confirmTransfer()" style="padding:8px 18px;border-radius:8px;border:none;background:#f59e0b;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ تأكيد التحويل</button>
+</div>
 <!-- ===== Footer ===== -->
 <footer class="app-footer">
     © 2024 elokaby Pharmacy System. جميع الحقوق محفوظة

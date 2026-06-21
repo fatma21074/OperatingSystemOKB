@@ -29,6 +29,13 @@ let analyticsDateTo = null;
 let shippingDateFrom = null;
 let shippingDateTo = null;
 
+// ===== KHAZNA PAGE - المتغيرات العامة =====
+let khaznaOrders = [];
+let khaznaShippingCost = 0;
+let khaznaSelectedIds = new Set();
+let khaznaLockInfo = null;
+let branchDailyLocks = {};
+
 // ===== دوال مساعدة =====
 const $ = id => document.getElementById(id);
 function num(v) { return Number(v || 0).toLocaleString("en-US"); }
@@ -40,7 +47,7 @@ function isManager() { return currentUser && getRoleKey(currentUser.role) === "m
 function isExecutiveAssistant() { return currentUser && getRoleKey(currentUser.role) === "executive_assistant"; }
 function getRoleKey(role) { return String(role || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); }
 function isSecretary() { const r = getRoleKey(currentUser && currentUser.role); return r === 'secretary' || r === 'receptionist'; }
-function isReceptionist() { return isSecretary(); } // Backward compatibility for old users saved as receptionist
+function isReceptionist() { return isSecretary(); }
 function isCashier() { return currentUser && getRoleKey(currentUser.role) === 'cashier'; }
 function isStoreManager() { return currentUser && getRoleKey(currentUser.role) === 'store_manager'; }
 function isAccountManager() { return currentUser && getRoleKey(currentUser.role) === 'account_manager'; }
@@ -60,7 +67,7 @@ function getCurrentUserManagedBranches() {
 function canAccessBranch(branchName) {
   if (isAdmin() || isManager() || isExecutiveAssistant() || isSecretary() || isAccountManager()) return true;
   if (isStoreManager() || isCashier()) return getCurrentUserManagedBranches().includes(branchName);
-  return true; // default for agent/other roles - unrestricted unless specified
+  return true;
 }
 function percent(p, t) { return t ? ((p / t) * 100).toFixed(1) + "%" : "0%"; }
 function percentNum(p, t) { return t ? ((p / t) * 100) : 0; }
@@ -70,7 +77,6 @@ function getFakeCount(list) { return list.filter(o => isFakeDoctorOrder(o) || is
 function getFakeDoctorCount(list) { return list.filter(o => isFakeDoctorOrder(o)).length; }
 function getFakeDeliveryUpdateCount(list) { return list.filter(o => isFakeDeliveryUpdateOrder(o)).length; }
 
-
 // ===== Ticket ID / Barcode System =====
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -78,13 +84,11 @@ function onlyDigits(value) {
 
 function formatSequentialTicketId(value) {
   const n = Math.max(1, Number(value || 1));
-  // أول 99,999 أوردر يظهروا 5 أرقام، وبعدها يزيد طبيعي 6 أرقام أو أكثر بدون حد
   return String(n).padStart(5, '0');
 }
 
 function generateOrderBarcode(ticketId) {
   const cleanTicket = onlyDigits(ticketId).padStart(5, '0');
-  // الباركود مبني على رقم التيكيت التسلسلي بالكامل، مش آخر 5 أرقام فقط
   return `11000000000${cleanTicket}`;
 }
 
@@ -128,7 +132,6 @@ async function getCurrentMaxTicketNumberFromDB() {
       break;
     }
 
-    // مهم: بنعدّ تسلسل التيكيت الجديد فقط، عشان الأوردرات القديمة العشوائية ما ترفعش العدّاد.
     (data || []).forEach(row => {
       if (!isNewTicketSequenceOrder(row)) return;
       const n = Number(onlyDigits(row?.ticket_id));
@@ -157,8 +160,6 @@ async function ticketExists(ids) {
 }
 
 async function reserveNextOrderIdentifiers() {
-  // الرقم المتسلسل يتم حجزه من Supabase Sequence مباشرة
-  // هذا يمنع التكرار حتى لو أكثر من فرع أنشأ أوردر في نفس اللحظة
   const { data, error } = await supabaseClient.rpc('get_next_order_ticket');
 
   if (error) {
@@ -181,7 +182,6 @@ async function reserveNextOrderIdentifiers() {
   return { ticket_id, order_barcode };
 }
 
-// kept for backward compatibility with older code paths
 async function makeOrderIdentifiers() {
   return reserveNextOrderIdentifiers();
 }
@@ -274,7 +274,6 @@ function renderKhaznaShippingCostPermissionUI() {
   if (editBox && !canEditKhaznaShippingCost()) editBox.style.display = 'none';
 }
 
-
 // ===== تحكم مرات التحصيل للموظفين =====
 const COLLECT_META_PREFIX = "[COLLECT_META:";
 const COLLECT_META_REGEX = /\n?\[COLLECT_META:([\s\S]*?)\]\s*$/;
@@ -306,7 +305,6 @@ function buildNotesWithOrderMeta(notes, meta) {
   const safeMeta = { ...(meta || {}), discount: Number(meta?.discount || 0) };
   return `${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
 }
-
 
 function getOrderByIdAny(orderId) {
   const pools = [branchOrders, khaznaOrders, orders];
@@ -359,7 +357,6 @@ function getCollectButtonHtml(order, src) {
   const meta = getCollectMeta(order);
   const count = Number(meta.count || 0);
 
-  // الموظف بعد مرتين لا يظهر له زر التحصيل نهائيًا
   if (!isAdmin() && count >= 2) return "";
 
   const isSecondEmployeeTry = !isAdmin() && count === 1;
@@ -381,7 +378,7 @@ function calcRevenueBreakdown(list) {
   const sum = arr => arr.reduce((s, o) => s + Number(o.price || 0), 0);
   return {
     total,
-   totalDeposit, 
+    totalDeposit,
     confirmed: sum(list.filter(o => o.status === "تم التأكيد")),
     pickedUp: sum(list.filter(o => o.status === "Picked-up")),
     inTransit: sum(list.filter(o => o.status === "In transit")),
@@ -537,11 +534,11 @@ async function deleteSelectedOrders() {
   selectedOrderIds.clear();
   await loadOrders();
 }
+
 // ===== دوال التحقق من الصورة والديبوزيت =====
 function validateDepositWithImage(deposit, imageFile, existingImageUrl) {
   if (deposit > 0) {
     if (!imageFile && !existingImageUrl) {
-      // ✅ استخدم backtick (`) بدلاً من ("):
       alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع ${money(deposit)}`);
       return false;
     }
@@ -549,12 +546,11 @@ function validateDepositWithImage(deposit, imageFile, existingImageUrl) {
   return true;
 }
 
-// التحقق من صحة الصورة (الحجم والنوع)
 function validateImageFile(file) {
   if (!file) return true;
   
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-  const maxSize = 5 * 1024 * 1024; // 5 ميجابايت
+  const maxSize = 5 * 1024 * 1024;
   
   if (!allowedTypes.includes(file.type)) {
     alert("❌ صيغة الصورة غير مدعومة. يرجى رفع صورة بصيغة JPG, PNG, WEBP أو GIF");
@@ -568,13 +564,13 @@ function validateImageFile(file) {
   
   return true;
 }
+
 // ===== دوال رفع وحذف الصور =====
 async function uploadPaymentImage(file, orderId) {
   if (!file || !orderId) return null;
   
   const fileExt = file.name.split('.').pop();
   const fileName = `order_${orderId}_${Date.now()}.${fileExt}`;
-  // ✅ المسار بدون اسم الـ bucket (الـ bucket بيتحدد في .from())
   const filePath = `${fileName}`;
   
   const { data, error } = await supabaseClient.storage
@@ -605,7 +601,7 @@ async function deletePaymentImage(imageUrl) {
   
   const { error } = await supabaseClient.storage
     .from('payment-proofs')
-    .remove([path]); // ✅ المسار بدون اسم الـ bucket;
+    .remove([path]);
     
   if (error) console.error("Delete error:", error);
 }
@@ -613,7 +609,6 @@ async function deletePaymentImage(imageUrl) {
 function previewPaymentImage(input) {
   const file = input.files[0];
   if (file) {
-    // التحقق من صحة الصورة قبل العرض
     if (!validateImageFile(file)) {
       input.value = "";
       return;
@@ -627,7 +622,6 @@ function previewPaymentImage(input) {
         img.src = e.target.result;
         preview.style.display = "block";
       }
-      // ✅ إخفاء التحذير فور رفع الصورة
       const warningEl = document.getElementById("depositImageWarning");
       if (warningEl) warningEl.style.display = "none";
     };
@@ -646,6 +640,7 @@ function clearPaymentImage() {
   
   checkDepositImageRequirement();
 }
+
 function viewPaymentImage(imageUrl) {
   if (!imageUrl) return;
   
@@ -668,8 +663,6 @@ function viewPaymentImage(imageUrl) {
   modal.onclick = () => modal.remove();
   document.body.appendChild(modal);
 }
-
-
 
 // ===== دوال الثيم =====
 function initTheme() {
@@ -865,29 +858,23 @@ function setupUserView() {
   document.querySelectorAll(".accounting-only").forEach(el => el.classList.toggle("hidden", !canManageKhaznaAndTransfer()));
   document.querySelectorAll(".branch-shipping-rank-only").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isOperationManager())));
 
-  // ===== صلاحيات الأدوار الجديدة (Executive Assistant / Secretary / Cashier / Store Manager) =====
-  // هذه الأدوار تشترك في: لا داشبورد ريبورت يومي، لا دكتور رانك، لا سيتنجز
   const isRestrictedRole = isExecutiveAssistant() || isSecretary() || isCashier() || isStoreManager() || isAccountManager();
   document.querySelectorAll(".restricted-role-hide").forEach(el => {
     if (isRestrictedRole) el.classList.add("hidden");
   });
 
-  // Shipping Rank: يظهر للـ Admin / Delivery Manager / Agent / Account Manager كداشبورد عام، ولـ Store Manager على فرعه فقط
   document.querySelectorAll('[data-page="shippingRankPage"]').forEach(el => {
     el.classList.toggle("hidden", !canViewShippingRank());
   });
 
-  // Store Manager لا يرى Analysis، يرى Shipping Rank فقط الخاص بفروعه
   document.querySelectorAll(".store-manager-hide").forEach(el => {
     el.classList.toggle("hidden", isStoreManager());
   });
 
-  // Users: تظهر لـ Executive Assistant بصلاحيات محدودة (حتى لو ليست admin)
   document.querySelectorAll(".executive-assistant-show").forEach(el => {
     if (isExecutiveAssistant()) el.classList.remove("hidden");
   });
 
-  // Store Manager / Cashier: تقييد الفروع المرئية في OKB Stores على الفروع المُدارة فقط
   if (isStoreManager() || isCashier()) {
     const managed = getCurrentUserManagedBranches();
     document.querySelectorAll(".okb-branch-btn").forEach(btn => {
@@ -1017,7 +1004,6 @@ function applyUsersFormRoleLock() {
   const roleSelect = $("newRole");
   if (!roleSelect) return;
   if (isExecutiveAssistant() && !isAdmin()) {
-    // قفل القائمة بالكامل على Secretary فقط لمساعد التنفيذي
     Array.from(roleSelect.options).forEach(opt => {
       opt.disabled = (opt.value !== "secretary");
     });
@@ -1053,12 +1039,10 @@ function resetForm() {
   if (priceEl) priceEl.value = "";
 
   clearProductCart('dash');
-  // ✅ إخفاء معاينة الصورة والتحذير
   clearPaymentImage();
   const warningEl = document.getElementById("depositImageWarning");
   if (warningEl) warningEl.style.display = "none";
 }
-
 
 // ===== Smart Product Cart Logic =====
 let dashProducts = [];
@@ -1267,11 +1251,7 @@ function hasProducts(scope) {
   return getCartArray(scope).length > 0;
 }
 
-
-// ===== حساب الإجمالي تلقائياً — داش بورد =====
 function calcDashTotal() { syncProductCartTotals('dash'); }
-
-// ===== حساب الإجمالي تلقائياً — صفحات الفروع =====
 function calcBranchTotal() { syncProductCartTotals('branch'); }
 
 // ===== Export صفحات الفروع =====
@@ -1436,6 +1416,7 @@ function renderOrders() {
   renderPagination("ordersPagination", filtered.length, "orders");
   syncBulkSelectionUI(page.rows);
 }
+
 function syncBulkSelectionUI(currentPageRows = []) {
   const bar = document.getElementById("bulkDeleteBar");
   const countEl = document.getElementById("selectedOrdersCount");
@@ -1451,6 +1432,7 @@ function syncBulkSelectionUI(currentPageRows = []) {
     selectPage.indeterminate = selectedInPage > 0 && selectedInPage < pageIds.length;
   }
 }
+
 orderForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -1469,18 +1451,15 @@ orderForm.addEventListener("submit", async (e) => {
   
   const submitButton = document.getElementById("submitBtn");
   
-  // قراءة الديبوزيت
   const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
   const imageFile = paymentImageInput?.files[0];
   
-  // ✅ التحقق: إذا كان الديبوزيت > 0 لازم يكون فيه صورة
   if (depositValue > 0 && !imageFile && !existingPaymentImage) {
     alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع هو ${money(depositValue)}`);
     if (paymentImageInput) paymentImageInput.focus();
     return;
   }
   
-  // ✅ التحقق من صحة الصورة (إذا وجدت)
   if (imageFile && !validateImageFile(imageFile)) {
     return;
   }
@@ -1530,7 +1509,6 @@ orderForm.addEventListener("submit", async (e) => {
     let result;
     
     if (editId) {
-      // منع تعديل أوردر Signed إلا للأدمن فقط
       const existingOrder = orders.find(x => String(x.id) === String(editId));
       if (existingOrder && String(existingOrder.status || '').trim() === 'Signed' && !isAdmin()) {
         alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط');
@@ -1538,12 +1516,10 @@ orderForm.addEventListener("submit", async (e) => {
         submitButton.textContent = 'حفظ التعديل';
         return;
       }
-      // تعديل أوردر موجود
       result = await supabaseClient.from("orders").update(orderData).eq("id", editId).select();
       if (result.error) throw result.error;
       orderId = editId;
     } else {
-      // إضافة أوردر جديد
       Object.assign(orderData, await reserveNextOrderIdentifiers());
       result = await supabaseClient.from("orders").insert([orderData]).select();
       if (result.error) throw result.error;
@@ -1556,11 +1532,9 @@ orderForm.addEventListener("submit", async (e) => {
       }
     }
     
-    // ✅ رفع الصورة إذا وجدت
     if (imageFile && orderId) {
       console.log("📸 Uploading image for order ID:", orderId);
       
-      // حذف الصورة القديمة إذا وجدت (في حالة التعديل)
       if (existingPaymentImage) {
         await deletePaymentImage(existingPaymentImage);
       }
@@ -1595,25 +1569,6 @@ orderForm.addEventListener("submit", async (e) => {
     submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
   }
 });
-// ===== دوال التحقق من الصورة =====
-function validateImageFile(file) {
-  if (!file) return true;
-  
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-  const maxSize = 5 * 1024 * 1024; // 5 MB
-  
-  if (!allowedTypes.includes(file.type)) {
-    alert("❌ صيغة الصورة غير مدعومة. يرجى رفع صورة بصيغة JPG, PNG, WEBP أو GIF");
-    return false;
-  }
-  
-  if (file.size > maxSize) {
-    alert(`❌ حجم الصورة كبير جداً (${(file.size / 1024 / 1024).toFixed(2)} MB). الحد الأقصى 5 ميجابايت`);
-    return false;
-  }
-  
-  return true;
-}
 
 function checkDepositImageRequirement() {
   const depositEl = document.getElementById("deposit");
@@ -1624,7 +1579,6 @@ function checkDepositImageRequirement() {
   
   if (!warningEl) return true;
   
-  // ✅ التحقق من وجود ملف مرفوع فعلياً أو صورة موجودة مسبقاً
   const hasFile = paymentImageInput && paymentImageInput.files && paymentImageInput.files.length > 0;
   const hasExisting = existingPaymentImage && existingPaymentImage.length > 0;
   
@@ -1658,7 +1612,6 @@ function checkBranchDepositImageRequirement() {
   return true;
 }
 
-
 window.editOrder = function (id) {
   const o = orders.find(x => String(x.id) === String(id));
   if (!o) return;
@@ -1677,7 +1630,6 @@ window.editOrder = function (id) {
   if($("deposit")) $("deposit").value = o.deposit || 0;
   status.value = o.status || "";
   $('orderNotes').value = cleanVisibleOrderNotes(o.notes || '');
-    // ✅ عرض الصورة الموجودة إن وجدت
   const existingImage = o.payment_image || "";
   const existingImageField = document.getElementById("existingPaymentImage");
   if (existingImageField) existingImageField.value = existingImage;
@@ -1692,7 +1644,6 @@ window.editOrder = function (id) {
     previewDiv.style.display = "none";
   }
   
-  // تنظيف حقل رفع الملف
   const fileInput = document.getElementById("paymentImage");
   if (fileInput) fileInput.value = "";
 
@@ -1709,7 +1660,6 @@ window.deleteOrder = async function (id) {
   const confirmDelete = confirm("هل أنت متأكد من حذف هذا الأوردر فقط؟");
   if (!confirmDelete) return;
   
-  // ✅ البحث عن الأوردر للحصول على رابط الصورة قبل الحذف
   const orderToDelete = orders.find(x => String(x.id) === String(id));
   
   const { error } = await supabaseClient.from("orders").delete().eq("id", id);
@@ -1719,7 +1669,6 @@ window.deleteOrder = async function (id) {
     return; 
   }
   
-  // ✅ حذف الصورة من التخزين إذا وجدت
   if (orderToDelete && orderToDelete.payment_image) {
     await deletePaymentImage(orderToDelete.payment_image);
   }
@@ -2006,7 +1955,6 @@ function updateShippingMiniDashboard() {
   if (backBtn) backBtn.classList.toggle('hidden', !branchShippingRankOverride);
 }
 
-
 function getBranchPerformanceRows() {
   const src = getShippingFilteredOrders();
   const branchesMap = [
@@ -2109,7 +2057,6 @@ function renderShippingRank() {
   if (pagination) pagination.innerHTML = "";
 }
 
-
 function renderDoctorRank() {
   const allRows = getDoctorRankRows();
   const rows = getFilteredDoctorRankRows();
@@ -2203,13 +2150,11 @@ function getShippingFilteredOrders() {
 
   let src = orders;
 
-  // لو الأدمن فتح Shipping Rank من داخل صفحة فرع، يرى هذا الفرع فقط
   if (branchShippingRankOverride) {
     const branchName = branchShippingRankOverride;
     const branchShippingName = getBranchShippingCompanyName(branchName);
     src = src.filter(o => o.branch === branchName || o.shipping_company === branchName || o.shipping_company === branchShippingName);
   }
-  // Store Manager يشوف Shipping Rank الخاص بفروعه فقط
   else if (isStoreManager()) {
     const managedBranches = getCurrentUserManagedBranches();
     const managedShippingNames = managedBranches.map(b => getBranchShippingCompanyName(b)).filter(Boolean);
@@ -2281,7 +2226,6 @@ function renderShippingCharts() {
   const returnCtx = document.getElementById('shippingReturnLineChart');
   if (returnCtx) charts['shippingReturnLineChart'] = new Chart(returnCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل المرتجعات', data: returnData, borderColor: '#FF5555', backgroundColor: 'rgba(239,68,68,.12)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 10%', data: labels.map(() => 10), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(25) });
 }
-
 
 function renderDoctorCharts() {
   const rows = getDoctorRankRows().slice(0, 10), labels = rows.map(r => r.doctor);
@@ -2356,7 +2300,6 @@ function renderUsers() {
       } catch (e) { managedBranchesText = "—"; }
     }
 
-    // Executive Assistant: لا يمكنه تعديل صلاحية أو حذف أي يوزر
     const canManageThisUser = isAdmin();
 
     const actions = `
@@ -2453,7 +2396,6 @@ async function saveEditedRole() {
   alert("✅ تم تحديث صلاحية المستخدم بنجاح");
   await loadUsers();
 
-  // لو الأدمن عدل صلاحية حسابه هو نفسه، نحدث الـ session
   if (currentUser && String(currentUser.id) === String(id)) {
     currentUser.role = newRoleVal;
     currentUser.managed_branches = updateData.managed_branches || null;
@@ -3065,7 +3007,6 @@ async function executeBulkImport() {
     let paymentImageUrl = "";
     if (mapping["payment_image"]) {
       paymentImageUrl = String(row[mapping["payment_image"]] || "").trim();
-      // التحقق من أن الرابط يبدأ بـ http (رابط صحيح)
       if (paymentImageUrl && !paymentImageUrl.startsWith("http")) {
         paymentImageUrl = ""; 
       }
@@ -3185,17 +3126,15 @@ document.addEventListener("click", (e) => {
     if (shippingCompanyFilterMenu) shippingCompanyFilterMenu.classList.remove("show");
   }
 });
-// أضف هذا بعد تحميل الصفحة
+
 document.addEventListener('DOMContentLoaded', function() {
   const depositInput = document.getElementById("deposit");
   const paymentImageInput = document.getElementById("paymentImage");
   
-  // مراقبة تغيير المبلغ المدفوع
   if (depositInput) {
     depositInput.addEventListener('input', checkDepositImageRequirement);
   }
   
-  // ✅ الإضافة الجديدة: مراقبة رفع الصورة
   if (paymentImageInput) {
     paymentImageInput.addEventListener('change', function() {
       previewPaymentImage(this);
@@ -3203,6 +3142,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
 // ===== Toggle Sidebar =====
 (function() {
   function initSidebarToggle() {
@@ -3279,24 +3219,19 @@ async function openBranchPage(branchName) {
   branchActiveDateFrom = null;
   branchActiveDateTo = null;
 
-  // إخفاء كل الصفحات
   hideAllPages();
 
-  // إظهار صفحة الفرع
   const bp = document.getElementById('branchPage');
   if (bp) bp.classList.remove('hidden');
 
-  // عنوان الصفحة
   const title = document.getElementById('branchPageTitle');
   if (title) title.textContent = '📦 Dashboard — فرع ' + branchName;
 
-  // sync user info
   const uName = document.getElementById('userNameHere');
   const uRole = document.getElementById('userRoleHere');
   if (uName) { const el = document.getElementById('branchUserNameInline'); if(el) el.textContent = uName.textContent; }
   if (uRole) { const el = document.getElementById('branchUserRoleInline'); if(el) el.textContent = uRole.textContent; }
 
-  // ملء الدكاترة وشركات الشحن
   const bDoc = document.getElementById('bDoctorName');
   if (bDoc) {
     bDoc.innerHTML = '<option value="">اختر اسم الدكتور</option>' + doctorsList.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
@@ -3304,7 +3239,6 @@ async function openBranchPage(branchName) {
   setBranchShippingSelectToCurrentBranch();
   setBranchStatusToDelivering();
 
-  // قفل اسم الموظف على اليوزر الحالي فقط — لا يمكن تسجيل أوردر بأي اسم غير اسم الحساب المسجل دخوله
   const bEmpEl = document.getElementById('bEmployeeName');
   if (bEmpEl && currentUser) {
     bEmpEl.value = currentUser.name;
@@ -3312,10 +3246,8 @@ async function openBranchPage(branchName) {
   }
 
   clearProductCart('branch');
-  // تحميل أوردرات الفرع
   await loadBranchOrders();
 
-  // إزالة active من sidebar
   document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
 }
 
@@ -3351,7 +3283,6 @@ function getBranchFilteredOrders() {
     return matchSearch && matchStatus && matchEmp && matchDate;
   });
 }
-
 
 function canChangeBranchOrderStatus() {
   const role = getRoleKey(currentUser && currentUser.role);
@@ -3466,7 +3397,6 @@ async function confirmBranchCancelStatus() {
   alert('تم تحويل الأوردر إلى Returned وإضافة سبب الإلغاء في الملاحظات');
 }
 
-
 function openBranchShippingRankFromBranch() {
   if (!(isAdmin() || isOperationManager())) { alert('زر Shipping Rank من صفحة الفرع متاح للأدمن و Operation Manager فقط'); return; }
   if (!currentBranchName) { alert('افتح صفحة فرع أولاً'); return; }
@@ -3500,7 +3430,6 @@ function closeBranchShippingRankToBranch() {
 function renderBranchOrders() {
   const filtered = getBranchFilteredOrders();
 
-  // stats
   const rev = filtered.reduce((s, o) => s + Number(o.price || 0), 0);
   const dep = filtered.reduce((s, o) => s + Number(o.deposit || 0), 0);
   const setEl = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
@@ -3516,7 +3445,6 @@ function renderBranchOrders() {
   setEl('bTotalRevenue', money(rev));
   setEl('bTotalDeposit', money(dep));
 
-  // employee filter
   const empSel = document.getElementById('bFilterEmployee');
   if (empSel) {
     const curEmp = empSel.value;
@@ -3525,7 +3453,6 @@ function renderBranchOrders() {
     empSel.value = employees.includes(curEmp) ? curEmp : 'الكل';
   }
 
-  // table
   const tbody = document.getElementById('branchOrdersTableBody');
   if (!tbody) return;
 
@@ -3590,7 +3517,6 @@ function renderBranchOrders() {
   });
   tbody.innerHTML = html;
 
-  // pagination
   const pag = document.getElementById('branchOrdersPagination');
   if (pag) {
     if (filtered.length <= PAGE) { pag.innerHTML = ''; return; }
@@ -3645,12 +3571,10 @@ function editBranchOrder(id) {
   alert('تعديل الأوردر يتم من الـ Dashboard الرئيسي');
 }
 
-// ===== submit form لصفحة الفرع =====
 document.addEventListener('DOMContentLoaded', function() {
   const branchForm = document.getElementById('branchOrderForm');
   if (!branchForm) return;
 
-  // search & filter listeners
   const bSearch = document.getElementById('bSearchInput');
   if (bSearch) {
     bSearch.addEventListener('input', () => { branchPageNum = 1; renderBranchOrders(); });
@@ -3742,7 +3666,6 @@ document.addEventListener('DOMContentLoaded', function() {
       Object.assign(orderData, await reserveNextOrderIdentifiers());
       const { data: inserted, error } = await supabaseClient.from('orders').insert([orderData]).select().single();
       if (error) throw error;
-      // رفع صورة الدفع لو موجودة
       const payImgInput = document.getElementById('bPaymentImage');
       if (payImgInput?.files[0] && inserted?.id) {
         const imgUrl = await uploadPaymentImage(payImgInput.files[0], inserted.id);
@@ -3765,8 +3688,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-
-// ===== Branch Payment Attach =====
 async function attachBranchPayment(input, orderId) {
   const file = input.files[0];
   if (!file) return;
@@ -3780,7 +3701,6 @@ async function attachBranchPayment(input, orderId) {
   await loadBranchOrders();
 }
 
-// ===== Branch Payment Preview =====
 function previewBranchPaymentImage(input) {
   const file = input.files[0];
   if (!file) return;
@@ -3808,7 +3728,6 @@ function clearBranchPaymentImage() {
   if (warning) warning.style.display = 'none';
 }
 
-// ===== Transfer Order =====
 let transferOrderId = null;
 
 function transferBranchOrder(orderId) {
@@ -3861,26 +3780,19 @@ async function confirmTransfer() {
   if (typeof loadOrders === 'function') await loadOrders();
 }
 
-
 // ============================================================
-// ===== KHAZNA PAGE =====
+// ===== KHAZNA PAGE - دوال تاريخ التحصيل =====
 // ============================================================
-let khaznaOrders = [];
-let khaznaShippingCost = 0;
-let khaznaSelectedIds = new Set();
-let khaznaLockInfo = null;
-let branchDailyLocks = {};
-
 
 function getOrderDateKey(order) {
   return getOrderAccountingDateKey(order);
 }
 
 function getOrderAccountingDateISO(order) {
-  // في الخزنة/قفل اليومية بنحاسب الأوردر على تاريخ التحصيل لو اتحصل، مش تاريخ إنشاء الأوردر.
-  // لو مفيش تحصيل مسجل قديم، بنرجع لتاريخ إنشاء الأوردر عشان السيستم يفضل شغال مع الداتا القديمة.
   const lastCollect = (typeof getLatestCollectEntry === 'function') ? getLatestCollectEntry(order) : null;
-  if (order && String(order.status || '') === 'Signed' && lastCollect && lastCollect.at) return String(lastCollect.at);
+  if (order && String(order.status || '') === 'Signed' && lastCollect && lastCollect.at) {
+    return String(lastCollect.at);
+  }
   return String(order?.created_at || '');
 }
 
@@ -3912,6 +3824,7 @@ function dailyLockStorageKey(branchName, date) {
 
 async function fetchDailyLock(branchName, date) {
   if (!branchName || !date) return null;
+  
   try {
     const { data, error } = await supabaseClient
       .from('khazna_lock')
@@ -3924,28 +3837,35 @@ async function fetchDailyLock(branchName, date) {
   } catch(e) {
     console.warn('khazna_lock fetch exception:', e.message);
   }
+  
   try {
     const raw = localStorage.getItem(dailyLockStorageKey(branchName, date));
     return raw ? JSON.parse(raw) : null;
-  } catch(e) { return null; }
+  } catch(e) { 
+    return null; 
+  }
 }
 
 async function loadBranchDailyLocks() {
   branchDailyLocks = {};
   if (!currentBranchName) return;
+  
   try {
     const { data, error } = await supabaseClient
       .from('khazna_lock')
       .select('*')
       .eq('branch', currentBranchName);
     if (!error && Array.isArray(data)) {
-      data.forEach(l => { if (l.lock_date) branchDailyLocks[l.lock_date] = l; });
+      data.forEach(l => { 
+        if (l.lock_date) branchDailyLocks[l.lock_date] = l; 
+      });
       return;
     }
     console.warn('khazna_lock branch fallback:', error?.message || error);
   } catch(e) {
     console.warn('khazna_lock branch exception:', e.message);
   }
+  
   try {
     Object.keys(localStorage).forEach(k => {
       const prefix = `okb_daily_lock_${encodeURIComponent(currentBranchName)}_`;
@@ -3959,13 +3879,25 @@ async function loadBranchDailyLocks() {
 function isOrderLockedByDaily(order) {
   const d = getOrderDateKey(order);
   if (!d) return false;
-  if (khaznaLockInfo && khaznaLockInfo.branch === currentBranchName && khaznaLockInfo.lock_date === d) return true;
+  
+  if (khaznaLockInfo && khaznaLockInfo.branch === currentBranchName && khaznaLockInfo.lock_date === d) {
+    return true;
+  }
+  
   return !!branchDailyLocks[d];
 }
 
 function disabledActionButton(label, tooltip) {
-  return `<button class="action-disabled" disabled title="${tooltip || 'هذه اليومية مقفولة'}" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:#64748b;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${label}</button>`;
+  return `<button class="action-disabled" disabled title="${tooltip || 'هذه اليومية مقفولة'}" 
+    style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;
+    border:none;background:#64748b;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">
+    ${label}
+  </button>`;
 }
+
+// ============================================================
+// ===== KHAZNA PAGE - واجهة المستخدم =====
+// ============================================================
 
 function renderKhaznaLockUI() {
   renderKhaznaShippingCostPermissionUI();
@@ -3976,12 +3908,18 @@ function renderKhaznaLockUI() {
   const isSingleDate = !!date;
   const isLocked = !!khaznaLockInfo;
 
-  if (lockBtn) lockBtn.style.display = (isSingleDate && !isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
-  if (unlockBtn) unlockBtn.style.display = (isSingleDate && isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+  if (lockBtn) {
+    lockBtn.style.display = (isSingleDate && !isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+  }
+  if (unlockBtn) {
+    unlockBtn.style.display = (isSingleDate && isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+  }
 
   if (lockBadge) {
     if (isLocked) {
-      const lockedAt = khaznaLockInfo.locked_at ? formatDate(khaznaLockInfo.locked_at) : (khaznaLockInfo.created_at ? formatDate(khaznaLockInfo.created_at) : '—');
+      const lockedAt = khaznaLockInfo.locked_at 
+        ? formatDate(khaznaLockInfo.locked_at) 
+        : (khaznaLockInfo.created_at ? formatDate(khaznaLockInfo.created_at) : '—');
       const by = khaznaLockInfo.locked_by || khaznaLockInfo.locked_by_name || 'User';
       lockBadge.textContent = `🔒 هذه اليومية مقفولة بتاريخ ${lockedAt} بواسطة ${by}`;
       lockBadge.classList.add('visible');
@@ -3995,14 +3933,24 @@ function renderKhaznaLockUI() {
 async function refreshKhaznaLockState() {
   const date = getKhaznaSelectedDate();
   khaznaLockInfo = date ? await fetchDailyLock(currentBranchName, date) : null;
-  if (khaznaLockInfo && !khaznaLockInfo.branch) khaznaLockInfo.branch = currentBranchName;
+  if (khaznaLockInfo && !khaznaLockInfo.branch) {
+    khaznaLockInfo.branch = currentBranchName;
+  }
   renderKhaznaLockUI();
 }
 
 async function lockKhaznaDay() {
-  if (!canManageDailyLock()) { alert('قفل اليومية متاح للأدمن و Account Manager فقط'); return; }
+  if (!canManageDailyLock()) { 
+    alert('قفل اليومية متاح للأدمن و Account Manager فقط'); 
+    return; 
+  }
+  
   const date = getKhaznaSelectedDate();
-  if (!date) { alert('اختار يوم واحد فقط لقفل اليومية'); return; }
+  if (!date) { 
+    alert('اختار يوم واحد فقط لقفل اليومية'); 
+    return; 
+  }
+  
   const msg = `هل أنت متأكد من قفل يومية ${date} لفرع ${currentBranchName}؟\nلن يمكن تعديل أو حذف أي أوردر بتاريخ هذا اليوم بعد القفل.`;
   if (!confirm(msg)) return;
 
@@ -4016,58 +3964,93 @@ async function lockKhaznaDay() {
   let saved = false;
   try {
     const { error } = await supabaseClient.from('khazna_lock').insert([payload]);
-    if (!error) saved = true;
-    else if (!String(error.message || '').toLowerCase().includes('duplicate')) console.warn('khazna_lock insert fallback:', error.message);
+    if (!error) {
+      saved = true;
+    } else if (!String(error.message || '').toLowerCase().includes('duplicate')) {
+      console.warn('khazna_lock insert fallback:', error.message);
+    }
   } catch(e) {
     console.warn('khazna_lock insert exception:', e.message);
   }
 
   if (!saved) {
-    try { localStorage.setItem(dailyLockStorageKey(currentBranchName, date), JSON.stringify(payload)); } catch(e) {}
+    try { 
+      localStorage.setItem(dailyLockStorageKey(currentBranchName, date), JSON.stringify(payload)); 
+    } catch(e) {}
   }
 
   khaznaLockInfo = payload;
   branchDailyLocks[date] = payload;
+  
   renderKhaznaLockUI();
   renderKhaznaOrders();
   if (typeof renderBranchOrders === 'function') renderBranchOrders();
+  
   alert('✅ تم قفل اليومية بنجاح');
 }
 
 async function unlockKhaznaDay() {
-  if (!canManageDailyLock()) { alert('فتح القفل متاح للأدمن و Account Manager فقط'); return; }
+  if (!canManageDailyLock()) { 
+    alert('فتح القفل متاح للأدمن و Account Manager فقط'); 
+    return; 
+  }
+  
   const date = getKhaznaSelectedDate();
-  if (!date) { alert('اختار يوم واحد فقط'); return; }
+  if (!date) { 
+    alert('اختار يوم واحد فقط'); 
+    return; 
+  }
+  
   if (!confirm(`هل تريد فتح قفل يومية ${date} لفرع ${currentBranchName}؟`)) return;
 
   try {
     await supabaseClient.from('khazna_lock').delete().eq('branch', currentBranchName).eq('lock_date', date);
-  } catch(e) { console.warn('khazna_lock delete exception:', e.message); }
-  try { localStorage.removeItem(dailyLockStorageKey(currentBranchName, date)); } catch(e) {}
+  } catch(e) { 
+    console.warn('khazna_lock delete exception:', e.message); 
+  }
+  
+  try { 
+    localStorage.removeItem(dailyLockStorageKey(currentBranchName, date)); 
+  } catch(e) {}
 
   khaznaLockInfo = null;
   delete branchDailyLocks[date];
+  
   renderKhaznaLockUI();
   renderKhaznaOrders();
   if (typeof renderBranchOrders === 'function') renderBranchOrders();
+  
   alert('✅ تم فتح القفل');
 }
 
 function openKhaznaPage() {
-  if (!canManageKhaznaAndTransfer()) { alert('الخزنة متاحة للأدمن و Account Manager فقط'); return; }
+  if (!canManageKhaznaAndTransfer()) { 
+    alert('الخزنة متاحة للأدمن و Account Manager فقط'); 
+    return; 
+  }
+  
   renderKhaznaShippingCostPermissionUI();
   hideAllPages();
   document.getElementById('khaznaPage').classList.remove('hidden');
   document.getElementById('khaznaTitle').textContent = currentBranchName;
-  // تعيين تاريخ اليوم تلقائياً
+  
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('khaznaFromDate').value = today;
   document.getElementById('khaznaToDate').value = today;
+  
   khaznaSelectedIds = new Set();
   khaznaShippingCost = 0;
-  if (document.getElementById('khaznaBarcodeSearch')) document.getElementById('khaznaBarcodeSearch').value = '';
-  if (document.getElementById('khaznaFilterStatus')) document.getElementById('khaznaFilterStatus').value = 'Signed';
-  if (document.getElementById('khaznaFilterEmployee')) document.getElementById('khaznaFilterEmployee').value = 'الكل';
+  
+  if (document.getElementById('khaznaBarcodeSearch')) {
+    document.getElementById('khaznaBarcodeSearch').value = '';
+  }
+  if (document.getElementById('khaznaFilterStatus')) {
+    document.getElementById('khaznaFilterStatus').value = 'Signed';
+  }
+  if (document.getElementById('khaznaFilterEmployee')) {
+    document.getElementById('khaznaFilterEmployee').value = 'الكل';
+  }
+  
   loadKhaznaData();
 }
 
@@ -4079,15 +4062,16 @@ function closeKhaznaPage() {
 
 async function loadKhaznaData() {
   const from = document.getElementById('khaznaFromDate').value;
-  const to   = document.getElementById('khaznaToDate').value;
-  if (!from && !to) { alert('اختر تاريخ أولاً'); return; }
+  const to = document.getElementById('khaznaToDate').value;
+  if (!from && !to) { 
+    alert('اختر تاريخ أولاً'); 
+    return; 
+  }
 
   const badge = document.getElementById('khaznaBadge');
   badge.style.display = 'inline-block';
   badge.textContent = from === to ? '📅 ' + from : '📅 ' + (from || 'البداية') + ' → ' + (to || 'النهاية');
 
-  // مهم: الخزنة بتتفلتر بتاريخ التحصيل وليس تاريخ إنشاء الأوردر.
-  // لذلك بنجيب أوردرات Signed للفرع، وبعدها بنفلتر محليًا حسب آخر تحصيل مسجل داخل COLLECT_META.
   let query = supabaseClient
     .from('orders')
     .select('*')
@@ -4096,13 +4080,17 @@ async function loadKhaznaData() {
     .order('created_at', { ascending: false });
 
   const { data, error } = await query;
-  if (error) { alert('خطأ: ' + error.message); return; }
+  if (error) { 
+    alert('خطأ: ' + error.message); 
+    return; 
+  }
 
   khaznaOrders = (data || [])
     .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
     .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
 
   khaznaSelectedIds = new Set();
+  
   await refreshKhaznaLockState();
   renderKhaznaEmployeeFilter();
   renderKhaznaStats();
@@ -4113,10 +4101,12 @@ function resetKhaznaFilter() {
   document.getElementById('khaznaFromDate').value = '';
   document.getElementById('khaznaToDate').value = '';
   document.getElementById('khaznaBadge').style.display = 'none';
+  
   khaznaOrders = [];
   khaznaShippingCost = 0;
   khaznaSelectedIds = new Set();
   khaznaLockInfo = null;
+  
   renderKhaznaLockUI();
   renderKhaznaEmployeeFilter();
   renderKhaznaStats();
@@ -4155,9 +4145,11 @@ function getKhaznaFilteredOrders() {
 
   return khaznaOrders.filter(o => {
     if (o.status !== 'Signed') return false;
+    
     const barcode = String(o.order_barcode || '').toLowerCase();
     const ticket = String(o.ticket_id || '').toLowerCase();
     const id = String(o.id || '').toLowerCase();
+    
     const matchSearch = !search ||
       barcode.includes(search) ||
       ticket.includes(search) ||
@@ -4165,8 +4157,10 @@ function getKhaznaFilteredOrders() {
       String(o.customer_name || '').toLowerCase().includes(search) ||
       String(o.phone || '').toLowerCase().includes(search) ||
       String(o.employee_name || '').toLowerCase().includes(search);
+      
     const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
+    
     return matchSearch && matchStatus && matchEmp;
   });
 }
@@ -4174,16 +4168,21 @@ function getKhaznaFilteredOrders() {
 function renderKhaznaEmployeeFilter() {
   const empSel = document.getElementById('khaznaFilterEmployee');
   if (!empSel) return;
+  
   const current = empSel.value;
   const employees = [...new Set(khaznaOrders.map(o => o.employee_name).filter(Boolean))];
-  empSel.innerHTML = '<option value="الكل">كل الموظفين</option>' + employees.map(e => `<option value="${e}">${e}</option>`).join('');
+  
+  empSel.innerHTML = '<option value="الكل">كل الموظفين</option>' + 
+    employees.map(e => `<option value="${e}">${e}</option>`).join('');
   empSel.value = employees.includes(current) ? current : 'الكل';
 }
 
 function renderKhaznaStats() {
   renderKhaznaEmployeeFilter();
+  
   const visibleKhaznaOrders = getKhaznaFilteredOrders();
   const totalSales = visibleKhaznaOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+  
   const originalKhaznaOrdersForCalc = khaznaOrders;
   khaznaOrders = visibleKhaznaOrders;
   const shippingTotal = getKhaznaShippingTotal();
@@ -4192,17 +4191,20 @@ function renderKhaznaStats() {
   const net = totalSales - shippingTotal - transfersTotal;
 
   const fmt = v => enMoney(v);
-  const setEl = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  const setEl = (id, v) => { 
+    const el = document.getElementById(id); 
+    if(el) el.textContent = v; 
+  };
 
-  setEl('kTotalSales',      fmt(totalSales));
-  setEl('kShippingCost',    fmt(shippingTotal));
-  setEl('kTransfers',       fmt(transfersTotal));
-  setEl('kNetAmount',       fmt(net));
-  setEl('kOrderCount',      visibleKhaznaOrders.length);
-  setEl('kMatchSales',      fmt(totalSales));
-  setEl('kMatchShipping',   fmt(shippingTotal));
-  setEl('kMatchTransfers',  fmt(transfersTotal));
-  setEl('kMatchNet',        fmt(net));
+  setEl('kTotalSales', fmt(totalSales));
+  setEl('kShippingCost', fmt(shippingTotal));
+  setEl('kTransfers', fmt(transfersTotal));
+  setEl('kNetAmount', fmt(net));
+  setEl('kOrderCount', visibleKhaznaOrders.length);
+  setEl('kMatchSales', fmt(totalSales));
+  setEl('kMatchShipping', fmt(shippingTotal));
+  setEl('kMatchTransfers', fmt(transfersTotal));
+  setEl('kMatchNet', fmt(net));
 
   const statusEl = document.getElementById('kMatchStatus');
   if (statusEl) {
@@ -4246,21 +4248,27 @@ function cancelShippingCost() {
 function renderKhaznaOrders() {
   const tbody = document.getElementById('khaznaOrdersBody');
   if (!tbody) return;
+  
   renderKhaznaEmployeeFilter();
   const visibleKhaznaOrders = getKhaznaFilteredOrders();
+  
   if (!visibleKhaznaOrders.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="empty">لا توجد أوردرات في هذه الفترة</td></tr>';
     return;
   }
+  
   let rows = '';
   visibleKhaznaOrders.forEach((o, i) => {
     const price = Number(o.price || 0);
     const deposit = Number(o.deposit || 0);
     const remaining = price - deposit;
+    
     let statusClass = 'chip-transit';
     if (o.status === 'Returned') statusClass = 'chip-returned';
     else if (o.status === 'Signed') statusClass = 'chip-signed';
+    
     const lockedByDaily = isOrderLockedByDaily(o);
+    
     rows += `<tr>
       <td>${i + 1}</td>
       <td>${o.customer_name || ''}</td>
@@ -4274,24 +4282,36 @@ function renderKhaznaOrders() {
         <div style="display:flex;gap:5px;align-items:center;">
           ${getCollectButtonHtml(o, 'khazna')}
           ${lockedByDaily ? '<span class="chip" style="font-size:10px;background:#78350f;color:#fbbf24;">🔒 مقفول</span>' : ''}
-          <button onclick="printSingleOrder('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🧾 إيصال</button>
+          <button onclick="printSingleOrder('${o.id}')" 
+            style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;
+            border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;
+            font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">
+            🧾 إيصال
+          </button>
         </div>
       </td>
     </tr>`;
   });
+  
   tbody.innerHTML = rows;
 }
 
 function toggleKhaznaOrder(checkbox, id) {
-  if (checkbox.checked) khaznaSelectedIds.add(String(id));
-  else khaznaSelectedIds.delete(String(id));
+  if (checkbox.checked) {
+    khaznaSelectedIds.add(String(id));
+  } else {
+    khaznaSelectedIds.delete(String(id));
+  }
 }
 
 function toggleAllKhaznaOrders(masterCb) {
   document.querySelectorAll('.khazna-check').forEach(cb => {
     cb.checked = masterCb.checked;
-    if (masterCb.checked) khaznaSelectedIds.add(cb.dataset.id);
-    else khaznaSelectedIds.delete(cb.dataset.id);
+    if (masterCb.checked) {
+      khaznaSelectedIds.add(cb.dataset.id);
+    } else {
+      khaznaSelectedIds.delete(cb.dataset.id);
+    }
   });
 }
 
@@ -4308,7 +4328,9 @@ function parseReceiptProducts(text) {
   return lines.map(line => {
     const clean = line.replace(/^\d+\)\s*/, '').trim();
     const m = clean.match(/^(.*?)\s*\|\s*([\d.]+)\s*[×x]\s*(\d+)/);
-    if (m) return { name: m[1].trim(), price: Number(m[2] || 0), qty: Number(m[3] || 1) };
+    if (m) {
+      return { name: m[1].trim(), price: Number(m[2] || 0), qty: Number(m[3] || 1) };
+    }
     return { name: clean, price: 0, qty: 1 };
   });
 }
@@ -4388,55 +4410,6 @@ function generateReceiptHTML(order, branchName) {
     body { width: 80mm; }
     @page { size: 80mm auto; margin: 0; }
   }
-
-/* ===== Professional Shipping Rank Dashboard ===== */
-.shipping-dashboard-shell{background:linear-gradient(135deg,rgba(2,6,23,.92),rgba(15,23,42,.96));border:1px solid rgba(59,130,246,.18);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
-.shipping-dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.shipping-dashboard-title{display:flex;align-items:center;gap:10px}.shipping-dashboard-title h1{margin:0!important;font-size:26px!important;color:#F8FAFC!important;font-weight:900}.shipping-dashboard-title .dash-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.15);border:1px solid rgba(147,197,253,.25);font-size:20px}.shipping-dashboard-subtitle{margin:6px 0 0!important;color:#CBD5E1!important;font-size:13px!important}
-.shipping-target-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}.shipping-target-card{min-height:170px;border-radius:18px;padding:20px;position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(2,6,23,.78));border:1px solid rgba(148,163,184,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.20)}.shipping-target-card:after{content:"";position:absolute;inset:auto -30px -45px auto;width:130px;height:130px;border-radius:50%;background:rgba(59,130,246,.12);filter:blur(6px)}.shipping-target-card.good{border-color:rgba(34,197,94,.42)}.shipping-target-card.blue{border-color:rgba(59,130,246,.42)}.shipping-target-card.bad{border-color:rgba(239,68,68,.42)}.shipping-target-card.warn{border-color:rgba(245,158,11,.42)}
-.ship-card-label{font-size:15px;font-weight:900;color:#E2E8F0;margin-bottom:10px;display:flex;align-items:center;gap:8px}.ship-card-number{font-size:42px;line-height:1;font-weight:900;letter-spacing:-1px;margin:8px 0;color:#F8FAFC}.ship-card-number.green{color:#57D85A}.ship-card-number.blue{color:#3B82F6}.ship-card-number.red{color:#FF5555}.ship-card-number.orange{color:#F59E0B}.ship-card-note{font-size:13px;color:#CBD5E1;margin-top:8px}.ship-progress{height:7px;border-radius:99px;background:rgba(148,163,184,.18);overflow:hidden;margin-top:16px}.ship-progress span{display:block;height:100%;border-radius:99px;background:#57D85A;width:0;transition:width .3s ease}.ship-progress.blue span{background:#3B82F6}.ship-progress.red span{background:#FF5555}.ship-progress.orange span{background:#F59E0B}
-.shipping-kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:18px 0;border:1px solid rgba(148,163,184,.18);border-radius:18px;overflow:hidden;background:rgba(15,23,42,.70)}.shipping-kpi-item{padding:18px 14px;display:flex;align-items:center;gap:12px;border-left:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-left:0}.shipping-kpi-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;background:rgba(59,130,246,.18)}.shipping-kpi-label{font-size:13px;color:#CBD5E1;font-weight:800;margin-bottom:4px}.shipping-kpi-value{font-size:26px;font-weight:900;color:#F8FAFC;line-height:1.1}.shipping-kpi-sub{font-size:11px;color:#94A3B8;margin-top:4px}
-.shipping-charts-grid{display:grid;grid-template-columns:1.1fr .9fr 1.1fr;gap:14px;margin-top:16px}.shipping-chart-card{background:linear-gradient(135deg,rgba(15,23,42,.90),rgba(2,6,23,.72));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:18px;min-height:330px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.shipping-chart-card h2{margin:0 0 14px!important;color:#F8FAFC!important;font-size:16px!important;font-weight:900}.shipping-chart-box{position:relative;height:260px;width:100%}.shipping-note-card{display:flex;align-items:center;gap:14px;margin-top:16px;border:1px solid rgba(59,130,246,.22);background:rgba(15,23,42,.62);border-radius:16px;padding:14px 16px;color:#CBD5E1;font-size:13px}.shipping-note-icon{width:34px;height:34px;min-width:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563EB;color:#fff;font-weight:900}
-@media(max-width:1200px){.shipping-target-grid{grid-template-columns:repeat(2,1fr)}.shipping-kpi-strip{grid-template-columns:repeat(3,1fr)}.shipping-charts-grid{grid-template-columns:1fr}}@media(max-width:720px){.shipping-target-grid,.shipping-kpi-strip{grid-template-columns:1fr}.shipping-kpi-item{border-left:0;border-bottom:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-bottom:0}}
-
-
-
-/* ===== Branch Orders Table Professional Wrap ===== */
-#branchOrdersTableBody td.branch-area-cell,
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:220px;
-  min-width:150px;
-  white-space:normal!important;
-  word-break:break-word;
-  overflow-wrap:anywhere;
-  line-height:1.45;
-  vertical-align:top;
-}
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:260px;
-  color:var(--text-muted);
-  font-size:12px;
-}
-#branchOrdersTableBody td.branch-actions-cell{
-  min-width:190px;
-  white-space:normal!important;
-}
-#branchOrdersTableBody td.branch-actions-cell > div{
-  flex-wrap:wrap;
-  justify-content:flex-start;
-}
-.branch-cancel-disabled{
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  padding:5px 10px;
-  border-radius:8px;
-  background:rgba(100,116,139,.22);
-  color:var(--text-muted);
-  font-size:11px;
-  font-weight:800;
-  white-space:nowrap;
-}
-
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
@@ -4544,46 +4517,7 @@ async function printSelectedOrders() {
   const win = window.open('', '_blank', 'width=400,height=700');
   let combined = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
   <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
-  <style>@media print { .page-break { page-break-after: always; } }
-
-/* ===== Branch Orders Table Professional Wrap ===== */
-#branchOrdersTableBody td.branch-area-cell,
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:220px;
-  min-width:150px;
-  white-space:normal!important;
-  word-break:break-word;
-  overflow-wrap:anywhere;
-  line-height:1.45;
-  vertical-align:top;
-}
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:260px;
-  color:var(--text-muted);
-  font-size:12px;
-}
-#branchOrdersTableBody td.branch-actions-cell{
-  min-width:190px;
-  white-space:normal!important;
-}
-#branchOrdersTableBody td.branch-actions-cell > div{
-  flex-wrap:wrap;
-  justify-content:flex-start;
-}
-.branch-cancel-disabled{
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  padding:5px 10px;
-  border-radius:8px;
-  background:rgba(100,116,139,.22);
-  color:var(--text-muted);
-  font-size:11px;
-  font-weight:800;
-  white-space:nowrap;
-}
-
-</style></head><body>`;
+  <style>@media print { .page-break { page-break-after: always; } }</style></head><body>`;
   selected.forEach((o, idx) => {
     const doc = new DOMParser().parseFromString(generateReceiptHTML(o, currentBranchName), 'text/html');
     combined += '<div class="page-break">' + doc.body.innerHTML + '</div>';
@@ -4598,7 +4532,6 @@ function printKhaznaReport() {
   const from = document.getElementById('khaznaFromDate').value || '—';
   const to   = document.getElementById('khaznaToDate').value   || '—';
 
-  // نفس الأرقام الظاهرة في داش بورد الخزنة بعد الفلاتر والبحث
   const reportOrders = getKhaznaFilteredOrders();
   const originalKhaznaOrdersForCalc = khaznaOrders;
   khaznaOrders = reportOrders;
@@ -4636,55 +4569,6 @@ function printKhaznaReport() {
   th { background: #f3f4f6; padding: 6px; font-size: 12px; text-align: right; }
   td { direction:ltr; }
   @media print { @page { size: A4; margin: 15mm; } }
-
-/* ===== Professional Shipping Rank Dashboard ===== */
-.shipping-dashboard-shell{background:linear-gradient(135deg,rgba(2,6,23,.92),rgba(15,23,42,.96));border:1px solid rgba(59,130,246,.18);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
-.shipping-dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.shipping-dashboard-title{display:flex;align-items:center;gap:10px}.shipping-dashboard-title h1{margin:0!important;font-size:26px!important;color:#F8FAFC!important;font-weight:900}.shipping-dashboard-title .dash-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.15);border:1px solid rgba(147,197,253,.25);font-size:20px}.shipping-dashboard-subtitle{margin:6px 0 0!important;color:#CBD5E1!important;font-size:13px!important}
-.shipping-target-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}.shipping-target-card{min-height:170px;border-radius:18px;padding:20px;position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(2,6,23,.78));border:1px solid rgba(148,163,184,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.20)}.shipping-target-card:after{content:"";position:absolute;inset:auto -30px -45px auto;width:130px;height:130px;border-radius:50%;background:rgba(59,130,246,.12);filter:blur(6px)}.shipping-target-card.good{border-color:rgba(34,197,94,.42)}.shipping-target-card.blue{border-color:rgba(59,130,246,.42)}.shipping-target-card.bad{border-color:rgba(239,68,68,.42)}.shipping-target-card.warn{border-color:rgba(245,158,11,.42)}
-.ship-card-label{font-size:15px;font-weight:900;color:#E2E8F0;margin-bottom:10px;display:flex;align-items:center;gap:8px}.ship-card-number{font-size:42px;line-height:1;font-weight:900;letter-spacing:-1px;margin:8px 0;color:#F8FAFC}.ship-card-number.green{color:#57D85A}.ship-card-number.blue{color:#3B82F6}.ship-card-number.red{color:#FF5555}.ship-card-number.orange{color:#F59E0B}.ship-card-note{font-size:13px;color:#CBD5E1;margin-top:8px}.ship-progress{height:7px;border-radius:99px;background:rgba(148,163,184,.18);overflow:hidden;margin-top:16px}.ship-progress span{display:block;height:100%;border-radius:99px;background:#57D85A;width:0;transition:width .3s ease}.ship-progress.blue span{background:#3B82F6}.ship-progress.red span{background:#FF5555}.ship-progress.orange span{background:#F59E0B}
-.shipping-kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:18px 0;border:1px solid rgba(148,163,184,.18);border-radius:18px;overflow:hidden;background:rgba(15,23,42,.70)}.shipping-kpi-item{padding:18px 14px;display:flex;align-items:center;gap:12px;border-left:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-left:0}.shipping-kpi-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;background:rgba(59,130,246,.18)}.shipping-kpi-label{font-size:13px;color:#CBD5E1;font-weight:800;margin-bottom:4px}.shipping-kpi-value{font-size:26px;font-weight:900;color:#F8FAFC;line-height:1.1}.shipping-kpi-sub{font-size:11px;color:#94A3B8;margin-top:4px}
-.shipping-charts-grid{display:grid;grid-template-columns:1.1fr .9fr 1.1fr;gap:14px;margin-top:16px}.shipping-chart-card{background:linear-gradient(135deg,rgba(15,23,42,.90),rgba(2,6,23,.72));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:18px;min-height:330px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.shipping-chart-card h2{margin:0 0 14px!important;color:#F8FAFC!important;font-size:16px!important;font-weight:900}.shipping-chart-box{position:relative;height:260px;width:100%}.shipping-note-card{display:flex;align-items:center;gap:14px;margin-top:16px;border:1px solid rgba(59,130,246,.22);background:rgba(15,23,42,.62);border-radius:16px;padding:14px 16px;color:#CBD5E1;font-size:13px}.shipping-note-icon{width:34px;height:34px;min-width:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563EB;color:#fff;font-weight:900}
-@media(max-width:1200px){.shipping-target-grid{grid-template-columns:repeat(2,1fr)}.shipping-kpi-strip{grid-template-columns:repeat(3,1fr)}.shipping-charts-grid{grid-template-columns:1fr}}@media(max-width:720px){.shipping-target-grid,.shipping-kpi-strip{grid-template-columns:1fr}.shipping-kpi-item{border-left:0;border-bottom:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-bottom:0}}
-
-
-
-/* ===== Branch Orders Table Professional Wrap ===== */
-#branchOrdersTableBody td.branch-area-cell,
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:220px;
-  min-width:150px;
-  white-space:normal!important;
-  word-break:break-word;
-  overflow-wrap:anywhere;
-  line-height:1.45;
-  vertical-align:top;
-}
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:260px;
-  color:var(--text-muted);
-  font-size:12px;
-}
-#branchOrdersTableBody td.branch-actions-cell{
-  min-width:190px;
-  white-space:normal!important;
-}
-#branchOrdersTableBody td.branch-actions-cell > div{
-  flex-wrap:wrap;
-  justify-content:flex-start;
-}
-.branch-cancel-disabled{
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  padding:5px 10px;
-  border-radius:8px;
-  background:rgba(100,116,139,.22);
-  color:var(--text-muted);
-  font-size:11px;
-  font-weight:800;
-  white-space:nowrap;
-}
-
 </style>
 </head>
 <body>
@@ -4724,10 +4608,9 @@ async function printBranchOrderReceipt(orderId) {
 
 // ===== تحصيل الأوردر =====
 let _collectOrderId   = null;
-let _collectOrderSrc  = null; // 'branch' | 'khazna'
+let _collectOrderSrc  = null;
 let _collectPaymentMethod = 'COD';
 let _collectExistingProof = '';
-
 
 function selectCollectPaymentMethod(method) {
   _collectPaymentMethod = method || 'COD';
@@ -4929,7 +4812,6 @@ async function confirmCollectOrder() {
 
     const updatedNotes = buildNotesWithCollectMeta(oldNotes, updatedMeta);
 
-    // تحديث حالة الأوردر لـ Signed وتسجيل عدد مرات التحصيل في قاعدة البيانات
     const { error } = await supabaseClient
       .from('orders')
       .update({ status: 'Signed', notes: updatedNotes, payment_image: proofUrl || null })
@@ -4937,7 +4819,6 @@ async function confirmCollectOrder() {
 
     if (error) throw error;
 
-    // تحديث الأوردر محليًا في الـ arrays عشان الداش بورد يتحدث
     [branchOrders, khaznaOrders, orders].forEach(arr => {
       if (!Array.isArray(arr)) return;
       const idx = arr.findIndex(o => String(o.id) === String(_collectOrderId));
@@ -4948,9 +4829,6 @@ async function confirmCollectOrder() {
       }
     });
 
-    // مصروفات الشحن في الخزنة يتم حسابها تلقائيًا من آخر تحصيل مسجل لكل أوردر
-
-    // إعادة رسم الجداول والداش بورد
     if (typeof renderBranchOrders === 'function') renderBranchOrders();
     if (typeof renderKhaznaOrders === 'function') renderKhaznaOrders();
     if (typeof renderKhaznaStats  === 'function') renderKhaznaStats();
@@ -4972,7 +4850,6 @@ function openDailyReconciliationModal() {
   const modal = document.getElementById('dailyReconciliationModal');
   modal.style.display = 'flex';
 
-  // Auto-fill from existing khazna data
   const salesEl  = document.getElementById('kTotalSales');
   const shipEl   = document.getElementById('kShippingCost');
   const countEl  = document.getElementById('kOrderCount');
@@ -5067,55 +4944,6 @@ function printReconciliationReport() {
   .info-box .val{font-size:16px;font-weight:bold;margin-top:4px;}
   .formula{text-align:center;padding:10px;color:#555;font-size:13px;border-top:1px dashed #ccc;border-bottom:1px dashed #ccc;margin:14px 0;}
   @media print{@page{size:A5;margin:12mm;}body{padding:0;}}
-
-/* ===== Professional Shipping Rank Dashboard ===== */
-.shipping-dashboard-shell{background:linear-gradient(135deg,rgba(2,6,23,.92),rgba(15,23,42,.96));border:1px solid rgba(59,130,246,.18);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
-.shipping-dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}.shipping-dashboard-title{display:flex;align-items:center;gap:10px}.shipping-dashboard-title h1{margin:0!important;font-size:26px!important;color:#F8FAFC!important;font-weight:900}.shipping-dashboard-title .dash-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.15);border:1px solid rgba(147,197,253,.25);font-size:20px}.shipping-dashboard-subtitle{margin:6px 0 0!important;color:#CBD5E1!important;font-size:13px!important}
-.shipping-target-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}.shipping-target-card{min-height:170px;border-radius:18px;padding:20px;position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(2,6,23,.78));border:1px solid rgba(148,163,184,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.20)}.shipping-target-card:after{content:"";position:absolute;inset:auto -30px -45px auto;width:130px;height:130px;border-radius:50%;background:rgba(59,130,246,.12);filter:blur(6px)}.shipping-target-card.good{border-color:rgba(34,197,94,.42)}.shipping-target-card.blue{border-color:rgba(59,130,246,.42)}.shipping-target-card.bad{border-color:rgba(239,68,68,.42)}.shipping-target-card.warn{border-color:rgba(245,158,11,.42)}
-.ship-card-label{font-size:15px;font-weight:900;color:#E2E8F0;margin-bottom:10px;display:flex;align-items:center;gap:8px}.ship-card-number{font-size:42px;line-height:1;font-weight:900;letter-spacing:-1px;margin:8px 0;color:#F8FAFC}.ship-card-number.green{color:#57D85A}.ship-card-number.blue{color:#3B82F6}.ship-card-number.red{color:#FF5555}.ship-card-number.orange{color:#F59E0B}.ship-card-note{font-size:13px;color:#CBD5E1;margin-top:8px}.ship-progress{height:7px;border-radius:99px;background:rgba(148,163,184,.18);overflow:hidden;margin-top:16px}.ship-progress span{display:block;height:100%;border-radius:99px;background:#57D85A;width:0;transition:width .3s ease}.ship-progress.blue span{background:#3B82F6}.ship-progress.red span{background:#FF5555}.ship-progress.orange span{background:#F59E0B}
-.shipping-kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:18px 0;border:1px solid rgba(148,163,184,.18);border-radius:18px;overflow:hidden;background:rgba(15,23,42,.70)}.shipping-kpi-item{padding:18px 14px;display:flex;align-items:center;gap:12px;border-left:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-left:0}.shipping-kpi-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;background:rgba(59,130,246,.18)}.shipping-kpi-label{font-size:13px;color:#CBD5E1;font-weight:800;margin-bottom:4px}.shipping-kpi-value{font-size:26px;font-weight:900;color:#F8FAFC;line-height:1.1}.shipping-kpi-sub{font-size:11px;color:#94A3B8;margin-top:4px}
-.shipping-charts-grid{display:grid;grid-template-columns:1.1fr .9fr 1.1fr;gap:14px;margin-top:16px}.shipping-chart-card{background:linear-gradient(135deg,rgba(15,23,42,.90),rgba(2,6,23,.72));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:18px;min-height:330px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.shipping-chart-card h2{margin:0 0 14px!important;color:#F8FAFC!important;font-size:16px!important;font-weight:900}.shipping-chart-box{position:relative;height:260px;width:100%}.shipping-note-card{display:flex;align-items:center;gap:14px;margin-top:16px;border:1px solid rgba(59,130,246,.22);background:rgba(15,23,42,.62);border-radius:16px;padding:14px 16px;color:#CBD5E1;font-size:13px}.shipping-note-icon{width:34px;height:34px;min-width:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563EB;color:#fff;font-weight:900}
-@media(max-width:1200px){.shipping-target-grid{grid-template-columns:repeat(2,1fr)}.shipping-kpi-strip{grid-template-columns:repeat(3,1fr)}.shipping-charts-grid{grid-template-columns:1fr}}@media(max-width:720px){.shipping-target-grid,.shipping-kpi-strip{grid-template-columns:1fr}.shipping-kpi-item{border-left:0;border-bottom:1px solid rgba(148,163,184,.18)}.shipping-kpi-item:last-child{border-bottom:0}}
-
-
-
-/* ===== Branch Orders Table Professional Wrap ===== */
-#branchOrdersTableBody td.branch-area-cell,
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:220px;
-  min-width:150px;
-  white-space:normal!important;
-  word-break:break-word;
-  overflow-wrap:anywhere;
-  line-height:1.45;
-  vertical-align:top;
-}
-#branchOrdersTableBody td.branch-notes-cell{
-  max-width:260px;
-  color:var(--text-muted);
-  font-size:12px;
-}
-#branchOrdersTableBody td.branch-actions-cell{
-  min-width:190px;
-  white-space:normal!important;
-}
-#branchOrdersTableBody td.branch-actions-cell > div{
-  flex-wrap:wrap;
-  justify-content:flex-start;
-}
-.branch-cancel-disabled{
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  padding:5px 10px;
-  border-radius:8px;
-  background:rgba(100,116,139,.22);
-  color:var(--text-muted);
-  font-size:11px;
-  font-weight:800;
-  white-space:nowrap;
-}
-
 </style></head>
 <body>
   <h1>⚖️ مطابقة اليومية — ${branchName}</h1>
@@ -5148,7 +4976,7 @@ function printReconciliationReport() {
 initTheme();
 checkLogin();
 
-// ===== Fallback للزوم 75% في المتصفحات التي لا تدعم CSS zoom (مثل Firefox) =====
+// ===== Fallback للزوم 75% =====
 (function applyZoomFallback() {
   const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
   if (isFirefox) {
