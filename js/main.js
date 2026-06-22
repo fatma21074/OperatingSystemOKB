@@ -4138,32 +4138,7 @@ function getKhaznaTransfersTotal() {
   }, 0);
 }
 
-function getKhaznaFilteredOrders() {
-  const search = (document.getElementById('khaznaBarcodeSearch')?.value || '').trim().toLowerCase();
-  const statusFilter = document.getElementById('khaznaFilterStatus')?.value || 'الكل';
-  const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
 
-  return khaznaOrders.filter(o => {
-    if (o.status !== 'Signed') return false;
-    
-    const barcode = String(o.order_barcode || '').toLowerCase();
-    const ticket = String(o.ticket_id || '').toLowerCase();
-    const id = String(o.id || '').toLowerCase();
-    
-    const matchSearch = !search ||
-      barcode.includes(search) ||
-      ticket.includes(search) ||
-      id.includes(search) ||
-      String(o.customer_name || '').toLowerCase().includes(search) ||
-      String(o.phone || '').toLowerCase().includes(search) ||
-      String(o.employee_name || '').toLowerCase().includes(search);
-      
-    const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
-    const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
-    
-    return matchSearch && matchStatus && matchEmp;
-  });
-}
 
 function renderKhaznaEmployeeFilter() {
   const empSel = document.getElementById('khaznaFilterEmployee');
@@ -4335,170 +4310,6 @@ function parseReceiptProducts(text) {
   });
 }
 
-// ============================================================
-// ===== PRINT RECEIPT =====
-// ============================================================
-function generateReceiptHTML(order, branchName) {
-  const qty       = Number(order.quantity || 1);
-  const delivFee  = Number(order.delivery_fee || 0);
-  const price     = Number(order.price || 0);
-  const unitPrice = qty > 0 ? (price - delivFee) / qty : price;
-  const deposit   = Number(order.deposit || 0);
-  const remaining = price - deposit;
-  const discount  = Number(getOrderMeta(order).discount || 0);
-  const products  = parseReceiptProducts(order.product_names || '');
-  const productsTotal = products.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0) || Math.max(0, price - delivFee + discount);
-  const ticketId  = getTicketId(order);
-  const barcode1  = getOrderBarcode(order);
-  const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
-  const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString('ar-EG') + ' ' + new Date(order.created_at).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'}) : '';
-
-  const productRows = products.length > 0
-    ? products.map(p => `
-        <tr>
-          <td style="padding:3px 0;font-size:11px;border-bottom:1px dashed #ccc;">${escapeHTML(p.name)}</td>
-          <td style="padding:3px 0;font-size:11px;text-align:center;border-bottom:1px dashed #ccc;">${p.qty}</td>
-          <td style="padding:3px 0;font-size:11px;text-align:center;border-bottom:1px dashed #ccc;">0</td>
-          <td style="padding:3px 0;font-size:11px;text-align:right;border-bottom:1px dashed #ccc;">${enMoney(p.price * p.qty)}</td>
-        </tr>`).join('')
-    : `<tr><td colspan="4" style="padding:3px 0;font-size:11px;text-align:center;">—</td></tr>`;
-
-  return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<title>إيصال — ${order.customer_name}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    font-family: 'Courier New', monospace;
-    width: 80mm;
-    margin: 0 auto;
-    padding: 8px;
-    background: #fff;
-    color: #000;
-    font-size: 12px;
-  }
-  .center { text-align: center; }
-  .bold { font-weight: bold; }
-  .divider { border-top: 1px dashed #000; margin: 6px 0; }
-  .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
-  table { width: 100%; border-collapse: collapse; }
-  th { font-size: 11px; font-weight: bold; padding: 2px 0; }
-  .total-table td { padding: 3px 6px; font-size: 12px; }
-  .total-table .label { font-weight: bold; }
-  .total-table .value { text-align: left; font-weight: bold; }
-  .barcode-text {
-    font-family: 'Courier New', monospace;
-    font-size: 11px;
-    letter-spacing: 1px;
-    text-align: center;
-    margin: 4px 0 2px;
-    font-weight: bold;
-  }
-  .barcode-bars {
-    font-family: 'Libre Barcode 128', 'Courier New', monospace;
-    font-size: 36px;
-    text-align: center;
-    line-height: 1;
-    letter-spacing: -1px;
-    overflow: hidden;
-    display: block;
-  }
-  .footer-note { font-size: 11px; text-align: center; line-height: 1.6; margin: 6px 0; }
-  @media print {
-    body { width: 80mm; }
-    @page { size: 80mm auto; margin: 0; }
-  }
-</style>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
-</head>
-<body>
-  <!-- Header -->
-  <div class="center bold" style="font-size:16px;margin-bottom:2px;">صيدليات العقبي</div>
-  <div class="center" style="font-size:11px;">0223051430 - 012 02 7777 04</div>
-  <div class="center" style="font-size:10px;margin-bottom:2px;">مبيعات توصيل طلبات</div>
-  <div class="center" style="font-size:10px;">فرع ${branchName}</div>
-
-  <div class="divider-solid"></div>
-
-  <!-- Order Info -->
-  <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;">
-    <span>Ticket ID: <strong>${ticketId}</strong></span>
-    <span>Time: ${orderDate}</span>
-  </div>
-  <div style="font-size:10px;margin-bottom:4px;">العميل: <strong>${order.customer_name || ''}</strong></div>
-  <div style="font-size:10px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>
-  <div style="font-size:10px;margin-bottom:6px;">العنوان: <strong>${order.area || ''}</strong></div>
-
-  <div class="divider"></div>
-
-  <!-- Products Table -->
-  <table>
-    <thead>
-      <tr>
-        <th style="text-align:right;">المنتج</th>
-        <th style="text-align:center;">كمية</th>
-        <th style="text-align:center;">خصم</th>
-        <th style="text-align:right;">سعر</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${productRows}
-    </tbody>
-  </table>
-
-  <div class="divider"></div>
-
-  <!-- Totals -->
-  <table class="total-table">
-    <tr>
-      <td class="label">سعر المنتجات</td>
-      <td class="value">${enMoney(productsTotal)}.00</td>
-    </tr>
-    <tr>
-      <td class="label">خصم</td>
-      <td class="value">${discount}.00</td>
-    </tr>
-    <tr>
-      <td class="label">خدمة التوصيل</td>
-      <td class="value">${delivFee > 0 ? enMoney(delivFee) + '.00' : '0.00'}</td>
-    </tr>
-    <tr style="border-top:1px solid #000;">
-      <td class="label bold" style="font-size:13px;">الإجمالي</td>
-      <td class="value bold" style="font-size:13px;">${enMoney(price)}.00</td>
-    </tr>
-    <tr>
-      <td class="label">المدفوع</td>
-      <td class="value">${deposit > 0 ? enMoney(deposit) + '.00' : '0.00'}</td>
-    </tr>
-    <tr style="background:#f0f0f0;">
-      <td class="label bold">الباقي</td>
-      <td class="value bold">${remaining > 0 ? enMoney(remaining) + '.00' : '0.00'}</td>
-    </tr>
-  </table>
-
-  <div class="divider"></div>
-
-  <!-- Footer -->
-  <div class="footer-note">
-    توصيل الطلبات للمنازل<br>
-    الاستبدال والاسترجاع خلال 14 يوم<br>
-    مع تمنياتنا بدوام الصحة والعافية
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Barcode -->
-  <div class="barcode-bars">${barcode1}</div>
-  <div class="barcode-text">${barcode1}</div>
-
-  <div style="text-align:center;font-size:10px;color:#555;margin-top:6px;">Printed: ${printDate}</div>
-  <div style="margin-bottom:16px;"></div>
-</body>
-</html>`;
-}
 
 async function printSingleOrder(orderId) {
   let order = khaznaOrders.find(o => String(o.id) === String(orderId));
@@ -4970,6 +4781,440 @@ function printReconciliationReport() {
   win.document.write(html);
   win.document.close();
   win.onload = () => { win.focus(); win.print(); };
+}
+
+// ============================================================
+// ===== BARCODE SCANNER - GLOBAL =====
+// ============================================================
+
+// المتغيرات العامة للـ Scanner
+let barcodeBuffer = '';
+let barcodeTimeout = null;
+let barcodeScannerActive = true;
+
+/**
+ * تهيئة الماسك سكان للباركود على مستوى الصفحة
+ * يشتغل حتى لو المؤشر مش جوه خانة البحث
+ */
+function initGlobalBarcodeScanner() {
+  // إزالة المستمع القديم لو موجود
+  document.removeEventListener('keydown', handleBarcodeKeydown);
+  document.removeEventListener('keyup', handleBarcodeKeyup);
+  
+  // إضافة المستمع الجديد
+  document.addEventListener('keydown', handleBarcodeKeydown);
+  document.addEventListener('keyup', handleBarcodeKeyup);
+  
+  console.log('✅ Global Barcode Scanner initialized');
+}
+
+/**
+ * معالجة الضغط على المفاتيح للكشف عن الباركود
+ */
+function handleBarcodeKeydown(e) {
+  // تجاهل لو المؤشر في حقل إدخال نصي (حتى نمنع التداخل)
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    return;
+  }
+  
+  // تجاهل المفاتيح الخاصة
+  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+    return;
+  }
+  
+  // بدء المؤقت
+  if (barcodeTimeout) {
+    clearTimeout(barcodeTimeout);
+  }
+  
+  // تجميع الأحرف
+  barcodeBuffer += e.key;
+  
+  // إعادة تعيين المؤقت بعد 100ms من آخر حرف
+  barcodeTimeout = setTimeout(() => {
+    if (barcodeBuffer.length > 3) {
+      // تم اكتشاف باركود
+      const barcode = barcodeBuffer.trim();
+      console.log('📸 Barcode scanned:', barcode);
+      handleScannedBarcode(barcode);
+    }
+    barcodeBuffer = '';
+    barcodeTimeout = null;
+  }, 100);
+}
+
+function handleBarcodeKeyup(e) {
+  // مستمع إضافي للتأكد من اكتمال الباركود
+}
+
+/**
+ * معالجة الباركود بعد مسحه
+ */
+function handleScannedBarcode(barcode) {
+  // 1. البحث في الخزنة (Khazna)
+  const khaznaSearch = document.getElementById('khaznaBarcodeSearch');
+  const khaznaPage = document.getElementById('khaznaPage');
+  if (khaznaSearch && khaznaPage && !khaznaPage.classList.contains('hidden')) {
+    khaznaSearch.value = barcode;
+    if (typeof renderKhaznaStats === 'function') renderKhaznaStats();
+    if (typeof renderKhaznaOrders === 'function') renderKhaznaOrders();
+    return;
+  }
+  
+  // 2. البحث في صفحة الفرع (Branch)
+  const branchSearch = document.getElementById('bSearchInput');
+  const branchPage = document.getElementById('branchPage');
+  if (branchSearch && branchPage && !branchPage.classList.contains('hidden')) {
+    branchSearch.value = barcode;
+    if (typeof renderBranchOrders === 'function') renderBranchOrders();
+    return;
+  }
+  
+  // 3. البحث في صفحة الأوردرات الرئيسية (Dashboard)
+  const mainSearch = document.getElementById('searchInput');
+  if (mainSearch) {
+    mainSearch.value = barcode;
+    if (typeof renderOrders === 'function') renderOrders();
+    return;
+  }
+}
+
+// ============================================================
+// ===== GENERATE CODE128 BARCODE SVG =====
+// ============================================================
+
+/**
+ * توليد باركود Code128 على شكل SVG
+ */
+function generateCode128BarcodeSVG(text) {
+  if (!text) return '';
+  
+  // تنظيف النص
+  const cleanText = String(text || '').trim();
+  if (!cleanText) return '';
+  
+  // دالة مساعدة لتحويل النص إلى Code128
+  function encodeCode128(data) {
+    // جدول ترميز Code128
+    const code128Chars = {
+      ' ': 0, '!': 1, '"': 2, '#': 3, '$': 4, '%': 5, '&': 6, "'": 7, '(': 8, ')': 9,
+      '*': 10, '+': 11, ',': 12, '-': 13, '.': 14, '/': 15, '0': 16, '1': 17, '2': 18,
+      '3': 19, '4': 20, '5': 21, '6': 22, '7': 23, '8': 24, '9': 25, ':': 26, ';': 27,
+      '<': 28, '=': 29, '>': 30, '?': 31, '@': 32, 'A': 33, 'B': 34, 'C': 35, 'D': 36,
+      'E': 37, 'F': 38, 'G': 39, 'H': 40, 'I': 41, 'J': 42, 'K': 43, 'L': 44, 'M': 45,
+      'N': 46, 'O': 47, 'P': 48, 'Q': 49, 'R': 50, 'S': 51, 'T': 52, 'U': 53, 'V': 54,
+      'W': 55, 'X': 56, 'Y': 57, 'Z': 58, '[': 59, '\\': 60, ']': 61, '^': 62, '_': 63,
+      '`': 64, 'a': 65, 'b': 66, 'c': 67, 'd': 68, 'e': 69, 'f': 70, 'g': 71, 'h': 72,
+      'i': 73, 'j': 74, 'k': 75, 'l': 76, 'm': 77, 'n': 78, 'o': 79, 'p': 80, 'q': 81,
+      'r': 82, 's': 83, 't': 84, 'u': 85, 'v': 86, 'w': 87, 'x': 88, 'y': 89, 'z': 90,
+      '{': 91, '|': 92, '}': 93, '~': 94
+    };
+    
+    // اختيار وضع الترميز (B هو الأكثر شيوعاً)
+    let startCode = 104; // Code B
+    let checksum = startCode;
+    let encoded = [];
+    
+    // ترميز كل حرف
+    for (let i = 0; i < data.length; i++) {
+      const char = data[i];
+      const code = code128Chars[char];
+      if (code === undefined) continue;
+      encoded.push(code);
+      checksum += (i + 1) * code;
+    }
+    
+    // حساب المجموع الاختباري
+    checksum = checksum % 103;
+    encoded.push(checksum);
+    encoded.push(106); // Stop code
+    
+    // تحويل إلى نمط الباركود (نظام 11 وحدة لكل حرف)
+    const patterns = [
+      // 0-9
+      "11011001100", "11001101100", "11001100110", "10010011000", "10010001100",
+      "10001001100", "10011001000", "10011000100", "10001100100", "11001001000",
+      // 10-19
+      "11001000100", "11000100100", "10110011100", "10011011100", "10011001110",
+      "10111001100", "10011101100", "10011100110", "11001110010", "11001011100",
+      // 20-29
+      "11001001110", "11011100100", "11001110100", "11101101110", "11101001100",
+      "11100101100", "11100100110", "11101100100", "11100110100", "11100110010",
+      // 30-39
+      "11011011000", "11011000110", "11000110110", "10100011000", "10001011000",
+      "10001000110", "10110001000", "10001101000", "10001100010", "11010001000",
+      // 40-49
+      "11000101000", "11000100010", "10110111000", "10110001110", "10001101110",
+      "10111011000", "10111000110", "10001110110", "11101110110", "11010001110",
+      // 50-59
+      "11000101110", "11011101000", "11011100010", "11011101110", "11101011000",
+      "11101000110", "11100010110", "11101101000", "11101100010", "11100011010",
+      // 60-69
+      "11101111010", "11001000010", "11110001010", "10100110000", "10100001100",
+      "10010110000", "10010000110", "10000101100", "10000100110", "10110010000",
+      // 70-79
+      "10110000100", "10011010000", "10011000010", "10000110100", "10000110010",
+      "11000010010", "11001010000", "11110111010", "11000010100", "10001111010",
+      // 80-89
+      "11010100000", "11010010000", "11010001000", "11010000100", "11000101000",
+      "11000100100", "11000100010", "10110110000", "10110001100", "10001101100",
+      // 90-99
+      "10110101000", "10110010100", "10110010010", "10001010110", "10101011000",
+      "10101000110", "10001011010", "10101101000", "10101100010", "10100011010",
+      // 100-106
+      "10100001010", "11001011000", "11001000110", "11010110010", "11010100110",
+      "10110100110", "10100110110"
+    ];
+    
+    let result = '';
+    // Start code
+    result += patterns[startCode] || "11011001100";
+    // Data codes
+    for (let i = 0; i < encoded.length; i++) {
+      const idx = encoded[i];
+      if (idx < patterns.length) {
+        result += patterns[idx];
+      }
+    }
+    
+    return result;
+  }
+  
+  // توليد الباركود
+  const encodedPattern = encodeCode128(cleanText);
+  if (!encodedPattern) return '';
+  
+  // عرض كل وحدة بـ 2px
+  const moduleWidth = 2;
+  const totalWidth = encodedPattern.length * moduleWidth;
+  const height = 50;
+  
+  // بناء SVG
+  let bars = '';
+  let x = 0;
+  for (let i = 0; i < encodedPattern.length; i++) {
+    const bit = encodedPattern[i];
+    if (bit === '1') {
+      // شريط أسود
+      bars += `<rect x="${x}" y="0" width="${moduleWidth}" height="${height}" fill="#000000"/>`;
+    }
+    x += moduleWidth;
+  }
+  
+  return `<svg viewBox="0 0 ${totalWidth} ${height + 4}" width="${totalWidth}" height="${height + 4}" xmlns="http://www.w3.org/2000/svg" style="display:block;max-width:100%;height:auto;">
+    ${bars}
+  </svg>`;
+}
+
+// ============================================================
+// ===== تحديث دالة generateReceiptHTML =====
+// ============================================================
+
+// ✅ استبدل دالة generateReceiptHTML الموجودة بهذه النسخة المحدثة
+// التي تستخدم SVG بدلاً من النص العادي للباركود
+
+// 👇 دي النسخة المحدثة - استبدليها بالدالة القديمة
+function generateReceiptHTML(order, branchName) {
+  const qty       = Number(order.quantity || 1);
+  const delivFee  = Number(order.delivery_fee || 0);
+  const price     = Number(order.price || 0);
+  const unitPrice = qty > 0 ? (price - delivFee) / qty : price;
+  const deposit   = Number(order.deposit || 0);
+  const remaining = price - deposit;
+  const discount  = Number(getOrderMeta(order).discount || 0);
+  const products  = parseReceiptProducts(order.product_names || '');
+  const productsTotal = products.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0) || Math.max(0, price - delivFee + discount);
+  const ticketId  = getTicketId(order);
+  const barcode1  = getOrderBarcode(order);
+  
+  // ✅ توليد باركود SVG
+  const barcodeSvg = generateCode128BarcodeSVG(barcode1);
+  
+  const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
+  const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString('ar-EG') + ' ' + new Date(order.created_at).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'}) : '';
+
+  const productRows = products.length > 0
+    ? products.map(p => `
+        <tr>
+          <td style="padding:3px 0;font-size:11px;border-bottom:1px dashed #ccc;">${escapeHTML(p.name)}</td>
+          <td style="padding:3px 0;font-size:11px;text-align:center;border-bottom:1px dashed #ccc;">${p.qty}</td>
+          <td style="padding:3px 0;font-size:11px;text-align:center;border-bottom:1px dashed #ccc;">0</td>
+          <td style="padding:3px 0;font-size:11px;text-align:right;border-bottom:1px dashed #ccc;">${enMoney(p.price * p.qty)}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="4" style="padding:3px 0;font-size:11px;text-align:center;">—</td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>إيصال — ${order.customer_name}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Courier New', monospace;
+    width: 80mm;
+    margin: 0 auto;
+    padding: 8px;
+    background: #fff;
+    color: #000;
+    font-size: 12px;
+  }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; font-weight: bold; padding: 2px 0; }
+  .total-table td { padding: 3px 6px; font-size: 12px; }
+  .total-table .label { font-weight: bold; }
+  .total-table .value { text-align: left; font-weight: bold; }
+  .barcode-text {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-align: center;
+    margin: 4px 0 2px;
+    font-weight: bold;
+  }
+  .barcode-svg {
+    display: flex;
+    justify-content: center;
+    margin: 4px auto;
+    max-width: 100%;
+  }
+  .barcode-svg svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .footer-note { font-size: 11px; text-align: center; line-height: 1.6; margin: 6px 0; }
+  @media print {
+    body { width: 80mm; }
+    @page { size: 80mm auto; margin: 0; }
+  }
+</style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="center bold" style="font-size:16px;margin-bottom:2px;">صيدليات العقبي</div>
+  <div class="center" style="font-size:11px;">0223051430 - 012 02 7777 04</div>
+  <div class="center" style="font-size:10px;margin-bottom:2px;">مبيعات توصيل طلبات</div>
+  <div class="center" style="font-size:10px;">فرع ${branchName}</div>
+
+  <div class="divider-solid"></div>
+
+  <!-- Order Info -->
+  <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;">
+    <span>Ticket ID: <strong>${ticketId}</strong></span>
+    <span>Time: ${orderDate}</span>
+  </div>
+  <div style="font-size:10px;margin-bottom:4px;">العميل: <strong>${order.customer_name || ''}</strong></div>
+  <div style="font-size:10px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>
+  <div style="font-size:10px;margin-bottom:6px;">العنوان: <strong>${order.area || ''}</strong></div>
+
+  <div class="divider"></div>
+
+  <!-- Products Table -->
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:right;">المنتج</th>
+        <th style="text-align:center;">كمية</th>
+        <th style="text-align:center;">خصم</th>
+        <th style="text-align:right;">سعر</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${productRows}
+    </tbody>
+  </table>
+
+  <div class="divider"></div>
+
+  <!-- Totals -->
+  <table class="total-table">
+    <tr>
+      <td class="label">سعر المنتجات</td>
+      <td class="value">${enMoney(productsTotal)}.00</td>
+    </tr>
+    <tr>
+      <td class="label">خصم</td>
+      <td class="value">${discount}.00</td>
+    </tr>
+    <tr>
+      <td class="label">خدمة التوصيل</td>
+      <td class="value">${delivFee > 0 ? enMoney(delivFee) + '.00' : '0.00'}</td>
+    </tr>
+    <tr style="border-top:1px solid #000;">
+      <td class="label bold" style="font-size:13px;">الإجمالي</td>
+      <td class="value bold" style="font-size:13px;">${enMoney(price)}.00</td>
+    </tr>
+    <tr>
+      <td class="label">المدفوع</td>
+      <td class="value">${deposit > 0 ? enMoney(deposit) + '.00' : '0.00'}</td>
+    </tr>
+    <tr style="background:#f0f0f0;">
+      <td class="label bold">الباقي</td>
+      <td class="value bold">${remaining > 0 ? enMoney(remaining) + '.00' : '0.00'}</td>
+    </tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <!-- Footer -->
+  <div class="footer-note">
+    توصيل الطلبات للمنازل<br>
+    الاستبدال والاسترجاع خلال 14 يوم<br>
+    مع تمنياتنا بدوام الصحة والعافية
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ✅ Barcode SVG -->
+  <div class="barcode-svg">${barcodeSvg}</div>
+  <div class="barcode-text">${barcode1}</div>
+
+  <div style="text-align:center;font-size:10px;color:#555;margin-top:6px;">Printed: ${printDate}</div>
+  <div style="margin-bottom:16px;"></div>
+</body>
+</html>`;
+}
+
+// ============================================================
+// ===== تشغيل الماسك سكان عند تحميل الصفحة =====
+// ============================================================
+
+// استدعاء التهيئة عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', function() {
+  // تهيئة الماسك سكان العام
+  initGlobalBarcodeScanner();
+  console.log('✅ Barcode scanner ready');
+});
+
+// ============================================================
+// ===== تحديث دالة getKhaznaFilteredOrders =====
+// ============================================================
+
+// ✅ استبدل دالة getKhaznaFilteredOrders الموجودة بهذه النسخة
+// التي تستخدم matchesOrderSearch بدلاً من البحث اليدوي
+
+// 👇 دي النسخة المحدثة
+function getKhaznaFilteredOrders() {
+  const search = (document.getElementById('khaznaBarcodeSearch')?.value || '').trim().toLowerCase();
+  const statusFilter = document.getElementById('khaznaFilterStatus')?.value || 'الكل';
+  const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
+
+  return khaznaOrders.filter(o => {
+    if (o.status !== 'Signed') return false;
+    
+    // ✅ استخدام matchesOrderSearch بدلاً من البحث اليدوي
+    const matchSearch = !search || matchesOrderSearch(o, search);
+    
+    const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
+    const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
+    
+    return matchSearch && matchStatus && matchEmp;
+  });
 }
 
 // ===== بدء التشغيل =====

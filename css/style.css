@@ -889,3 +889,15 @@ td.notes-cell:empty::after{content:"—";color: var(--text-faint)}
 }
 [data-theme="dark"] .branch-stats .stat span{color:#E2E8F0;}
 [data-theme="dark"] .branch-stats .stat strong{color:#34D399;}
+
+.barcode-svg {
+  display: flex;
+  justify-content: center;
+  margin: 4px auto;
+  max-width: 100%;
+}
+.barcode-svg svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
