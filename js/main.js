@@ -15,6 +15,8 @@ let branchs = [];
 let doctorsList = [];
 let shippingSystems = [];
 
+let shippingCompanyFilterMenu = null; 
+
 const PAGE_SIZE = 20;
 let pageState = {
   orders: 1, shippingAnalysis: 1, doctorsAnalysis: 1,
@@ -1845,9 +1847,18 @@ function getDoctorRankRows() {
 }
 
 function renderShippingCompanyFilter() {
-  if (!shippingCompanyCheckboxes) return;
+  // ✅ تأكد من تعريف المتغير
+  shippingCompanyFilterMenu = document.getElementById('shippingCompanyFilterMenu');
+  
+  if (!shippingCompanyFilterMenu) {
+    console.warn('⚠️ shippingCompanyFilterMenu element not found');
+    return;
+  }
+  
   const companies = getShippingRankRows().map(r => r.company).filter(Boolean);
-  shippingCompanyCheckboxes.innerHTML = companies.length
+  const checkboxesContainer = shippingCompanyFilterMenu.querySelector('.multi-filter-items') || shippingCompanyFilterMenu;
+  
+  checkboxesContainer.innerHTML = companies.length
     ? companies.map(company => `
       <label class="multi-filter-item">
         <input type="checkbox" class="shipping-filter-check" value="${company}" ${selectedShippingCompanies.includes(company) ? "checked" : ""}>
@@ -3124,9 +3135,13 @@ if (shippingRankSearchEl) shippingRankSearchEl.addEventListener("input", () => {
 if (doctorRankSearch) doctorRankSearch.addEventListener("input", () => { pageState.doctorRank = 1; renderDoctorRank(); });
 if (doctorsAnalysisSearch) doctorsAnalysisSearch.addEventListener("input", () => { pageState.doctorsAnalysis = 1; renderAnalytics(); });
 
-document.addEventListener("click", (e) => {
-  if (!e.target.closest(".multi-filter")) {
-    if (shippingCompanyFilterMenu) shippingCompanyFilterMenu.classList.remove("show");
+document.addEventListener("click", function(e) {
+  // التحقق من وجود المتغير والعنصر قبل استخدامه
+  if (shippingCompanyFilterMenu) {
+    // إذا كان النقر خارج عنصر .multi-filter
+    if (!e.target.closest(".multi-filter")) {
+      shippingCompanyFilterMenu.classList.remove("show");
+    }
   }
 });
 
@@ -3630,8 +3645,8 @@ document.addEventListener('DOMContentLoaded', function() {
       employee_name:    (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
       doctor_name:      docEl?.value.trim() || '',
       customer_name:    custEl?.value.trim() || '',
-      phone:            phoneEl?.value.trim() || '',
-      phone2:           document.getElementById('phone2')?.value.trim() || '',
+      phone: document.getElementById('bPhone')?.value.trim() || '',
+      phone2: document.getElementById('bPhone2')?.value.trim() || '',
       shipping_company: getBranchShippingCompanyName(currentBranchName) || shipEl?.value || '',
       area:             areaEl?.value.trim() || '',
       price:            bTotalPrice,
@@ -5238,3 +5253,21 @@ checkLogin();
 })();
 
 function filterKhaznaBarcode(){ renderKhaznaStats(); renderKhaznaOrders(); }
+
+// ✅ Validate Egyptian Phone Number (Global)
+function validatePhoneInput(input) {
+  if (!input) return;
+
+  // يشيل أي حاجة مش رقم
+  input.value = input.value.replace(/\D/g, '');
+
+  // يمنع أكثر من 11 رقم
+  if (input.value.length > 11) {
+    input.value = input.value.slice(0, 11);
+  }
+
+  // لو عايز تمنع أي رقم مش بيبدأ بـ 01
+  if (input.value.length >= 2 && !input.value.startsWith("01")) {
+    input.value = "01";
+  }
+}
