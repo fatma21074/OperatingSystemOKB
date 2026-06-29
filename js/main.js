@@ -1399,6 +1399,7 @@ function renderOrders() {
         <td>${o.doctor_name || ""}</td>
         <td>${o.customer_name || ""}</td>
         <td>${o.phone || ""}</td>
+        <td>${o.phone2 || ""}</td> 
         <td>${o.shipping_company || ""}</td>
         <td class="region-cell">${o.area || ""}</td>
         <td>${money(price)}</td>
@@ -1483,6 +1484,7 @@ orderForm.addEventListener("submit", async (e) => {
     doctor_name:      docEl.value.trim(),
     customer_name:    custEl.value.trim(),
     phone:            phoneEl.value.trim(),
+    phone2:           document.getElementById('phone2')?.value.trim() || '', 
     shipping_company: shipEl.value,
     area:             areaEl.value.trim(),
     price:            totalPrice,
@@ -1622,6 +1624,7 @@ window.editOrder = function (id) {
   doctorName.value = o.doctor_name || "";
   customerName.value = o.customer_name || "";
   phone.value = o.phone || "";
+  document.getElementById('phone2').value = o.phone2 || ""; 
   shippingCompany.value = o.shipping_company || "";
   area.value = o.area || "";
 

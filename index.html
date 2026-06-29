@@ -145,6 +145,7 @@
 </select>
 <input id="customerName" placeholder="اسم العميل" required=""/>
 <input id="phone" inputmode="numeric" maxlength="11" minlength="11" oninput="validatePhoneInput(this)" pattern="01[0125][0-9]{8}" placeholder="رقم الموبايل (مثال: 01012345678)" required="" title="أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010, 011, 012, أو 015" type="tel"/>
+<input id="phone2" inputmode="numeric" maxlength="11" minlength="11" oninput="validatePhoneInput(this)" pattern="01[0125][0-9]{8}" placeholder="رقم الموبايل 2 (اختياري)" title="أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010, 011, 012, أو 015" type="tel"/>
 <select id="shippingCompany" required="">
 <option value="">اختر شركة الشحن</option>
 </select>
@@ -264,7 +265,7 @@
 <thead>
 <tr>
 <th class="admin-only"><input class="row-check" id="selectPageOrders" onchange="toggleSelectCurrentPage(this)" title="اختيار كل العملاء في الصفحة" type="checkbox"/></th>
-<th>#</th><th>الموظف</th><th>الدكتور</th><th>العميل</th><th>الموبايل</th>
+<th>#</th><th>الموظف</th><th>الدكتور</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
 <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr>
 </thead>
@@ -634,7 +635,8 @@
 <input id="bEmployeeName" placeholder="اسم الموظف" required=""/>
 <select id="bDoctorName" required=""><option value="">اختر اسم الدكتور</option></select>
 <input id="bCustomerName" placeholder="اسم العميل" required=""/>
-<input id="bPhone" inputmode="numeric" maxlength="11" minlength="11" oninput="validatePhoneInput(this)" pattern="01[0125][0-9]{8}" placeholder="رقم الموبايل (مثال: 01012345678)" required="" type="tel"/>
+<input id="phone" inputmode="numeric" maxlength="11" minlength="11" oninput="validatePhoneInput(this)" pattern="01[0125][0-9]{8}" placeholder="رقم الموبايل (مثال: 01012345678)" required="" title="أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010, 011, 012, أو 015" type="tel"/>
+<input id="phone2" inputmode="numeric" maxlength="11" minlength="11" oninput="validatePhoneInput(this)" pattern="01[0125][0-9]{8}" placeholder="رقم الموبايل 2 (اختياري)" title="أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010, 011, 012, أو 015" type="tel"/>
 <select id="bShippingCompany" required=""><option value="">اختر شركة الشحن</option></select>
 <input id="bArea" placeholder="المنطقة" required=""/>
 <input id="bPrice" type="hidden"/>
@@ -741,7 +743,7 @@
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>الموظف</th><th>الدكتور</th><th>العميل</th><th>الموبايل</th>
+<th>#</th><th>الموظف</th><th>الدكتور</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
 <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="branchOrdersTableBody"></tbody>
