@@ -3631,6 +3631,7 @@ document.addEventListener('DOMContentLoaded', function() {
       doctor_name:      docEl?.value.trim() || '',
       customer_name:    custEl?.value.trim() || '',
       phone:            phoneEl?.value.trim() || '',
+      phone2:           document.getElementById('phone2')?.value.trim() || '',
       shipping_company: getBranchShippingCompanyName(currentBranchName) || shipEl?.value || '',
       area:             areaEl?.value.trim() || '',
       price:            bTotalPrice,
