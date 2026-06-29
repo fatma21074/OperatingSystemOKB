@@ -3499,6 +3499,7 @@ function renderBranchOrders() {
       <td>${o.doctor_name || ''}</td>
       <td>${o.customer_name || ''}</td>
       <td>${o.phone || ''}</td>
+      <td>${o.phone2 || ""}</td>
       <td>${o.shipping_company || ''}</td>
       <td class="branch-area-cell">${o.area || ''}</td>
       <td>${money(price)}</td>
