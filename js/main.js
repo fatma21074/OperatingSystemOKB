@@ -2498,6 +2498,7 @@ function renderDoctorsSettings() {
     <tr>
       <td>${i + 1}</td>
       <td>${d.name || ""}</td>
+      <td>${d.code || ""}</td>
       <td><button class="danger" style="padding:6px 10px;font-size:12px" onclick="deleteDoctor('${d.id}')">حذف</button></td>
     </tr>
   `).join("");
@@ -2507,8 +2508,13 @@ $("doctorSettingsForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!isAdmin()) { alert("غير مسموح"); return; }
   const name = $("settingDoctorName").value.trim();
+  const code = $("settingCodeDoctor").value.trim();
   if (!name) { alert("اكتب اسم الدكتور"); return; }
-  const { error } = await supabaseClient.from("doctors").insert([{ name }]);
+
+  const payload = { name };
+  if (code) payload.code = code;   // نضيف الكود بس لو اتكتب
+
+  const { error } = await supabaseClient.from("doctors").insert([payload]);
   if (error) { alert("مشكلة في إضافة الدكتور: " + error.message); return; }
   $("doctorSettingsForm").reset();
   await loadDoctors();

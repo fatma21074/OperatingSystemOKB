@@ -901,3 +901,12 @@ td.notes-cell:empty::after{content:"—";color: var(--text-faint)}
   height: auto;
   display: block;
 }
+
+@media (max-width: 640px) {
+  #doctorSettingsForm .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+  #doctorSettingsForm .form-grid button {
+    width: 100%;
+  }
+}
