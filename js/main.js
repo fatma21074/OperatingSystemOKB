@@ -3310,7 +3310,7 @@ function getBranchFilteredOrders() {
 
 function canChangeBranchOrderStatus() {
   const role = getRoleKey(currentUser && currentUser.role);
-  return isAdmin() || isAccountManager() || isStoreManager();
+  return isAdmin() || isAccountManager() || isStoreManager() || isSecretary() || isExecutiveAssistant();
 }
 
 function cleanVisibleOrderNotes(notes) {
@@ -3343,7 +3343,7 @@ function getBranchStatusButtonHtml(order) {
   if (order.status === 'Returned') {
     return `<span class="branch-cancel-disabled" title="الأوردر ملغي بالفعل">ملغي</span>`;
   }
-  if (order.status === 'Signed' && !isAdmin()) {
+if (order.status === 'Signed' && !isAdmin() && !isExecutiveAssistant() && !isSecretary() && !isAccountManager()) {
     return `<span class="branch-cancel-disabled" title="لا يمكن إلغاء أوردر Signed إلا للأدمن فقط">Signed</span>`;
   }
   return `<button onclick="openBranchCancelStatusModal('${order.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#EF4444,#B91C1C);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(239,68,68,.25);">إلغاء</button>`;
@@ -3354,7 +3354,7 @@ function openBranchCancelStatusModal(orderId) {
   if (!order) return;
   if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
-  if (order.status === 'Signed' && !isAdmin()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
+  if (order.status === 'Signed' && !isAdmin() && !isExecutiveAssistant() && !isSecretary() && !isAccountManager()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
 
   let modal = document.getElementById('branchCancelStatusModal');
   if (!modal) {
@@ -3400,7 +3400,7 @@ async function confirmBranchCancelStatus() {
   if (!order) return;
   if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
-  if (order.status === 'Signed' && !isAdmin()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
+  if (order.status === 'Signed' && !isAdmin() && !isExecutiveAssistant() && !isSecretary() && !isAccountManager()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
 
   const noteLine = `سبب الإلغاء: ${reason}`;
   const newNotes = appendVisibleOrderNote(order.notes || '', noteLine);
