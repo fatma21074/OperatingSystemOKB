@@ -953,9 +953,31 @@ function resetAppState() {
 
 // ===== دوال تحميل البيانات =====
 async function loadOrders() {
-  const { data, error } = await supabaseClient.from("orders").select("*").order("created_at", { ascending: false });
-  if (error) { alert("مشكلة في تحميل البيانات: " + error.message); return; }
-  orders = data || []; 
+  let allOrders = [];
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabaseClient
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) { 
+      alert("مشكلة في تحميل البيانات: " + error.message); 
+      return; 
+    }
+
+    allOrders = allOrders.concat(data || []);
+
+    // لو الدفعة أقل من 1000، يبقى دي آخر دفعة
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  orders = allOrders;
   renderDoctorOptions(); 
   renderShippingOptions(); 
   renderOrders(); 
@@ -3361,14 +3383,27 @@ async function openBranchPage(branchName) {
 }
 
 async function loadBranchOrders() {
-  const { data, error } = await supabaseClient
-    .from('orders')
-    .select('*')
-    .eq('branch', currentBranchName)
-    .order('created_at', { ascending: false });
+  let allData = [];
+  const pageSize = 1000;
+  let from = 0;
 
-  if (error) { alert('مشكلة في تحميل أوردرات الفرع: ' + error.message); return; }
-  branchOrders = data || [];
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .eq('branch', currentBranchName)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) { alert('مشكلة في تحميل أوردرات الفرع: ' + error.message); return; }
+
+    allData = allData.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  branchOrders = allData;
   await loadBranchDailyLocks();
   renderBranchOrders();
 }
@@ -4183,20 +4218,28 @@ async function loadKhaznaData() {
   badge.style.display = 'inline-block';
   badge.textContent = from === to ? '📅 ' + from : '📅 ' + (from || 'البداية') + ' → ' + (to || 'النهاية');
 
-  let query = supabaseClient
-    .from('orders')
-    .select('*')
-    .eq('branch', currentBranchName)
-    .eq('status', 'Signed')
-    .order('created_at', { ascending: false });
+  // ✅ تحميل كل الأوردرات على دفعات
+  let allData = [];
+  const pageSize = 1000;
+  let rangeFrom = 0;
 
-  const { data, error } = await query;
-  if (error) { 
-    alert('خطأ: ' + error.message); 
-    return; 
+  while (true) {
+    const rangeTo = rangeFrom + pageSize - 1;
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .eq('branch', currentBranchName)
+      .eq('status', 'Signed')
+      .order('created_at', { ascending: false })
+      .range(rangeFrom, rangeTo);
+
+    if (error) { alert('خطأ: ' + error.message); return; }
+    allData = allData.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    rangeFrom += pageSize;
   }
 
-  khaznaOrders = (data || [])
+  khaznaOrders = allData
     .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
     .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
 
