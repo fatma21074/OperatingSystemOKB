@@ -5415,32 +5415,36 @@ async function importDoctorsFromExcel(event) {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-    // العمود الأول = الاسم | العمود التاني = الكود
     const doctors = [];
+    const seenCodes = new Set(); // ✅ لمنع التكرار داخل نفس الملف
+
     rows.forEach((row, i) => {
-      if (i === 0) return;                       // نتجاهل صف العناوين
+      if (i === 0) return;
       const name = String(row[0] || '').trim();
       const code = String(row[1] || '').trim().toUpperCase();
-      if (name && code) {                        // نضيف بس لو الاتنين موجودين
-        doctors.push({ name: name, code: code }); // ✅ name مش doctor_name
+      if (name && code && !seenCodes.has(code)) {
+        seenCodes.add(code);
+        doctors.push({ name: name, code: code });
       }
     });
 
     if (!doctors.length) { alert('الملف فاضي أو مفيهوش بيانات صحيحة'); return; }
 
-    if (!confirm(`هيتم استيراد ${doctors.length} دكتور. تأكيد؟`)) return;
+    if (!confirm(`هيتم استيراد/تحديث ${doctors.length} دكتور. تأكيد؟`)) return;
 
-    // insert عادي على دفعات (عشان الأعداد الكبيرة)
+    // ✅ upsert بدل insert — ياخد الجديد ويحدّث القديم بدون تكرار
     const BATCH = 200;
     let done = 0;
     for (let i = 0; i < doctors.length; i += BATCH) {
       const chunk = doctors.slice(i, i + BATCH);
-      const { error } = await supabaseClient.from('doctors').insert(chunk);
+      const { error } = await supabaseClient
+        .from('doctors')
+        .upsert(chunk, { onConflict: 'code' });   // 👈 التعديل هنا
       if (error) { alert('مشكلة في الاستيراد: ' + error.message); return; }
       done += chunk.length;
     }
 
-    alert(`تم استيراد ${done} دكتور بنجاح ✅`);
+    alert(`تم استيراد/تحديث ${done} دكتور بنجاح ✅`);
     event.target.value = '';
     await loadDoctors();
   } catch (err) {
