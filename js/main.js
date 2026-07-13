@@ -218,13 +218,25 @@ async function ensureOrderIdentifiers(order) {
   return order;
 }
 
+function getDoctorCodeByName(name) {
+  if (!name) return '';
+  const doc = doctorsList.find(d => (d.name || '') === name);
+  return doc ? (doc.code || '') : '';
+}
+
 function matchesOrderSearch(order, search) {
   const q = String(search || '').trim().toLowerCase();
   if (!q) return true;
   const qDigits = onlyDigits(q);
+
+  // ✅ نجيب كود الدكتور من قائمة الدكاترة تلقائياً
+  const doctorCode = getDoctorCodeByName(order?.doctor_name);
+
   const fields = [
     order?.employee_name,
     order?.doctor_name,
+    doctorCode,                  
+    order?.doctor_code,         
     order?.customer_name,
     order?.phone,
     order?.ticket_id,
@@ -236,6 +248,7 @@ function matchesOrderSearch(order, search) {
   const digitMatch = qDigits && fields.some(v => onlyDigits(v).includes(qDigits));
   return textMatch || digitMatch;
 }
+
 
 // ===== Branch Fixed Shipping Company =====
 function getBranchShippingCompanyName(branchName) {
