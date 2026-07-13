@@ -910,3 +910,21 @@ td.notes-cell:empty::after{content:"—";color: var(--text-faint)}
     width: 100%;
   }
 }
+  .doctors-actions-row {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+  }
+  .doctors-actions-row button,
+  .doctors-actions-row label {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 10px;
+    cursor: pointer;
+    border: none;
+    width: auto;            
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }

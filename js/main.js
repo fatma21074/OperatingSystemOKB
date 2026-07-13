@@ -17,6 +17,9 @@ let shippingSystems = [];
 
 let shippingCompanyFilterMenu = null; 
 
+let doctorsSettingsPage = 1;
+const DOCTORS_PAGE_SIZE = 10;
+
 const PAGE_SIZE = 20;
 let pageState = {
   orders: 1, shippingAnalysis: 1, doctorsAnalysis: 1,
@@ -2485,23 +2488,92 @@ function getDoctorNames() {
 function renderDoctorOptions() {
   if (!doctorName) return;
   const current = doctorName.value;
-  const names = getDoctorNames();
-  doctorName.innerHTML = `<option value="">اختر اسم الدكتور</option>` + names.map(name => `<option value="${name}">${name}</option>`).join("");
-  if (names.includes(current)) doctorName.value = current;
+
+  doctorName.innerHTML = `<option value="">اختر اسم الدكتور</option>` +
+    doctorsList.map(d => {
+      const label = d.code ? `${d.name} - ${d.code}` : d.name;
+      return `<option value="${d.name}">${label}</option>`;
+    }).join("");
+
+  doctorName.value = current;
 }
 
 function renderDoctorsSettings() {
   const tbody = $("doctorsSettingsTableBody");
   if (!tbody) return;
-  if (!doctorsList.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty">لا يوجد دكاترة مضافة</td></tr>`; return; }
-  tbody.innerHTML = doctorsList.map((d, i) => `
+
+  if (!doctorsList.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty">لا يوجد دكاترة مضافة</td></tr>`;
+    renderDoctorsSettingsPagination(0);
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(doctorsList.length / DOCTORS_PAGE_SIZE));
+  if (doctorsSettingsPage > totalPages) doctorsSettingsPage = totalPages;
+  if (doctorsSettingsPage < 1) doctorsSettingsPage = 1;
+
+  const start = (doctorsSettingsPage - 1) * DOCTORS_PAGE_SIZE;
+  const pageRows = doctorsList.slice(start, start + DOCTORS_PAGE_SIZE);
+
+  tbody.innerHTML = pageRows.map((d, i) => `
     <tr>
-      <td>${i + 1}</td>
+      <td>${start + i + 1}</td>
       <td>${d.name || ""}</td>
       <td>${d.code || ""}</td>
       <td><button class="danger" style="padding:6px 10px;font-size:12px" onclick="deleteDoctor('${d.id}')">حذف</button></td>
     </tr>
   `).join("");
+
+  renderDoctorsSettingsPagination(doctorsList.length);
+}
+
+function renderDoctorsSettingsPagination(total) {
+  let container = document.getElementById("doctorsSettingsPagination");
+
+  // لو الـ container مش موجود، نعمله تلقائياً تحت الجدول
+  if (!container) {
+    const tbody = document.getElementById("doctorsSettingsTableBody");
+    const table = tbody ? tbody.closest("table") : null;
+    if (table) {
+      container = document.createElement("div");
+      container.id = "doctorsSettingsPagination";
+      container.className = "pagination";
+      container.style.cssText = "display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:14px 0;";
+      table.parentNode.insertBefore(container, table.nextSibling);
+    }
+  }
+  if (!container) return;
+
+  const totalPages = Math.max(1, Math.ceil(total / DOCTORS_PAGE_SIZE));
+  if (total <= DOCTORS_PAGE_SIZE) { container.innerHTML = ""; return; }
+
+  const current = doctorsSettingsPage;
+  let html = "";
+  html += `<button onclick="changeDoctorsSettingsPage(${current - 1})" ${current === 1 ? "disabled" : ""}>السابق</button>`;
+
+  const startPage = Math.max(1, current - 2);
+  const endPage = Math.min(totalPages, current + 2);
+  if (startPage > 1) {
+    html += `<button onclick="changeDoctorsSettingsPage(1)">1</button>`;
+    if (startPage > 2) html += `<span class="pagination-info">...</span>`;
+  }
+  for (let p = startPage; p <= endPage; p++) {
+    html += `<button class="${p === current ? "active" : ""}" onclick="changeDoctorsSettingsPage(${p})">${p}</button>`;
+  }
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) html += `<span class="pagination-info">...</span>`;
+    html += `<button onclick="changeDoctorsSettingsPage(${totalPages})">${totalPages}</button>`;
+  }
+
+  html += `<button onclick="changeDoctorsSettingsPage(${current + 1})" ${current === totalPages ? "disabled" : ""}>التالي</button>`;
+  html += `<span class="pagination-info" style="align-self:center;font-size:12px;color:var(--text-muted);">صفحة ${current} من ${totalPages} | إجمالي ${total} دكتور</span>`;
+
+  container.innerHTML = html;
+}
+
+function changeDoctorsSettingsPage(page) {
+  doctorsSettingsPage = page;
+  renderDoctorsSettings();
 }
 
 $("doctorSettingsForm").addEventListener("submit", async (e) => {
@@ -5276,4 +5348,61 @@ function validatePhoneInput(input) {
   if (input.value.length >= 2 && !input.value.startsWith("01")) {
     input.value = "01";
   }
+}
+async function importDoctorsFromExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    // العمود الأول = الاسم | العمود التاني = الكود
+    const doctors = [];
+    rows.forEach((row, i) => {
+      if (i === 0) return;                       // نتجاهل صف العناوين
+      const name = String(row[0] || '').trim();
+      const code = String(row[1] || '').trim().toUpperCase();
+      if (name && code) {                        // نضيف بس لو الاتنين موجودين
+        doctors.push({ name: name, code: code }); // ✅ name مش doctor_name
+      }
+    });
+
+    if (!doctors.length) { alert('الملف فاضي أو مفيهوش بيانات صحيحة'); return; }
+
+    if (!confirm(`هيتم استيراد ${doctors.length} دكتور. تأكيد؟`)) return;
+
+    // insert عادي على دفعات (عشان الأعداد الكبيرة)
+    const BATCH = 200;
+    let done = 0;
+    for (let i = 0; i < doctors.length; i += BATCH) {
+      const chunk = doctors.slice(i, i + BATCH);
+      const { error } = await supabaseClient.from('doctors').insert(chunk);
+      if (error) { alert('مشكلة في الاستيراد: ' + error.message); return; }
+      done += chunk.length;
+    }
+
+    alert(`تم استيراد ${done} دكتور بنجاح ✅`);
+    event.target.value = '';
+    await loadDoctors();
+  } catch (err) {
+    alert('خطأ في قراءة الملف: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function cleanAllDoctors() {
+  if (!confirm('⚠️ متأكدة؟ ده هيمسح كل الدكاترة الموجودين!')) return;
+
+  const { error } = await supabaseClient
+    .from('doctors')
+    .delete()
+    .not('id', 'is', null);   // ✅ بيطابق كل الصفوف
+
+  if (error) { alert('مشكلة في المسح: ' + error.message); return; }
+
+  alert('تم مسح كل الدكاترة ✅');
+  await loadDoctors();
 }
