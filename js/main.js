@@ -5263,6 +5263,7 @@ function generateReceiptHTML(order, branchName) {
     <span>Time: ${orderDate}</span>
   </div>
   <div style="font-size:10px;margin-bottom:4px;">العميل: <strong>${order.customer_name || ''}</strong></div>
+   <div style="font-size:10px;margin-bottom:4px;">الدكتور: <strong>${order.doctor_name || ''}</strong></div>
   <div style="font-size:10px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>
   <div style="font-size:10px;margin-bottom:6px;">العنوان: <strong>${order.area || ''}</strong></div>
 
