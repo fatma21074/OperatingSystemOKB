@@ -109,14 +109,14 @@ function getTicketId(order) {
 }
 
 function getOrderBarcode(order) {
-  let barcode = onlyDigits(order?.order_barcode) || generateOrderBarcode(getTicketId(order));
+  // ✅ نولّد الباركود دايماً من الـ ticket_id عشان يبقى فريد لكل أوردر
+  let barcode = generateOrderBarcode(getTicketId(order));
   barcode = String(barcode).replace(/\D/g, '');
   if (barcode.length > 14) {
-    barcode = barcode.slice(0, 14);      
+    barcode = barcode.slice(0, 14);
   } else if (barcode.length < 14) {
-    barcode = barcode.padStart(14, '0');   
+    barcode = barcode.padStart(14, '0');
   }
-
   return barcode;
 }
 
