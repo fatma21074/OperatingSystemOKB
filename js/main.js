@@ -109,8 +109,15 @@ function getTicketId(order) {
 }
 
 function getOrderBarcode(order) {
-  const barcode = onlyDigits(order?.order_barcode);
-  return barcode || generateOrderBarcode(getTicketId(order));
+  let barcode = onlyDigits(order?.order_barcode) || generateOrderBarcode(getTicketId(order));
+  barcode = String(barcode).replace(/\D/g, '');
+  if (barcode.length > 14) {
+    barcode = barcode.slice(0, 14);      
+  } else if (barcode.length < 14) {
+    barcode = barcode.padStart(14, '0');   
+  }
+
+  return barcode;
 }
 
 let ticketSequenceCache = null;
@@ -871,7 +878,7 @@ function setupUserView() {
   const av = $("userAvatar");
   if (av) av.textContent = (currentUser.name || "U").trim().charAt(0).toUpperCase();
 
-  document.querySelectorAll(".admin-only").forEach(el => el.classList.toggle("hidden", !isAdmin()));
+  document.querySelectorAll(".settings-menu-btn").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isExecutiveAssistant())));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
   document.querySelectorAll(".accounting-only").forEach(el => el.classList.toggle("hidden", !canManageKhaznaAndTransfer()));
   document.querySelectorAll(".branch-shipping-rank-only").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isOperationManager())));
@@ -1036,7 +1043,8 @@ function showDoctorRankPage() { if (!canViewAdminReports()) return; hideAllPages
 function showBranchRankPage() { hideAllPages(); $("branchRankPage").classList.remove("hidden"); setActiveMenu("branchRankPage"); if (!$("reportFromDate").value || !$("reportToDate").value) { setReportMode("daily"); } else { updateReportTabs(); renderReport(); } }
 function showUsersPage() {
   if (!isAdmin() && !isExecutiveAssistant()) return;
-  hideAllPages(); $("usersPage").classList.remove("hidden"); setActiveMenu("usersPage"); loadUsers();
+  hideAllPages(); $("usersPage").classList.remove("hidden"); 
+  setActiveMenu("usersPage"); loadUsers();
   applyUsersFormRoleLock();
 }
 
@@ -1055,7 +1063,15 @@ function applyUsersFormRoleLock() {
     roleSelect.disabled = false;
   }
 }
-function showBranchsPage() { if (!isAdmin()) return; hideAllPages(); $("branchsPage").classList.remove("hidden"); setActiveMenu("branchsPage"); loadBranchs(); loadDoctors(); loadShippingSystems(); }
+function showBranchsPage() { 
+  if (!isAdmin() && !isExecutiveAssistant()) return;  
+  hideAllPages(); 
+  $("branchsPage").classList.remove("hidden"); 
+  setActiveMenu("branchsPage"); 
+  loadBranchs(); 
+  loadDoctors(); 
+  loadShippingSystems(); 
+}
 
 function resetForm() { 
   orderForm.reset(); 
@@ -1065,6 +1081,8 @@ function resetForm() {
     employeeName.value = currentUser.name; 
     employeeName.readOnly = true; 
   }
+   const orderNumberEl = document.getElementById('orderNumber');
+   if (orderNumberEl) orderNumberEl.value = "";
   const depositField = document.getElementById("deposit");
   if (depositField) depositField.value = "0";
   const qtyEl = document.getElementById("quantity");
@@ -1406,7 +1424,7 @@ function renderOrders() {
   renderStats(filtered);
   
   if (!filtered.length) {
-    ordersTableBody.innerHTML = `<tr><td colspan="17" class="empty">No data found</td></tr>`;
+    ordersTableBody.innerHTML = `<tr><td colspan="18" class="empty">No data found</td></tr>`;
     syncBulkSelectionUI([]);
     renderPagination("ordersPagination", 0, "orders");
     return;
@@ -1437,6 +1455,7 @@ function renderOrders() {
         <td>${num(page.start + i + 1)}</td>
         <td>${o.employee_name || ""}</td>
         <td>${o.doctor_name || ""}</td>
+        <td>${o.order_number || ""}</td>  
         <td>${o.customer_name || ""}</td>
         <td>${o.phone || ""}</td>
         <td>${o.phone2 || ""}</td> 
@@ -1522,6 +1541,7 @@ orderForm.addEventListener("submit", async (e) => {
   const orderData = {
     employee_name:    isAdmin() ? empEl.value.trim() : currentUser.name,
     doctor_name:      docEl.value.trim(),
+    order_number:     document.getElementById('orderNumber')?.value?.trim() || '',
     customer_name:    custEl.value.trim(),
     phone:            phoneEl.value.trim(),
     phone2:           document.getElementById('phone2')?.value.trim() || '', 
@@ -1662,6 +1682,8 @@ window.editOrder = function (id) {
   editId = id;
   employeeName.value = o.employee_name || "";
   doctorName.value = o.doctor_name || "";
+  const orderNumberEl = document.getElementById('orderNumber');
+  if (orderNumberEl) orderNumberEl.value = o.order_number || "";
   customerName.value = o.customer_name || "";
   phone.value = o.phone || "";
   document.getElementById('phone2').value = o.phone2 || ""; 
@@ -2295,7 +2317,7 @@ function downloadCSV(fileName, headers, rows) {
   a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url);
 }
 
-function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor", "Customer", "Phone","Phone2", "Shipping Company", "Area", "Products", "Delivery Fee", "Discount", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name, o.customer_name, o.phone,o.phone2, o.shipping_company, o.area, o.product_names || "", o.delivery_fee || 0, getOrderMeta(o).discount || 0, o.price, o.deposit || 0, Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)), o.status, stripCollectMeta(o.notes || ""), o.created_at])); }
+function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor","Order Number", "Customer", "Phone","Phone2", "Shipping Company", "Area", "Products", "Delivery Fee", "Discount", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name,o.order_number || "", o.customer_name, o.phone,o.phone2, o.shipping_company, o.area, o.product_names || "", o.delivery_fee || 0, getOrderMeta(o).discount || 0, o.price, o.deposit || 0, Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)), o.status, stripCollectMeta(o.notes || ""), o.created_at])); }
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
 function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-dashboard.csv", ["Rank", "Shipping Company", "Total Order", "Signed", "Delivering", "Returned", "Conversion Rate", "Cancel Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.delivering, r.returned, r.conversionRate, r.returnRate, r.score.toFixed(1)])); }
@@ -3638,6 +3660,7 @@ function renderBranchOrders() {
       <td>${num(start + i + 1)}</td>
       <td>${o.employee_name || ''}</td>
       <td>${o.doctor_name || ''}</td>
+      <td>${o.order_number || ""}</td>
       <td>${o.customer_name || ''}</td>
       <td>${o.phone || ''}</td>
       <td>${o.phone2 || ""}</td>
@@ -3770,6 +3793,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const orderData = {
       employee_name:    (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
       doctor_name:      docEl?.value.trim() || '',
+      order_number: document.getElementById('bOrderNumber')?.value?.trim() || '',
       customer_name:    custEl?.value.trim() || '',
       phone: document.getElementById('bPhone')?.value.trim() || '',
       phone2: document.getElementById('bPhone2')?.value.trim() || '',
@@ -5264,6 +5288,7 @@ function generateReceiptHTML(order, branchName) {
   </div>
   <div style="font-size:10px;margin-bottom:4px;">العميل: <strong>${order.customer_name || ''}</strong></div>
   <div style="font-size:10px;margin-bottom:4px;">الدكتور: <strong>${order.doctor_name || ''}</strong></div>
+ <div style="font-size:10px;margin-bottom:4px;">رقم الأوردر: <strong>${order.order_number || '—'}</strong></div>
   <div style="font-size:10px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>
   <div style="font-size:10px;margin-bottom:6px;">العنوان: <strong>${order.area || ''}</strong></div>
 
