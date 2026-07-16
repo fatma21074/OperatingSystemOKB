@@ -94,7 +94,7 @@ function formatSequentialTicketId(value) {
 
 function generateOrderBarcode(ticketId) {
   const cleanTicket = onlyDigits(ticketId).padStart(5, '0');
-  return `11000000000${cleanTicket}`;
+  return `123456789${cleanTicket}`;  // 9 + 5 = 14 رقم
 }
 
 function fallbackTicketIdFromOrder(order) {
@@ -877,6 +877,8 @@ function setupUserView() {
   if (inline2) inline2.textContent = getRoleDisplayName(currentUser.role);
   const av = $("userAvatar");
   if (av) av.textContent = (currentUser.name || "U").trim().charAt(0).toUpperCase();
+const selectPageTh = document.getElementById("selectPageOrders")?.closest("th");
+if (selectPageTh) selectPageTh.style.display = isAdmin() ? "" : "none";
 
   document.querySelectorAll(".settings-menu-btn").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isExecutiveAssistant())));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
