@@ -230,6 +230,14 @@ function getDoctorCodeByName(name) {
   const doc = doctorsList.find(d => (d.name || '') === name);
   return doc ? (doc.code || '') : '';
 }
+// يستخرج كود الدكتور (3 حروف إنجليزي) من نص، ويتجاهل الأرقام
+function extractDoctorCodeFromText(...values) {
+  for (const v of values) {
+    const m = String(v || '').match(/[A-Za-z]{3}/);
+    if (m) return m[0].toUpperCase();
+  }
+  return '';
+}
 
 function matchesOrderSearch(order, search) {
   const q = String(search || '').trim().toLowerCase();
@@ -2956,6 +2964,7 @@ const systemRequiredFields = [
   { id: "map_deposit", label: "المدفوع مقدمًا 💵 (ديبوزيت)", dbField: "deposit", allowStatic: false, optional: true },
   { id: "map_paymentImage", label: "📎 رابط صورة إثبات الدفع (اختياري)", dbField: "payment_image", allowStatic: false, optional: true },
   { id: "map_doctorName", label: "اسم الدكتور 👨‍⚕️", dbField: "doctor_name", allowStatic: false },
+  { id: "map_doctorCode", label: "كود الدكتور 🔤 (اختياري)", dbField: "doctor_code", allowStatic: false, optional: true },
   { id: "map_shippingCompany", label: "شركة الشحن 🚚", dbField: "shipping_company", allowStatic: true, type: "shipping" },
   { id: "map_employeeName", label: "اسم الموظف 💼", dbField: "employee_name", allowStatic: true, type: "employee" },
   { id: "map_status", label: "حالة الأوردر 📊", dbField: "status", allowStatic: false },
@@ -3054,6 +3063,7 @@ function buildMappingInterface() {
       if (field.dbField === "deposit" && (lowerCol.includes("deposit") || lowerCol.includes("paid") || lowerCol.includes("advance") || lowerCol.includes("مدفوع") || lowerCol.includes("ديبوزيت"))) guessedValue = col;
       if (field.dbField === "payment_image" && (lowerCol.includes("image") || lowerCol.includes("url") || lowerCol.includes("link") || lowerCol.includes("photo") || lowerCol.includes("صورة") || lowerCol.includes("رابط"))) guessedValue = col;
       if (field.dbField === "doctor_name" && (lowerCol.includes("doctor") || cleanCol.includes("دكتور") || cleanCol.includes("طبيب"))) guessedValue = col;
+      if (field.dbField === "doctor_code" && (lowerCol.includes("code") || lowerCol.includes("ref") || cleanCol.includes("كود"))) guessedValue = col;
       if (field.dbField === "shipping_company" && (lowerCol.includes("shipping") || lowerCol.includes("company") || cleanCol.includes("شحن") || cleanCol.includes("شركة"))) guessedValue = col;
       if (field.dbField === "employee_name" && (lowerCol.includes("employee") || lowerCol.includes("agent") || lowerCol.includes("user") || cleanCol.includes("موظف") || cleanCol.includes("مدخل"))) guessedValue = col;
       if (field.dbField === "status" && (lowerCol.includes("status") || cleanCol.includes("حالة") || cleanCol.includes("الحالة"))) guessedValue = col;
@@ -3129,7 +3139,7 @@ async function executeBulkImport() {
       mapping[field.dbField] = excelVal; 
       staticValues[field.dbField] = staticVal; 
     } else {
-      if (!excelVal && field.dbField !== "notes" && field.dbField !== "payment_image") {
+if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !== "payment_image") {
         missingRequired = true;
       }
       mapping[field.dbField] = excelVal;
@@ -3207,6 +3217,7 @@ async function executeBulkImport() {
     const orderObj = {
       employee_name: finalEmployee,
       doctor_name: String(row[mapping["doctor_name"]] || "").trim(),
+      doctor_code: mapping["doctor_code"] ? extractDoctorCodeFromText(row[mapping["doctor_code"]]) : "",
       customer_name: String(row[mapping["customer_name"]] || "").trim(),
       phone: String(row[mapping["phone"]] || "").trim(),
       shipping_company: finalShipping,
