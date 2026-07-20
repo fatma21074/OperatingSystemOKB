@@ -58,6 +58,7 @@ function isStoreManager() { return currentUser && getRoleKey(currentUser.role) =
 function isAccountManager() { return currentUser && getRoleKey(currentUser.role) === 'account_manager'; }
 function canManageDailyLock() { return isAdmin() || isAccountManager(); }
 function canManageKhaznaAndTransfer() { return isAdmin() || isAccountManager(); }
+function canViewKhazna() { return isAdmin() || isAccountManager() || isCashier(); }
 function canCollectOrders() { return isAdmin() || isAccountManager() || isCashier(); }
 function isAgent() { return currentUser && getRoleKey(currentUser.role) === "agent"; }
 function isOperationManager() { const r = getRoleKey(currentUser && currentUser.role); return r === "manager" || r === "operation_manager" || r === "delivery_manager"; }
@@ -94,7 +95,8 @@ function formatSequentialTicketId(value) {
 
 function generateOrderBarcode(ticketId) {
   const cleanTicket = onlyDigits(ticketId).padStart(5, '0');
-  return `123456789${cleanTicket}`;  // 9 + 5 = 14 رقم
+  // نفس صيغة الباركود المحفوظة والمعتمدة في Supabase
+  return `11000000000${cleanTicket}`;
 }
 
 function fallbackTicketIdFromOrder(order) {
@@ -109,15 +111,9 @@ function getTicketId(order) {
 }
 
 function getOrderBarcode(order) {
-  // ✅ نولّد الباركود دايماً من الـ ticket_id عشان يبقى فريد لكل أوردر
-  let barcode = generateOrderBarcode(getTicketId(order));
-  barcode = String(barcode).replace(/\D/g, '');
-  if (barcode.length > 14) {
-    barcode = barcode.slice(0, 14);
-  } else if (barcode.length < 14) {
-    barcode = barcode.padStart(14, '0');
-  }
-  return barcode;
+  // الأولوية للباركود المحفوظ بالفعل في Supabase
+  const barcode = onlyDigits(order?.order_barcode);
+  return barcode || generateOrderBarcode(getTicketId(order));
 }
 
 let ticketSequenceCache = null;
@@ -890,7 +886,7 @@ if (selectPageTh) selectPageTh.style.display = isAdmin() ? "" : "none";
 
   document.querySelectorAll(".settings-menu-btn").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isExecutiveAssistant())));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
-  document.querySelectorAll(".accounting-only").forEach(el => el.classList.toggle("hidden", !canManageKhaznaAndTransfer()));
+  document.querySelectorAll(".accounting-only").forEach(el => el.classList.toggle("hidden", !canViewKhazna()));
   document.querySelectorAll(".branch-shipping-rank-only").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isOperationManager())));
 
   const isRestrictedRole = isExecutiveAssistant() || isSecretary() || isCashier() || isStoreManager() || isAccountManager();
@@ -922,6 +918,8 @@ if (selectPageTh) selectPageTh.style.display = isAdmin() ? "" : "none";
 
   if (!isAdmin()) { employeeName.value = currentUser.name; employeeName.readOnly = true; } else employeeName.readOnly = false;
 }
+
+setTimeout(ensureAccountManagerBranchReportButton, 100);
 
 function resetAppState() {
   orders = [];
@@ -1321,6 +1319,171 @@ function hasProducts(scope) {
 
 function calcDashTotal() { syncProductCartTotals('dash'); }
 function calcBranchTotal() { syncProductCartTotals('branch'); }
+
+
+
+// ===== Account Manager: Khazna report button beside Export (without opening Khazna) =====
+function ensureAccountManagerBranchReportButton() {
+  const oldCashierBtn = document.getElementById('cashierBranchReportBtn');
+  if (oldCashierBtn) oldCashierBtn.remove();
+
+  const existing = document.getElementById('accountManagerBranchReportBtn');
+  const exportButton = document.querySelector('[onclick*="exportBranchOrders"]');
+
+  // الزر يظهر لمدير الحسابات فقط، ولا يفتح صفحة الخزنة
+  if (!isAccountManager()) {
+    if (existing) existing.remove();
+    return;
+  }
+
+  if (!exportButton) return;
+  if (existing) {
+    existing.style.display = 'inline-flex';
+    return;
+  }
+
+  const btn = document.createElement('button');
+  btn.id = 'accountManagerBranchReportBtn';
+  btn.type = 'button';
+  btn.innerHTML = '🖨️ طباعة التقرير';
+  btn.title = 'طباعة نفس تقرير الخزنة للأوردرات المسلّمة بدون فتح صفحة الخزنة';
+  btn.onclick = printBranchKhaznaReportForAccountManager;
+  btn.style.cssText = `
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:9px 14px;border:none;border-radius:10px;cursor:pointer;
+    background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;
+    font-size:12px;font-weight:800;white-space:nowrap;
+    box-shadow:0 4px 12px rgba(13,148,136,.25);
+  `;
+
+  exportButton.insertAdjacentElement('afterend', btn);
+}
+
+async function printBranchKhaznaReportForAccountManager() {
+  if (!isAccountManager()) {
+    alert('طباعة تقرير الخزنة من صفحة الفرع متاحة لمدير الحسابات فقط');
+    return;
+  }
+  if (!currentBranchName) {
+    alert('افتح صفحة الفرع أولاً');
+    return;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const from = branchActiveDateFrom || document.getElementById('bFromDate')?.value || today;
+  const to = branchActiveDateTo || document.getElementById('bToDate')?.value || today;
+
+  const btn = document.getElementById('accountManagerBranchReportBtn');
+  const oldText = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = 'جاري تجهيز التقرير...'; }
+
+  try {
+    let allData = [];
+    const pageSize = 1000;
+    let rangeFrom = 0;
+
+    while (true) {
+      const rangeTo = rangeFrom + pageSize - 1;
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*')
+        .eq('branch', currentBranchName)
+        .eq('status', 'Signed')
+        .order('created_at', { ascending: false })
+        .range(rangeFrom, rangeTo);
+
+      if (error) throw error;
+      allData = allData.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      rangeFrom += pageSize;
+    }
+
+    const reportOrders = allData
+      .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
+      .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
+
+    if (!reportOrders.length) {
+      alert(`لا توجد أوردرات Signed لفرع ${currentBranchName} في الفترة ${from} → ${to}`);
+      return;
+    }
+
+    const totalSales = reportOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+    const shippingTotal = reportOrders.reduce((sum, order) => {
+      const last = getLatestCollectEntry(order);
+      return sum + Number(last?.shipping || 0);
+    }, 0);
+    const transfersTotal = reportOrders.reduce((sum, order) => {
+      const last = getLatestCollectEntry(order);
+      const method = String(last?.payment_method || '').toLowerCase();
+      return (method === 'instapay' || method === 'wallet')
+        ? sum + Number(last?.sales || order.price || 0)
+        : sum;
+    }, 0);
+    const net = totalSales - shippingTotal - transfersTotal;
+    const printDate = new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+
+    const orderRows = reportOrders.map((o,i) => `
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:4px;">${i+1}</td>
+        <td style="padding:4px;">${escapeHTML(o.customer_name || '')}</td>
+        <td style="padding:4px;">${escapeHTML(o.phone || '')}</td>
+        <td style="padding:4px;font-size:10px;">${escapeHTML(o.product_names || '—')}</td>
+        <td style="padding:4px;text-align:right;">${enMoney(o.price)}</td>
+        <td style="padding:4px;text-align:right;">${Number(o.deposit||0) > 0 ? enMoney(o.deposit) : '—'}</td>
+        <td style="padding:4px;text-align:center;"><span style="background:#e5e7eb;padding:2px 6px;border-radius:4px;font-size:10px;">${escapeHTML(o.status||'')}</span></td>
+      </tr>`).join('');
+
+    const reportHTML = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><title>تقرير الخزنة</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; color: #000; font-size: 13px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
+  .stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-box { border: 1px solid #ddd; border-radius: 8px; padding: 12px 20px; text-align: center; min-width: 140px; }
+  .stat-box .label { font-size: 11px; color: #777; }
+  .stat-box .value { font-size: 20px; font-weight: bold; direction:ltr; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th { background: #f3f4f6; padding: 6px; font-size: 12px; text-align: right; }
+  td { direction:ltr; }
+  @media print { @page { size: A4; margin: 15mm; } }
+</style>
+</head>
+<body>
+  <h1>🏦 تقرير الخزنة — فرع ${escapeHTML(currentBranchName)}</h1>
+  <div class="meta">الفترة: ${from} → ${to} | طُبع في: ${printDate}</div>
+  <div class="stats">
+    <div class="stat-box"><div class="label">إجمالي المبيعات</div><div class="value" style="color:#6366f1;">${enMoney(totalSales)}</div></div>
+    <div class="stat-box"><div class="label">مصروفات الشحن</div><div class="value" style="color:#ef4444;">${enMoney(shippingTotal)}</div></div>
+    <div class="stat-box"><div class="label">التحويلات</div><div class="value" style="color:#a855f7;">${enMoney(transfersTotal)}</div></div>
+    <div class="stat-box"><div class="label">صافي اليومية</div><div class="value" style="color:#10b981;">${enMoney(net)}</div></div>
+    <div class="stat-box"><div class="label">عدد الأوردرات</div><div class="value" style="color:#f59e0b;">${enNumber(reportOrders.length)}</div></div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>العميل</th><th>الموبايل</th><th>المنتجات</th><th>السعر</th><th>المدفوع</th><th>الحالة</th></tr></thead>
+    <tbody>${orderRows}</tbody>
+  </table>
+  <div style="margin-top:20px;border-top:2px solid #000;padding-top:10px;font-weight:bold;font-size:15px;direction:ltr;text-align:right;">
+    Net = ${enMoney(totalSales)} - ${enMoney(shippingTotal)} - ${enMoney(transfersTotal)} = <span style="color:#10b981;">${enMoney(net)}</span>
+  </div>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (!win) {
+      alert('المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة وحاول مرة أخرى.');
+      return;
+    }
+    win.document.write(reportHTML);
+    win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+  } catch (error) {
+    console.error('Branch khazna report error:', error);
+    alert('مشكلة في تجهيز التقرير: ' + (error.message || error));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldText || '🖨️ طباعة التقرير'; }
+  }
+}
 
 // ===== Export صفحات الفروع =====
 function exportBranchOrders() {
@@ -3273,6 +3436,12 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
 
 // ===== مستمعي الأحداث =====
 searchInput.addEventListener("input", () => { pageState.orders = 1; renderOrders(); });
+searchInput.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Enter") return;
+  ev.preventDefault();
+  const scannedValue = String(searchInput.value || "").trim();
+  if (scannedValue) openCollectionFromScan(scannedValue, "branch");
+});
 filterStatus.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
 filterEmployee.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
 const filterShippingCompanyEl = document.getElementById("filterShippingCompany");
@@ -3308,6 +3477,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+document.addEventListener('DOMContentLoaded', () => setTimeout(ensureAccountManagerBranchReportButton, 150));
 
 // ===== Toggle Sidebar =====
 (function() {
@@ -3413,6 +3584,7 @@ async function openBranchPage(branchName) {
 
   clearProductCart('branch');
   await loadBranchOrders();
+  setTimeout(ensureAccountManagerBranchReportButton, 50);
 
   document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
 }
@@ -3690,7 +3862,7 @@ function renderBranchOrders() {
         <div style="display:flex;gap:5px;align-items:center;">
           ${getCollectButtonHtml(o, 'branch')}
           ${transferBtn}
-          <button onclick="printBranchOrderReceipt('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🧾 إيصال</button>
+          <button onclick="printBranchOrderReceipt('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🖨️ طباعة</button>
           ${getBranchStatusButtonHtml(o)}
         </div>
       </td>
@@ -3737,10 +3909,16 @@ function applyBranchDateFilter() {
 function resetBranchDateFilter() {
   branchActiveDateFrom = null;
   branchActiveDateTo = null;
-  const f = document.getElementById('bFromDate'); if(f) f.value = '';
-  const t = document.getElementById('bToDate'); if(t) t.value = '';
+  const f = document.getElementById('bFromDate'); if (f) f.value = '';
+  const t = document.getElementById('bToDate'); if (t) t.value = '';
+  const search = document.getElementById('bSearchInput'); if (search) search.value = '';
+  const status = document.getElementById('bFilterStatus'); if (status) status.value = 'الكل';
+  const employee = document.getElementById('bFilterEmployee'); if (employee) employee.value = 'الكل';
   const badge = document.getElementById('bActiveDateBadge');
-  if (badge) badge.classList.remove('visible');
+  if (badge) {
+    badge.textContent = '📅 فيلتر تاريخ مفعّل';
+    badge.classList.remove('visible');
+  }
   branchPageNum = 1;
   renderBranchOrders();
 }
@@ -3764,6 +3942,8 @@ document.addEventListener('DOMContentLoaded', function() {
         ev.preventDefault();
         branchPageNum = 1;
         renderBranchOrders();
+        const scannedValue = String(bSearch.value || '').trim();
+        if (scannedValue) openCollectionFromScan(scannedValue, 'branch');
       }
     });
   }
@@ -3773,7 +3953,15 @@ document.addEventListener('DOMContentLoaded', function() {
   if (bFEmp) bFEmp.addEventListener('change', () => { branchPageNum = 1; renderBranchOrders(); });
 
   const khaznaSearch = document.getElementById('khaznaBarcodeSearch');
-  if (khaznaSearch) khaznaSearch.addEventListener('input', () => { renderKhaznaStats(); renderKhaznaOrders(); });
+  if (khaznaSearch) {
+    khaznaSearch.addEventListener('input', () => { renderKhaznaStats(); renderKhaznaOrders(); });
+    khaznaSearch.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const scannedValue = String(khaznaSearch.value || '').trim();
+      if (scannedValue) openCollectionFromScan(scannedValue, 'khazna');
+    });
+  }
   const khaznaStatus = document.getElementById('khaznaFilterStatus');
   if (khaznaStatus) khaznaStatus.addEventListener('change', () => { renderKhaznaStats(); renderKhaznaOrders(); });
   const khaznaEmployee = document.getElementById('khaznaFilterEmployee');
@@ -4207,8 +4395,8 @@ async function unlockKhaznaDay() {
 }
 
 function openKhaznaPage() {
-  if (!canManageKhaznaAndTransfer()) { 
-    alert('الخزنة متاحة للأدمن و Account Manager فقط'); 
+  if (!canViewKhazna()) { 
+    alert('الخزنة متاحة للكاشير والأدمن و Account Manager فقط'); 
     return; 
   }
   
@@ -4452,7 +4640,7 @@ function renderKhaznaOrders() {
             style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;
             border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;
             font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">
-            🧾 إيصال
+            🖨️ طباعة
           </button>
         </div>
       </td>
@@ -4509,7 +4697,7 @@ async function printSingleOrder(orderId) {
   const win = window.open('', '_blank', 'width=400,height=700');
   win.document.write(generateReceiptHTML(order, currentBranchName));
   win.document.close();
-  win.onload = () => { win.focus(); };
+  win.onload = () => { win.focus(); win.print(); };
 }
 
 async function printSelectedOrders() {
@@ -4605,7 +4793,7 @@ async function printBranchOrderReceipt(orderId) {
   const win = window.open('', '_blank', 'width=400,height=700');
   win.document.write(generateReceiptHTML(order, currentBranchName || order.branch || ''));
   win.document.close();
-  win.onload = () => { win.focus(); };
+  win.onload = () => { win.focus(); win.print(); };
 }
 
 // ===== تحصيل الأوردر =====
@@ -4978,224 +5166,184 @@ function printReconciliationReport() {
 // ===== BARCODE SCANNER - GLOBAL =====
 // ============================================================
 
-// المتغيرات العامة للـ Scanner
-let barcodeBuffer = '';
-let barcodeTimeout = null;
-let barcodeScannerActive = true;
+// يسمح بالـ Scan حتى لو المؤشر مش واقف داخل خانة البحث.
+let barcodeScanBuffer = '';
+let barcodeScanTimer = null;
 
-/**
- * تهيئة الماسك سكان للباركود على مستوى الصفحة
- * يشتغل حتى لو المؤشر مش جوه خانة البحث
- */
+function isElementVisibleById(id) {
+  const el = document.getElementById(id);
+  return !!(el && !el.classList.contains('hidden'));
+}
+
+function getActiveBarcodeSearchInput() {
+  if (isElementVisibleById('khaznaPage')) return document.getElementById('khaznaBarcodeSearch');
+  if (isElementVisibleById('branchPage')) return document.getElementById('bSearchInput');
+  if (isElementVisibleById('ordersPage')) return document.getElementById('searchInput');
+  return null;
+}
+
+function findOrderByScannedValue(value) {
+  const raw = String(value || '').trim();
+  const digits = onlyDigits(raw);
+  if (!raw) return null;
+
+  const pools = [];
+  if (Array.isArray(branchOrders)) pools.push(...branchOrders);
+  if (Array.isArray(khaznaOrders)) pools.push(...khaznaOrders);
+  if (Array.isArray(orders)) pools.push(...orders);
+
+  const unique = [];
+  const seen = new Set();
+  pools.forEach(order => {
+    if (!order || seen.has(String(order.id))) return;
+    seen.add(String(order.id));
+    unique.push(order);
+  });
+
+  // الكاشير يرى أوردرات الفروع المسندة له فقط.
+  const allowed = unique.filter(order => {
+    if (!isCashier() && !isStoreManager()) return true;
+    const managed = getCurrentUserManagedBranches();
+    const managedShipping = managed.map(getBranchShippingCompanyName);
+    return managed.includes(order.branch) || managed.includes(order.shipping_company) || managedShipping.includes(order.shipping_company);
+  });
+
+  const exact = allowed.find(order => {
+    const values = [order.order_barcode, getOrderBarcode(order), order.ticket_id, getTicketId(order), order.order_number];
+    return values.some(v => {
+      const text = String(v || '').trim();
+      return text === raw || (digits && onlyDigits(text) === digits);
+    });
+  });
+  if (exact) return exact;
+
+  return allowed.find(order => matchesOrderSearch(order, raw)) || null;
+}
+
+function openCollectionFromScan(value, sourceHint) {
+  if (!canCollectOrders()) return false;
+  const order = findOrderByScannedValue(value);
+  if (!order) {
+    alert('❌ هذا الباركود غير موجود');
+    return false;
+  }
+
+  const source = sourceHint || (isElementVisibleById('khaznaPage') ? 'khazna' : 'branch');
+  openCollectModal(
+    order.id,
+    order.customer_name || '',
+    Number(order.price || 0),
+    Number(order.deposit || 0),
+    source
+  );
+  return true;
+}
+
+function runBarcodeSearch(value) {
+  const input = getActiveBarcodeSearchInput();
+  const cleanValue = String(value || '').trim();
+  if (!input || !cleanValue) return;
+  input.value = cleanValue;
+  input.focus();
+
+  if (input.id === 'bSearchInput') {
+    branchPageNum = 1;
+    renderBranchOrders();
+    openCollectionFromScan(cleanValue, 'branch');
+  } else if (input.id === 'khaznaBarcodeSearch') {
+    renderKhaznaStats();
+    renderKhaznaOrders();
+    openCollectionFromScan(cleanValue, 'khazna');
+  } else if (input.id === 'searchInput') {
+    pageState.orders = 1;
+    renderOrders();
+    openCollectionFromScan(cleanValue, 'branch');
+  }
+}
+
 function initGlobalBarcodeScanner() {
-  // إزالة المستمع القديم لو موجود
-  document.removeEventListener('keydown', handleBarcodeKeydown);
-  document.removeEventListener('keyup', handleBarcodeKeyup);
-  
-  // إضافة المستمع الجديد
-  document.addEventListener('keydown', handleBarcodeKeydown);
-  document.addEventListener('keyup', handleBarcodeKeyup);
-  
-  console.log('✅ Global Barcode Scanner initialized');
-}
+  document.addEventListener('keydown', function(ev) {
+    const active = document.activeElement;
+    const tag = active && active.tagName ? active.tagName.toLowerCase() : '';
+    const isTypingField = tag === 'input' || tag === 'textarea' || tag === 'select' || (active && active.isContentEditable);
+    if (isTypingField) return;
 
-/**
- * معالجة الضغط على المفاتيح للكشف عن الباركود
- */
-function handleBarcodeKeydown(e) {
-  // تجاهل لو المؤشر في حقل إدخال نصي (حتى نمنع التداخل)
-  const tag = e.target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-    return;
-  }
-  
-  // تجاهل المفاتيح الخاصة
-  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
-    return;
-  }
-  
-  // بدء المؤقت
-  if (barcodeTimeout) {
-    clearTimeout(barcodeTimeout);
-  }
-  
-  // تجميع الأحرف
-  barcodeBuffer += e.key;
-  
-  // إعادة تعيين المؤقت بعد 100ms من آخر حرف
-  barcodeTimeout = setTimeout(() => {
-    if (barcodeBuffer.length > 3) {
-      // تم اكتشاف باركود
-      const barcode = barcodeBuffer.trim();
-      console.log('📸 Barcode scanned:', barcode);
-      handleScannedBarcode(barcode);
+    if (ev.key === 'Enter') {
+      const scanned = barcodeScanBuffer.trim();
+      barcodeScanBuffer = '';
+      if (barcodeScanTimer) clearTimeout(barcodeScanTimer);
+      if (scanned.length >= 4) {
+        ev.preventDefault();
+        runBarcodeSearch(scanned);
+      }
+      return;
     }
-    barcodeBuffer = '';
-    barcodeTimeout = null;
-  }, 100);
-}
 
-function handleBarcodeKeyup(e) {
-  // مستمع إضافي للتأكد من اكتمال الباركود
-}
-
-/**
- * معالجة الباركود بعد مسحه
- */
-function handleScannedBarcode(barcode) {
-  // 1. البحث في الخزنة (Khazna)
-  const khaznaSearch = document.getElementById('khaznaBarcodeSearch');
-  const khaznaPage = document.getElementById('khaznaPage');
-  if (khaznaSearch && khaznaPage && !khaznaPage.classList.contains('hidden')) {
-    khaznaSearch.value = barcode;
-    if (typeof renderKhaznaStats === 'function') renderKhaznaStats();
-    if (typeof renderKhaznaOrders === 'function') renderKhaznaOrders();
-    return;
-  }
-  
-  // 2. البحث في صفحة الفرع (Branch)
-  const branchSearch = document.getElementById('bSearchInput');
-  const branchPage = document.getElementById('branchPage');
-  if (branchSearch && branchPage && !branchPage.classList.contains('hidden')) {
-    branchSearch.value = barcode;
-    if (typeof renderBranchOrders === 'function') renderBranchOrders();
-    return;
-  }
-  
-  // 3. البحث في صفحة الأوردرات الرئيسية (Dashboard)
-  const mainSearch = document.getElementById('searchInput');
-  if (mainSearch) {
-    mainSearch.value = barcode;
-    if (typeof renderOrders === 'function') renderOrders();
-    return;
-  }
+    if (ev.key && ev.key.length === 1) {
+      barcodeScanBuffer += ev.key;
+      if (barcodeScanTimer) clearTimeout(barcodeScanTimer);
+      barcodeScanTimer = setTimeout(() => { barcodeScanBuffer = ''; }, 180);
+    }
+  });
+  console.log('✅ Global Barcode Scanner initialized');
 }
 
 // ============================================================
 // ===== GENERATE CODE128 BARCODE SVG =====
 // ============================================================
 
-/**
- * توليد باركود Code128 على شكل SVG
- */
-function generateCode128BarcodeSVG(text) {
-  if (!text) return '';
-  
-  // تنظيف النص
-  const cleanText = String(text || '').trim();
-  if (!cleanText) return '';
-  
-  // دالة مساعدة لتحويل النص إلى Code128
-  function encodeCode128(data) {
-    // جدول ترميز Code128
-    const code128Chars = {
-      ' ': 0, '!': 1, '"': 2, '#': 3, '$': 4, '%': 5, '&': 6, "'": 7, '(': 8, ')': 9,
-      '*': 10, '+': 11, ',': 12, '-': 13, '.': 14, '/': 15, '0': 16, '1': 17, '2': 18,
-      '3': 19, '4': 20, '5': 21, '6': 22, '7': 23, '8': 24, '9': 25, ':': 26, ';': 27,
-      '<': 28, '=': 29, '>': 30, '?': 31, '@': 32, 'A': 33, 'B': 34, 'C': 35, 'D': 36,
-      'E': 37, 'F': 38, 'G': 39, 'H': 40, 'I': 41, 'J': 42, 'K': 43, 'L': 44, 'M': 45,
-      'N': 46, 'O': 47, 'P': 48, 'Q': 49, 'R': 50, 'S': 51, 'T': 52, 'U': 53, 'V': 54,
-      'W': 55, 'X': 56, 'Y': 57, 'Z': 58, '[': 59, '\\': 60, ']': 61, '^': 62, '_': 63,
-      '`': 64, 'a': 65, 'b': 66, 'c': 67, 'd': 68, 'e': 69, 'f': 70, 'g': 71, 'h': 72,
-      'i': 73, 'j': 74, 'k': 75, 'l': 76, 'm': 77, 'n': 78, 'o': 79, 'p': 80, 'q': 81,
-      'r': 82, 's': 83, 't': 84, 'u': 85, 'v': 86, 'w': 87, 'x': 88, 'y': 89, 'z': 90,
-      '{': 91, '|': 92, '}': 93, '~': 94
-    };
-    
-    // اختيار وضع الترميز (B هو الأكثر شيوعاً)
-    let startCode = 104; // Code B
-    let checksum = startCode;
-    let encoded = [];
-    
-    // ترميز كل حرف
-    for (let i = 0; i < data.length; i++) {
-      const char = data[i];
-      const code = code128Chars[char];
-      if (code === undefined) continue;
-      encoded.push(code);
-      checksum += (i + 1) * code;
-    }
-    
-    // حساب المجموع الاختباري
-    checksum = checksum % 103;
-    encoded.push(checksum);
-    encoded.push(106); // Stop code
-    
-    // تحويل إلى نمط الباركود (نظام 11 وحدة لكل حرف)
-    const patterns = [
-      // 0-9
-      "11011001100", "11001101100", "11001100110", "10010011000", "10010001100",
-      "10001001100", "10011001000", "10011000100", "10001100100", "11001001000",
-      // 10-19
-      "11001000100", "11000100100", "10110011100", "10011011100", "10011001110",
-      "10111001100", "10011101100", "10011100110", "11001110010", "11001011100",
-      // 20-29
-      "11001001110", "11011100100", "11001110100", "11101101110", "11101001100",
-      "11100101100", "11100100110", "11101100100", "11100110100", "11100110010",
-      // 30-39
-      "11011011000", "11011000110", "11000110110", "10100011000", "10001011000",
-      "10001000110", "10110001000", "10001101000", "10001100010", "11010001000",
-      // 40-49
-      "11000101000", "11000100010", "10110111000", "10110001110", "10001101110",
-      "10111011000", "10111000110", "10001110110", "11101110110", "11010001110",
-      // 50-59
-      "11000101110", "11011101000", "11011100010", "11011101110", "11101011000",
-      "11101000110", "11100010110", "11101101000", "11101100010", "11100011010",
-      // 60-69
-      "11101111010", "11001000010", "11110001010", "10100110000", "10100001100",
-      "10010110000", "10010000110", "10000101100", "10000100110", "10110010000",
-      // 70-79
-      "10110000100", "10011010000", "10011000010", "10000110100", "10000110010",
-      "11000010010", "11001010000", "11110111010", "11000010100", "10001111010",
-      // 80-89
-      "11010100000", "11010010000", "11010001000", "11010000100", "11000101000",
-      "11000100100", "11000100010", "10110110000", "10110001100", "10001101100",
-      // 90-99
-      "10110101000", "10110010100", "10110010010", "10001010110", "10101011000",
-      "10101000110", "10001011010", "10101101000", "10101100010", "10100011010",
-      // 100-106
-      "10100001010", "11001011000", "11001000110", "11010110010", "11010100110",
-      "10110100110", "10100110110"
-    ];
-    
-    let result = '';
-    // Start code
-    result += patterns[startCode] || "11011001100";
-    // Data codes
-    for (let i = 0; i < encoded.length; i++) {
-      const idx = encoded[i];
-      if (idx < patterns.length) {
-        result += patterns[idx];
-      }
-    }
-    
-    return result;
+function code128PatternTable() {
+  return [
+    "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+    "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+    "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+    "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+    "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+    "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+    "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+    "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+    "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+    "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+    "114131","311141","411131","211412","211214","211232","2331112"
+  ];
+}
+
+function generateCode128BarcodeSVG(value) {
+  const raw = String(value || '').trim();
+  const data = raw.replace(/[^0-9A-Za-z\-\.\s]/g, '');
+  if (!data) return '';
+
+  const patterns = code128PatternTable();
+  const codes = [104];
+  for (let i = 0; i < data.length; i++) {
+    const code = data.charCodeAt(i) - 32;
+    if (code < 0 || code > 95) continue;
+    codes.push(code);
   }
-  
-  // توليد الباركود
-  const encodedPattern = encodeCode128(cleanText);
-  if (!encodedPattern) return '';
-  
-  // عرض كل وحدة بـ 2px
-  const moduleWidth = 2;
-  const totalWidth = encodedPattern.length * moduleWidth;
-  const height = 50;
-  
-  // بناء SVG
-  let bars = '';
-  let x = 0;
-  for (let i = 0; i < encodedPattern.length; i++) {
-    const bit = encodedPattern[i];
-    if (bit === '1') {
-      // شريط أسود
-      bars += `<rect x="${x}" y="0" width="${moduleWidth}" height="${height}" fill="#000000"/>`;
+
+  let checksum = codes[0];
+  for (let i = 1; i < codes.length; i++) checksum += codes[i] * i;
+  codes.push(checksum % 103);
+  codes.push(106);
+
+  const moduleW = 2.2;
+  const barH = 58;
+  const quiet = 18;
+  let x = quiet;
+  let rects = '';
+
+  codes.forEach(code => {
+    const pattern = patterns[code];
+    if (!pattern) return;
+    for (let i = 0; i < pattern.length; i++) {
+      const w = Number(pattern[i]) * moduleW;
+      if (i % 2 === 0) rects += `<rect x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="${barH}"/>`;
+      x += w;
     }
-    x += moduleWidth;
-  }
-  
-  return `<svg viewBox="0 0 ${totalWidth} ${height + 4}" width="${totalWidth}" height="${height + 4}" xmlns="http://www.w3.org/2000/svg" style="display:block;max-width:100%;height:auto;">
-    ${bars}
-  </svg>`;
+  });
+
+  const width = x + quiet;
+  return `<div class="barcode-svg-wrap"><svg class="barcode-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="${barH}" viewBox="0 0 ${width.toFixed(2)} ${barH}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges"><g fill="#000">${rects}</g></svg></div>`;
 }
 
 // ============================================================
