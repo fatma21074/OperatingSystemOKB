@@ -10,11 +10,395 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
  
+<style>
+/* ===== Login Falling Stars Overlay — preserves original login layout ===== */
+#loginStarsLayer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+#loginPage .medical-bg-pattern { position: relative; z-index: 0; }
+#loginPage .login-card-new { position: relative; z-index: 2; }
+.login-shooting-star {
+  --star-size: 2px; --trail-length: 100px; --duration: 5s; --delay: 0s;
+  --start-x: 50%; --drift-x: 150px;
+  position: absolute; top: -150px; left: var(--start-x);
+  width: var(--star-size); height: var(--trail-length); border-radius: 999px;
+  opacity: 0; transform: rotate(-38deg); transform-origin: center bottom;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(191,216,255,.16) 30%, rgba(148,190,255,.70) 76%, rgba(255,255,255,1) 100%);
+  filter: drop-shadow(0 0 3px rgba(255,255,255,.95)) drop-shadow(0 0 7px rgba(112,168,255,.80));
+  animation: loginStarFall var(--duration) linear var(--delay) infinite;
+  will-change: transform, opacity;
+}
+.login-shooting-star::after {
+  content: ''; position: absolute; left: 50%; bottom: -2px;
+  width: calc(var(--star-size) * 3.4); height: calc(var(--star-size) * 3.4);
+  border-radius: 50%; transform: translateX(-50%); background: #fff;
+  box-shadow: 0 0 5px #fff, 0 0 11px rgba(112,169,255,.95), 0 0 18px rgba(88,139,255,.65);
+}
+.login-star-boom {
+  position: fixed; width: 7px; height: 7px; border: 1px solid rgba(220,235,255,.95);
+  border-radius: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.2);
+  box-shadow: 0 0 7px rgba(255,255,255,.9), 0 0 15px rgba(102,160,255,.75);
+  animation: loginStarBoom .45s ease-out forwards;
+}
+.login-star-boom::before, .login-star-boom::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(220,235,255,.95), transparent);
+  transform: translate(-50%, -50%);
+}
+.login-star-boom::after { transform: translate(-50%, -50%) rotate(90deg); }
+@keyframes loginStarFall {
+  0% { opacity: 0; transform: translate3d(0,-140px,0) rotate(-38deg); }
+  8% { opacity: .95; }
+  78% { opacity: .95; }
+  88% { opacity: 0; transform: translate3d(var(--drift-x),calc(100vh + 190px),0) rotate(-38deg); }
+  100% { opacity: 0; transform: translate3d(var(--drift-x),calc(100vh + 190px),0) rotate(-38deg); }
+}
+@keyframes loginStarBoom {
+  0% { opacity: .95; transform: translate(-50%, -50%) scale(.2); }
+  55% { opacity: .72; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(3.6); }
+}
+@media (max-width: 640px) { .login-shooting-star { --trail-length: 80px; } }
+@media (prefers-reduced-motion: reduce) { #loginStarsLayer { display: none; } }
+</style>
+
+<style>
+/* ===== My Account Button ===== */
+.my-account-btn{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  min-height:38px;
+  padding:7px 18px 7px 10px;
+  border:2px solid #39ff88;
+  border-radius:999px;
+  background:rgba(4,25,34,.48);
+  color:#7dffad;
+  font-family:Inter,Cairo,sans-serif;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.2px;
+  cursor:pointer;
+  overflow:hidden;
+  box-shadow:
+    0 0 5px rgba(57,255,136,.9),
+    inset 0 0 8px rgba(57,255,136,.12);
+  text-shadow:0 0 7px rgba(57,255,136,.85);
+  transition:transform .2s ease,box-shadow .2s ease,background .2s ease;
+}
+.my-account-btn:hover{
+  transform:translateY(-1px);
+  background:rgba(15,68,55,.42);
+  box-shadow:
+    0 0 8px rgba(57,255,136,1),
+    0 0 18px rgba(57,255,136,.48),
+    inset 0 0 10px rgba(57,255,136,.18);
+}
+.my-account-btn:active{transform:translateY(0) scale(.98)}
+.my-account-icon{
+  width:24px;
+  height:24px;
+  border:1.8px solid currentColor;
+  border-radius:50%;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  box-shadow:0 0 7px rgba(57,255,136,.65);
+}
+.my-account-icon svg{width:16px;height:16px;display:block}
+
+/* ===== My Account Modal ===== */
+.my-account-modal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:12000;
+  padding:18px;
+  align-items:center;
+  justify-content:center;
+  background:rgba(2,8,23,.78);
+  backdrop-filter:blur(8px);
+}
+.my-account-dialog{
+  position:relative;
+  width:min(520px,96vw);
+  max-height:92vh;
+  overflow:auto;
+  direction:rtl;
+  padding:28px;
+  border:1px solid var(--border-color);
+  border-radius:22px;
+  background:
+    radial-gradient(circle at 12% 18%,rgba(57,255,136,.09),transparent 28%),
+    radial-gradient(circle at 88% 82%,rgba(20,184,166,.08),transparent 30%),
+    var(--bg-card);
+  color:var(--text-main);
+  box-shadow:0 26px 80px rgba(0,0,0,.55);
+}
+.my-account-dialog::before{
+  content:"✚   ⚕   ✚";
+  position:absolute;
+  left:22px;
+  bottom:18px;
+  font-size:64px;
+  font-weight:900;
+  letter-spacing:18px;
+  color:rgba(57,255,136,.035);
+  transform:rotate(-12deg);
+  pointer-events:none;
+  white-space:nowrap;
+}
+.my-account-dialog::after{
+  content:"SECURE ACCOUNT";
+  position:absolute;
+  right:-35px;
+  top:78px;
+  transform:rotate(90deg);
+  font:800 11px/1 Inter,Cairo,sans-serif;
+  letter-spacing:3px;
+  color:rgba(57,255,136,.08);
+  pointer-events:none;
+}
+.my-account-head{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:20px;
+}
+.my-account-title-wrap{display:flex;align-items:center;gap:12px}
+.my-account-title-icon{
+  width:44px;height:44px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(57,255,136,.55);
+  color:#39ff88;
+  background:rgba(57,255,136,.08);
+  box-shadow:0 0 16px rgba(57,255,136,.17);
+}
+.my-account-title{margin:0;font-size:18px;font-weight:800;color:var(--text-primary)}
+.my-account-subtitle{margin:4px 0 0;font-size:11px;color:var(--text-muted)}
+.my-account-close{
+  width:34px;height:34px;border-radius:50%;
+  border:1px solid var(--border-color);
+  background:var(--bg-soft);
+  color:var(--text-main);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:16px;
+}
+.my-account-form{position:relative;z-index:1}
+.my-account-field{margin-bottom:14px}
+.my-account-field label{
+  display:block;
+  margin-bottom:6px;
+  font-size:12px;
+  font-weight:700;
+  color:var(--text-secondary);
+}
+.my-account-password-wrap{position:relative}
+.my-account-input{
+  width:100%;
+  min-height:44px;
+  padding:10px 44px 10px 12px;
+  border:1px solid var(--border-color);
+  border-radius:11px;
+  outline:none;
+  background:var(--bg-input);
+  color:var(--text-main);
+  font:600 13px/1.4 Cairo,Inter,sans-serif;
+  transition:border-color .2s ease,box-shadow .2s ease;
+}
+.my-account-input:focus{
+  border-color:rgba(57,255,136,.75);
+  box-shadow:0 0 0 3px rgba(57,255,136,.09);
+}
+.my-account-eye{
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+  width:26px;height:26px;
+  border:none;background:transparent;
+  color:var(--text-muted);
+  cursor:pointer;font-size:14px;padding:0;
+}
+.my-account-rules{
+  margin:16px 0;
+  padding:13px 14px;
+  border:1px solid rgba(57,255,136,.18);
+  border-radius:12px;
+  background:rgba(57,255,136,.045);
+}
+.my-account-rules-title{
+  margin-bottom:7px;
+  color:#39ff88;
+  font-size:12px;
+  font-weight:800;
+}
+.my-account-rules ul{
+  margin:0;
+  padding-right:18px;
+  color:var(--text-muted);
+  font-size:11px;
+  line-height:1.85;
+}
+.my-account-message{
+  display:none;
+  margin:12px 0;
+  padding:10px 12px;
+  border-radius:10px;
+  font-size:12px;
+  font-weight:700;
+}
+.my-account-message.error{
+  display:block;
+  color:#fecaca;
+  background:rgba(239,68,68,.13);
+  border:1px solid rgba(239,68,68,.28);
+}
+.my-account-message.success{
+  display:block;
+  color:#bbf7d0;
+  background:rgba(34,197,94,.12);
+  border:1px solid rgba(34,197,94,.28);
+}
+.my-account-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:18px;
+}
+.my-account-cancel,.my-account-save{
+  min-height:40px;
+  padding:9px 18px;
+  border-radius:10px;
+  font:700 12px/1 Cairo,Inter,sans-serif;
+  cursor:pointer;
+}
+.my-account-cancel{
+  border:1px solid var(--border-color);
+  background:var(--bg-soft);
+  color:var(--text-main);
+}
+.my-account-save{
+  border:1px solid rgba(57,255,136,.75);
+  background:linear-gradient(135deg,rgba(14,116,86,.95),rgba(13,148,136,.95));
+  color:#fff;
+  box-shadow:0 0 14px rgba(57,255,136,.18);
+}
+.my-account-save:disabled{opacity:.6;cursor:not-allowed}
+
+@media(max-width:720px){
+  .my-account-btn{padding:7px 10px}
+  .my-account-btn .my-account-label{display:none}
+  .my-account-dialog{padding:22px 18px}
+}
+
+.smart-total-editable{width:100%;text-align:center;font-weight:900;outline:none;cursor:text;}
+.smart-total-editable:focus{border-color:#f59e0b!important;box-shadow:0 0 0 3px rgba(245,158,11,.12),0 0 14px rgba(245,158,11,.18);}
+</style>
+
+
+<style>
+/* ===== Activity Log (Admin Only) ===== */
+.activity-log-btn{position:relative;display:none;align-items:center;justify-content:center;gap:9px;min-height:38px;padding:7px 18px 7px 10px;border:2px solid #ff8a1f;border-radius:999px;background:rgba(35,15,4,.48);color:#ffad5c;font-family:Inter,Cairo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.2px;cursor:pointer;overflow:hidden;box-shadow:0 0 5px rgba(255,138,31,.9),inset 0 0 8px rgba(255,138,31,.13);text-shadow:0 0 7px rgba(255,138,31,.85);transition:.2s ease}
+.activity-log-btn:hover{transform:translateY(-1px);background:rgba(83,37,8,.45);box-shadow:0 0 8px #ff8a1f,0 0 18px rgba(255,138,31,.48),inset 0 0 10px rgba(255,138,31,.18)}
+.activity-log-btn:active{transform:scale(.98)}
+.activity-log-icon{width:24px;height:24px;border:1.8px solid currentColor;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 7px rgba(255,138,31,.65)}
+.activity-log-icon svg{width:15px;height:15px}
+.activity-log-shell{position:relative;min-height:calc(100vh - 120px);overflow:hidden;border-radius:22px;padding:22px;background:radial-gradient(circle at 10% 5%,rgba(255,138,31,.09),transparent 30%),radial-gradient(circle at 90% 90%,rgba(13,148,136,.08),transparent 30%),var(--bg-card);border:1px solid var(--border-color)}
+.activity-log-shell:before{content:'ACTIVITY  •  AUDIT  •  SECURITY';position:absolute;left:5%;top:48%;font:900 clamp(32px,6vw,90px)/1 Inter,sans-serif;letter-spacing:8px;color:rgba(148,163,184,.035);transform:rotate(-15deg);white-space:nowrap;pointer-events:none}
+.activity-log-head,.activity-log-toolbar,.activity-log-list,.activity-log-stats{position:relative;z-index:1}
+.activity-log-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.activity-log-title{display:flex;align-items:center;gap:12px}.activity-log-title-badge{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:23px;background:rgba(255,138,31,.11);border:1px solid rgba(255,138,31,.38);box-shadow:0 0 18px rgba(255,138,31,.15)}
+.activity-log-title h1{margin:0;font-size:21px}.activity-log-title p{margin:4px 0 0;color:var(--text-muted);font-size:12px}
+.activity-log-stats{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin-bottom:15px}.activity-log-stat{padding:13px;border-radius:13px;background:var(--bg-soft);border:1px solid var(--border-color)}.activity-log-stat span{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.activity-log-stat strong{font-size:18px;color:var(--text-primary)}
+.activity-log-toolbar{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr)) minmax(220px,2fr) minmax(170px,1fr) auto auto;gap:10px;padding:14px;margin-bottom:15px;border-radius:14px;background:var(--bg-soft);border:1px solid var(--border-color);align-items:end}.activity-log-toolbar label{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.activity-log-toolbar input,.activity-log-toolbar select{width:100%;min-height:40px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border-color);border-radius:9px;padding:8px 10px}
+.activity-log-list{display:flex;flex-direction:column;gap:9px}.activity-log-row{display:grid;grid-template-columns:44px minmax(120px,.7fr) minmax(165px,.9fr) minmax(260px,2fr) minmax(120px,.7fr) minmax(155px,.8fr);gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));border:1px solid var(--border-color);transition:.2s ease}.activity-log-row:hover{transform:translateY(-1px);border-color:rgba(255,138,31,.35);box-shadow:0 8px 22px rgba(0,0,0,.12)}
+.activity-log-action-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25)}.activity-log-user strong,.activity-log-main strong{display:block;color:var(--text-primary);font-size:12px}.activity-log-user small,.activity-log-main small,.activity-log-meta{color:var(--text-muted);font-size:10px;line-height:1.5}.activity-log-tag{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:9px;font-weight:800;background:rgba(255,138,31,.11);color:#ff9d3d;border:1px solid rgba(255,138,31,.22)}.activity-log-empty{padding:40px;text-align:center;color:var(--text-muted);border:1px dashed var(--border-color);border-radius:14px}.activity-log-loading{padding:32px;text-align:center;color:#ff9d3d;font-weight:800}
+@media(max-width:1000px){.activity-log-toolbar{grid-template-columns:1fr 1fr}.activity-log-row{grid-template-columns:40px 1fr 1fr}.activity-log-main{grid-column:2/4}.activity-log-stats{grid-template-columns:1fr 1fr}}
+@media(max-width:720px){.activity-log-btn{padding:7px 10px}.activity-log-btn .activity-log-label{display:none}.activity-log-toolbar{grid-template-columns:1fr}.activity-log-row{grid-template-columns:38px 1fr}.activity-log-main,.activity-log-user,.activity-log-meta-wrap{grid-column:2}.activity-log-stats{grid-template-columns:1fr 1fr}}
+</style>
+
+<style>
+
+/* ===== Product Reports (All Users) ===== */
+.product-reports-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:38px;padding:7px 18px 7px 10px;border:2px solid #ff4df3;border-radius:999px;background:rgba(44,7,48,.48);color:#ff7cf6;font-family:Inter,Cairo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.2px;cursor:pointer;overflow:hidden;box-shadow:0 0 5px rgba(255,77,243,.9),inset 0 0 8px rgba(255,77,243,.13);text-shadow:0 0 7px rgba(255,77,243,.85);transition:.2s ease}
+.product-reports-btn:hover{transform:translateY(-1px);background:rgba(91,15,96,.45);box-shadow:0 0 8px #ff4df3,0 0 18px rgba(255,77,243,.48),inset 0 0 10px rgba(255,77,243,.18)}
+.product-reports-btn:active{transform:scale(.98)}
+.product-reports-icon{width:24px;height:24px;border:1.8px solid currentColor;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 7px rgba(255,77,243,.65)}
+.product-reports-icon svg{width:15px;height:15px;display:block}
+.product-reports-shell{position:relative;min-height:calc(100vh - 120px);overflow:hidden;border-radius:22px;padding:22px;background:radial-gradient(circle at 12% 8%,rgba(255,77,243,.10),transparent 30%),radial-gradient(circle at 90% 90%,rgba(99,102,241,.09),transparent 32%),var(--bg-card);border:1px solid var(--border-color)}
+.product-reports-shell:before{content:'PRODUCT  •  SALES  •  INSIGHTS';position:absolute;left:3%;top:46%;font:900 clamp(32px,6vw,86px)/1 Inter,sans-serif;letter-spacing:8px;color:rgba(255,77,243,.035);transform:rotate(-13deg);white-space:nowrap;pointer-events:none}
+.product-reports-head,.product-report-filters,.product-kpis,.product-report-tabs,.product-report-panel,.product-report-actions{position:relative;z-index:1}
+.product-reports-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.product-reports-title{display:flex;align-items:center;gap:12px}.product-reports-title-badge{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:23px;background:rgba(255,77,243,.11);border:1px solid rgba(255,77,243,.42);box-shadow:0 0 18px rgba(255,77,243,.22)}
+.product-reports-title h1{margin:0;font-size:21px}.product-reports-title p{margin:4px 0 0;color:var(--text-muted);font-size:12px}
+.product-report-filters{display:grid;grid-template-columns:repeat(2,minmax(145px,1fr)) repeat(3,minmax(160px,1fr)) auto auto;gap:10px;padding:14px;margin-bottom:15px;border-radius:14px;background:var(--bg-soft);border:1px solid var(--border-color);align-items:end}
+.product-report-filters label{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.product-report-filters input,.product-report-filters select{width:100%;min-height:40px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border-color);border-radius:9px;padding:8px 10px}
+.product-kpis{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:12px;margin-bottom:15px}.product-kpi{padding:15px;border-radius:14px;background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));border:1px solid var(--border-color);min-height:116px}.product-kpi .pk-label{font-size:10px;color:var(--text-muted);margin-bottom:9px}.product-kpi .pk-name{font-size:13px;font-weight:900;color:var(--text-primary);margin-bottom:6px}.product-kpi .pk-value{font-size:20px;font-weight:900;color:#ff67f4}.product-kpi .pk-sub{font-size:10px;color:var(--text-muted);margin-top:4px}
+.product-report-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.product-report-tab{padding:9px 15px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);font-weight:800;cursor:pointer}.product-report-tab.active{color:#fff;border-color:#ff4df3;background:linear-gradient(135deg,#9333ea,#d946ef);box-shadow:0 0 15px rgba(217,70,239,.3)}
+.product-report-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.75fr);gap:14px}.product-report-card{background:var(--bg-soft);border:1px solid var(--border-color);border-radius:15px;padding:14px}.product-chart-box{height:360px;position:relative}.product-report-note{padding:10px 12px;border-radius:10px;background:rgba(255,77,243,.055);border:1px solid rgba(255,77,243,.16);color:var(--text-muted);font-size:10px;margin-top:12px}
+.product-report-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}.product-action-btn{min-height:40px;padding:9px 16px;border:none;border-radius:10px;color:#fff;font-weight:800;cursor:pointer}.product-action-excel{background:#16a34a}.product-action-print{background:#6366f1}.product-action-refresh{background:#0d9488}
+.product-report-empty{padding:34px;text-align:center;color:var(--text-muted)}
+@media(max-width:1150px){.product-report-filters{grid-template-columns:repeat(2,1fr)}.product-kpis{grid-template-columns:1fr 1fr}.product-report-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.product-reports-btn{padding:8px 10px}.product-reports-btn .product-reports-label{display:none}.product-report-filters{grid-template-columns:1fr}.product-kpis{grid-template-columns:1fr}.product-chart-box{height:290px}}
+
+
+/* ===== Branch Stock ===== */
+.branch-stock-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:38px;padding:7px 18px 7px 10px;border:2px solid #f5f7ff;border-radius:999px;background:rgba(38,31,77,.52);color:#fff;font-family:Inter,Cairo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.2px;cursor:pointer;overflow:hidden;box-shadow:0 0 5px rgba(255,255,255,.95),0 0 14px rgba(135,105,255,.72),inset 0 0 8px rgba(255,255,255,.13);text-shadow:0 0 7px rgba(255,255,255,.95);transition:.2s ease}
+.branch-stock-btn:hover{transform:translateY(-1px);background:rgba(70,54,128,.58);box-shadow:0 0 8px #fff,0 0 20px rgba(135,105,255,.82),inset 0 0 10px rgba(255,255,255,.18)}
+.branch-stock-btn:active{transform:scale(.98)}
+.branch-stock-icon{width:24px;height:24px;border:1.8px solid currentColor;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 7px rgba(255,255,255,.65)}
+.branch-stock-icon svg{width:15px;height:15px;display:block}
+.branch-stock-shell{position:relative;min-height:calc(100vh - 120px);overflow:hidden;border-radius:22px;padding:22px;background:radial-gradient(circle at 12% 8%,rgba(135,105,255,.11),transparent 30%),radial-gradient(circle at 90% 90%,rgba(14,165,233,.08),transparent 32%),var(--bg-card);border:1px solid var(--border-color)}
+.branch-stock-shell:before{content:'BRANCH  •  STOCK  •  CONTROL';position:absolute;left:3%;top:47%;font:900 clamp(30px,5.5vw,82px)/1 Inter,sans-serif;letter-spacing:8px;color:rgba(255,255,255,.028);transform:rotate(-13deg);white-space:nowrap;pointer-events:none}
+.branch-stock-head,.stock-take-start,.stock-take-workspace,.stock-take-kpis,.stock-take-actions{position:relative;z-index:1}
+.branch-stock-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}.branch-stock-title{display:flex;align-items:center;gap:12px}.branch-stock-title-badge{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:rgba(135,105,255,.13);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 18px rgba(135,105,255,.27)}.branch-stock-title-badge svg{width:24px;height:24px}.branch-stock-title h1{margin:0;font-size:21px}.branch-stock-title p{margin:4px 0 0;color:var(--text-muted);font-size:12px}
+.stock-take-start{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:10px;padding:14px;margin-bottom:15px;border-radius:14px;background:var(--bg-soft);border:1px solid var(--border-color);align-items:end}.stock-take-start label,.stock-filter-bar label{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.stock-take-start input,.stock-take-start select,.stock-filter-bar input,.stock-filter-bar select,.stock-table-input{width:100%;min-height:40px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border-color);border-radius:9px;padding:8px 10px}
+.stock-take-kpis{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-bottom:15px}.stock-kpi{padding:13px;border-radius:13px;background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));border:1px solid var(--border-color)}.stock-kpi span{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.stock-kpi strong{font-size:18px;color:var(--text-primary)}
+.stock-filter-bar{display:grid;grid-template-columns:minmax(240px,2fr) minmax(170px,1fr) minmax(180px,1fr) auto;gap:10px;padding:13px;margin-bottom:12px;border-radius:13px;background:var(--bg-soft);border:1px solid var(--border-color);align-items:end}.stock-scanner-wrap{position:relative}.stock-scanner-wrap:after{content:'⌁';position:absolute;left:12px;bottom:10px;color:#a78bfa;font-size:18px}.stock-scanner-wrap input{padding-left:38px}
+.stock-take-table{min-width:1220px}.stock-take-table th{white-space:nowrap}.stock-take-table td{vertical-align:middle}.stock-product-name{font-weight:800;color:var(--text-primary)}.stock-product-meta{font-size:10px;color:var(--text-muted)}.stock-diff-positive{color:#22c55e;font-weight:900}.stock-diff-negative{color:#ef4444;font-weight:900}.stock-diff-zero{color:var(--text-muted);font-weight:800}.stock-table-input{min-height:34px;padding:6px 8px;font-size:12px}.stock-actual-input{width:95px;text-align:center;font-weight:900}.stock-reason-input{min-width:170px}.stock-status-badge{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:10px;font-weight:900;border:1px solid var(--border-color);background:var(--bg-soft)}
+.stock-take-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:15px}.stock-action-btn{min-height:40px;padding:9px 16px;border:none;border-radius:10px;color:#fff;font-weight:800;cursor:pointer}.stock-save-btn{background:#6366f1}.stock-close-btn{background:#dc2626}.stock-export-btn{background:#16a34a}.stock-print-btn{background:#0ea5e9}.stock-refresh-btn{background:#64748b}.stock-action-btn:disabled{opacity:.5;cursor:not-allowed}
+.stock-variance-panel{margin-top:16px;padding:14px;border-radius:14px;background:var(--bg-soft);border:1px solid var(--border-color)}.stock-variance-panel h2{margin:0 0 12px;font-size:16px}.stock-variance-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}.stock-variance-summary div{padding:11px;border-radius:10px;background:var(--bg-card);border:1px solid var(--border-color);text-align:center}.stock-variance-summary span{display:block;font-size:10px;color:var(--text-muted)}.stock-variance-summary strong{font-size:17px}
+
+.stock-add-product-card{position:relative;z-index:1;margin-bottom:14px;padding:15px;border-radius:14px;background:linear-gradient(135deg,rgba(124,58,237,.10),rgba(14,165,233,.06));border:1px solid rgba(167,139,250,.28)}
+.stock-add-product-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}.stock-add-product-head h2{margin:0;font-size:15px}.stock-add-product-head p{margin:3px 0 0;color:var(--text-muted);font-size:10px}
+.stock-add-product-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1fr 1fr;gap:10px;align-items:end}.stock-add-product-grid label{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.stock-add-product-grid input,.stock-add-product-grid select,.stock-add-product-grid textarea{width:100%;min-height:40px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border-color);border-radius:9px;padding:8px 10px}.stock-add-product-grid textarea{resize:vertical;min-height:40px}
+.stock-add-product-grid .stock-wide{grid-column:span 2}.stock-add-product-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.stock-add-primary{min-height:40px;padding:9px 16px;border:none;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:white;font-weight:900;cursor:pointer;box-shadow:0 0 14px rgba(124,58,237,.22)}.stock-add-secondary{min-height:40px;padding:9px 14px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-soft);color:var(--text-main);font-weight:800;cursor:pointer}
+.stock-count-mode{display:flex;gap:7px;align-items:center;padding:7px 9px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card)}.stock-count-mode label{display:flex;align-items:center;gap:5px;margin:0;font-size:10px;cursor:pointer}.stock-count-mode input{width:auto;min-height:auto}
+.stock-row-actions{display:flex;gap:5px;align-items:center;justify-content:center}.stock-row-btn{width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer}.stock-row-btn.danger{color:#fecaca;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.25)}
+.stock-serial-input{min-width:130px}.stock-location-input{min-width:100px}.stock-expiry-input{min-width:130px}.stock-unit-input{width:78px}.stock-take-table{min-width:1700px}
+@media(max-width:1200px){.stock-add-product-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:720px){.stock-add-product-grid{grid-template-columns:1fr}.stock-add-product-grid .stock-wide{grid-column:span 1}}
+
+@media(max-width:900px){.stock-take-start,.stock-filter-bar{grid-template-columns:1fr 1fr}.stock-take-kpis{grid-template-columns:1fr 1fr}}
+@media(max-width:720px){.product-reports-btn,.branch-stock-btn{padding:7px 10px}.product-reports-btn .product-reports-label,.branch-stock-btn .branch-stock-label{display:none}.stock-take-start,.stock-filter-bar{grid-template-columns:1fr}}
+</style>
+
+<style>
+.remaining-discount-row{display:flex;align-items:center;gap:8px;min-width:0;}
+.remaining-discount-row .smart-total-card{flex:0 0 auto;min-width:82px;}
+.auto-discount-inline-hint{display:none;align-items:center;margin:0;padding:7px 11px;border-radius:9px;background:rgba(245,158,11,.16);border:1px solid rgba(251,191,36,.72);color:#fbbf24;font-size:14px;font-weight:900;line-height:1.45;white-space:normal;overflow:visible;text-overflow:clip;flex:1 1 220px;min-width:220px;box-shadow:0 0 12px rgba(245,158,11,.18);text-shadow:0 1px 2px rgba(0,0,0,.28);}
+@media(max-width:720px){.remaining-discount-row{align-items:stretch;flex-direction:column}.auto-discount-inline-hint{white-space:normal;width:100%}}
+.chip-cancel{background:linear-gradient(135deg,rgba(224,247,250,.95),rgba(207,250,254,.88))!important;border:1px solid rgba(103,232,249,.75)!important;color:#dc2626!important;font-weight:900!important;box-shadow:0 0 10px rgba(103,232,249,.22)!important;}
+</style>
 </head>
 
 <body>
 <!-- ================== Login Page ================== -->
 <section class="login-page-new" id="loginPage">
+<div id="loginStarsLayer" aria-hidden="true"></div>
 <div class="medical-bg-pattern">
 <i class="cross-icon cross-1">✚</i>
 <i class="cross-icon cross-2">✚</i>
@@ -78,6 +462,33 @@
 </div>
 <div class="notif-wrap" title="Notifications">
 </div>
+<button class="branch-stock-btn" id="branchStockHeaderBtn" type="button" onclick="showBranchStockPage()" title="Branch Stock">
+  <span class="branch-stock-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path><path d="M9 11v4M15 11v4"></path></svg>
+  </span>
+  <span class="branch-stock-label">Branch Stock</span>
+</button>
+<button class="activity-log-btn" id="activityLogHeaderBtn" type="button" onclick="showActivityLogPage()" title="Activity Log">
+  <span class="activity-log-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"></path><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg>
+  </span>
+  <span class="activity-log-label">Activity Log</span>
+</button>
+<button class="product-reports-btn" id="productReportsHeaderBtn" type="button" onclick="showProductReportsPage()" title="Product Reports">
+  <span class="product-reports-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="M6.5 10.5 12 5l5.5 5.5"></path><path d="M5 19h14"></path></svg>
+  </span>
+  <span class="product-reports-label">Product Reports</span>
+</button>
+<button class="my-account-btn" type="button" onclick="openMyAccountModal()" title="My Account">
+  <span class="my-account-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="4"></circle>
+      <path d="M4.5 20c.8-4 3.3-6 7.5-6s6.7 2 7.5 6"></path>
+    </svg>
+  </span>
+  <span class="my-account-label">My Account</span>
+</button>
 <button class="theme-toggle" onclick="toggleTheme()" title="تبديل الوضع الليلي">
 <span class="icon-moon">🌙</span>
 <span class="icon-sun">☀️</span>
@@ -106,7 +517,7 @@
 <button class="menu-item mi-users admin-only executive-assistant-show" data-page="usersPage" onclick="showUsersPage()">
 <span class="mi-icon">👥</span><span>Users</span>
 </button>
-<button class="menu-item mi-settings admin-only executive-assistant-show" data-page="branchsPage" onclick="showBranchsPage()">
+<button class="menu-item mi-settings admin-only" data-page="branchsPage" onclick="showBranchsPage()">
 <span class="mi-icon">⚙️</span><span>Settings</span>
 </button>
 <!-- ===== OKB Stores Button ===== -->
@@ -161,6 +572,7 @@
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -178,18 +590,18 @@
     <button class="soft" onclick="clearProductCart('dash')" type="button" style="padding:7px 12px;font-size:11px">تفريغ</button>
   </div>
   <div class="smart-add-grid">
-    <div><label>اسم المنتج</label><input id="dashProductNameInput" placeholder="اكتب المنتج أو اختاره..."/></div>
-    <div><label>سعر القطعة</label><input id="dashProductPriceInput" type="number" min="0" step="0.01" placeholder="0"/></div>
+    <div><label>اسم المنتج</label><select id="dashProductNameInput" onchange="onProductSelectionChange('dash')"><option value="">جاري تحميل المنتجات...</option></select></div>
+    <div><label>سعر القطعة</label><input id="dashProductPriceInput" type="number" min="0" step="0.01" placeholder="يظهر تلقائيًا" readonly title="السعر محدد من Settings ولا يمكن تعديله"/></div>
     <div><label>الكمية</label><input id="dashProductQtyInput" type="number" min="1" value="1"/></div>
     <button class="smart-add-btn" onclick="addProductItem('dash')" type="button">+ أضف</button>
   </div>
   <div class="smart-cart-list" id="dashProductCartList"></div>
   <div class="smart-summary-grid">
     <div><label>خدمة التوصيل</label><input id="dashDeliveryInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('dash')"/></div>
-    <div><label>الخصم</label><input id="dashDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('dash')"/></div>
+    <div><label>الخصم</label><input id="dashDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="onDiscountInput('dash')"/></div>
     <div><label>المدفوع</label><input id="dashDepositInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('dash');checkDepositImageRequirement();"/></div>
-    <div><label>الإجمالي</label><div class="smart-total-card" id="dashGrandTotal">0</div></div>
-    <div><label>المتبقي</label><div class="smart-total-card" id="dashRemainingTotal">0</div></div>
+    <div><label>الإجمالي القابل للتعديل</label><input class="smart-total-card smart-total-editable" id="dashGrandTotal" type="number" min="0" step="0.01" value="0" oninput="onManualGrandTotalInput('dash')"/></div>
+    <div><label>المتبقي</label><div class="remaining-discount-row"><div class="smart-total-card" id="dashRemainingTotal">0</div><small id="dashAutoDiscountHint" class="auto-discount-inline-hint" style="display:none;"></small></div></div>
   </div>
 </div>
 <div id="depositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:8px;">
@@ -217,6 +629,7 @@
 <div class="stat"><span>Total Orders</span><strong id="totalOrders">0</strong></div>
 <div class="stat"><span>Total Confirmed</span><strong id="confirmedOrders">0</strong></div>
 <div class="stat"><span>Total Returned</span><strong id="returnedOrders">0</strong></div>
+<div class="stat"><span>Total Cancel</span><strong id="cancelOrders">0</strong></div>
 <div class="stat"><span>Total Fake Doctor</span><strong id="fakeDoctorOrders">0</strong></div>
 <div class="stat"><span>Total Fake Delivery Update</span><strong id="fakeDeliveryUpdateOrders">0</strong></div>
 <div class="stat"><span>Total Signed</span><strong id="totalSigned">0</strong></div>
@@ -244,6 +657,7 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -276,6 +690,176 @@
 <div class="pagination" id="ordersPagination"></div>
 </div>
 </section>
+
+
+
+<!-- ===== Branch Stock Page ===== -->
+<section class="hidden" id="branchStockPage">
+  <div class="branch-stock-shell">
+    <div class="branch-stock-head">
+      <div class="branch-stock-title">
+        <div class="branch-stock-title-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path></svg></div>
+        <div><h1>Branch Stock</h1><p>جرد الفروع، مقارنة الرصيد الفعلي، تقرير الفروقات والتسوية</p></div>
+      </div>
+      <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+    </div>
+
+    <div class="stock-take-start">
+      <div><label>Branch — الفرع</label><select id="stockTakeBranch"></select></div>
+      <div><label>Date — التاريخ</label><input id="stockTakeDate" type="date"></div>
+      <div><label>Stock Take Name — اسم الجرد</label><input id="stockTakeName" type="text" placeholder="مثال: جرد شهر 4"></div>
+      <button class="btn-filter" id="newStockTakeBtn" type="button" onclick="startNewStockTake()">＋ New Stock Take</button>
+    </div>
+
+    <div class="stock-take-workspace hidden" id="stockTakeWorkspace">
+      <div class="stock-take-kpis">
+        <div class="stock-kpi"><span>Stock Take</span><strong id="stockTakeCurrentName">—</strong></div>
+        <div class="stock-kpi"><span>Counted Products</span><strong id="stockCountedProducts">0 / 0</strong></div>
+        <div class="stock-kpi"><span>Total Variance Qty</span><strong id="stockVarianceQty">0</strong></div>
+        <div class="stock-kpi"><span>Variance Value</span><strong id="stockVarianceValue">0</strong></div>
+      </div>
+
+
+      <div class="stock-add-product-card" id="stockAddProductCard">
+        <div class="stock-add-product-head">
+          <div><h2>＋ إضافة صنف داخل الجرد</h2><p>استخدمها للأصناف الجديدة أو الأصناف غير الموجودة في Settings، مع باركود/سيريال وبيانات التشغيل.</p></div>
+          <div class="stock-count-mode">
+            <span style="font-size:10px;color:var(--text-muted);">وضع السكانر:</span>
+            <label><input type="radio" name="stockScanMode" value="increment" checked> يزيد +1</label>
+            <label><input type="radio" name="stockScanMode" value="replace"> يحدد الكمية</label>
+          </div>
+        </div>
+        <div class="stock-add-product-grid">
+          <div class="stock-wide"><label>اسم المنتج *</label><input id="manualStockProductName" type="text" placeholder="اسم المنتج"></div>
+          <div><label>Barcode / SKU</label><input id="manualStockBarcode" type="text" placeholder="باركود أو SKU"></div>
+          <div><label>Serial / Batch</label><input id="manualStockSerial" type="text" placeholder="سيريال أو رقم التشغيلة"></div>
+          <div><label>Category</label><input id="manualStockCategory" type="text" placeholder="التصنيف"></div>
+          <div><label>Unit</label><select id="manualStockUnit"><option value="قطعة">قطعة</option><option value="علبة">علبة</option><option value="كرتونة">كرتونة</option><option value="شريط">شريط</option><option value="زجاجة">زجاجة</option></select></div>
+          <div><label>رصيد السيستم</label><input id="manualStockSystemQty" type="number" min="0" step="1" value="0"></div>
+          <div><label>الكمية الفعلية</label><input id="manualStockActualQty" type="number" min="0" step="1" value="0"></div>
+          <div><label>السعر</label><input id="manualStockPrice" type="number" min="0" step="0.01" value="0"></div>
+          <div><label>الموقع / الرف</label><input id="manualStockLocation" type="text" placeholder="مثال: A-03"></div>
+          <div><label>تاريخ الصلاحية</label><input id="manualStockExpiry" type="date"></div>
+          <div class="stock-wide"><label>ملاحظات</label><input id="manualStockNotes" type="text" placeholder="ملاحظات الصنف أو حالة العبوة"></div>
+          <div class="stock-add-product-actions">
+            <button class="stock-add-primary" type="button" onclick="addManualStockProduct()">إضافة للجرد</button>
+            <button class="stock-add-secondary" type="button" onclick="clearManualStockProductForm()">تفريغ</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stock-filter-bar">
+        <div class="stock-scanner-wrap"><label>Barcode Scanner — امسح الباركود</label><input id="stockBarcodeScanner" type="text" placeholder="Scan barcode ثم Enter" onkeydown="handleStockBarcodeScan(event)"></div>
+        <div><label>Search Product</label><input id="stockProductSearch" type="text" placeholder="اسم المنتج أو الباركود..." oninput="renderStockTakeTable()"></div>
+        <div><label>Category</label><select id="stockCategoryFilter" onchange="renderStockTakeTable()"><option value="all">كل التصنيفات</option></select></div>
+        <button class="btn-reset-date" type="button" onclick="clearStockFilters()">Reset</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="stock-take-table">
+          <thead><tr><th>#</th><th>اسم المنتج</th><th>الباركود</th><th>Serial / Batch</th><th>التصنيف</th><th>الوحدة</th><th>الموقع</th><th>الصلاحية</th><th>رصيد السيستم</th><th>الكمية الفعلية</th><th>الفرق +/-</th><th>سبب الفرق</th><th>السعر</th><th>قيمة الفرق</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
+          <tbody id="stockTakeTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="stock-take-actions">
+        <button class="stock-action-btn stock-save-btn" id="saveStockDraftBtn" type="button" onclick="saveStockTakeDraft()">💾 حفظ مؤقت</button>
+        <button class="stock-action-btn stock-close-btn" id="closeStockTakeBtn" type="button" onclick="closeCurrentStockTake()">🔒 Close Stock Take</button>
+        <button class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
+        <button class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
+        <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock()">↻ Refresh</button>
+      </div>
+
+      <div class="stock-variance-panel" id="stockVariancePanel">
+        <h2>Variance Report — تقرير الفروقات</h2>
+        <div class="stock-variance-summary">
+          <div><span>الزيادة</span><strong id="stockVarianceGain">0</strong></div>
+          <div><span>العجز</span><strong id="stockVarianceLoss">0</strong></div>
+          <div><span>صافي قيمة الفرق</span><strong id="stockVarianceNet">0</strong></div>
+        </div>
+        <div id="stockTakeStatusText" class="product-report-note">الجرد مفتوح ويمكن الحفظ المؤقت والتعديل.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Product Reports Page ===== -->
+<section class="hidden" id="productReportsPage">
+  <div class="product-reports-shell">
+    <div class="product-reports-head">
+      <div class="product-reports-title"><div class="product-reports-title-badge">📦</div><div><h1>Product Reports</h1><p>تحليل مبيعات ومرتجعات وحركة المنتجات المضافة من Settings</p></div></div>
+      <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+    </div>
+
+    <div class="product-report-filters">
+      <div><label>Date Range — من</label><input id="productReportFrom" type="date"></div>
+      <div><label>Date Range — إلى</label><input id="productReportTo" type="date"></div>
+      <div><label>Branch</label><select id="productReportBranch"><option value="all">كل الفروع</option></select></div>
+      <div><label>Category</label><select id="productReportCategory"><option value="all">كل التصنيفات</option></select></div>
+      <div><label>User — البائع</label><select id="productReportUser"><option value="all">كل المستخدمين</option></select></div>
+      <button class="btn-filter" type="button" onclick="applyProductReportFilters()">🔍 Filter</button>
+      <button class="btn-reset-date" type="button" onclick="resetProductReportFilters()">✕ Reset</button>
+    </div>
+
+    <div class="product-kpis">
+      <div class="product-kpi"><div class="pk-label">Top Selling Product</div><div class="pk-name" id="prTopProductName">—</div><div class="pk-value" id="prTopProductQty">0 قطعة</div><div class="pk-sub" id="prTopProductRevenue">0 مبيعات</div></div>
+      <div class="product-kpi"><div class="pk-label">Most Returned Product</div><div class="pk-name" id="prReturnedProductName">—</div><div class="pk-value" id="prReturnedProductRate">0%</div><div class="pk-sub" id="prReturnedProductQty">0 مرتجع</div></div>
+      <div class="product-kpi"><div class="pk-label">Dead Stock Value</div><div class="pk-name">منتجات بدون حركة أكثر من 60 يوم</div><div class="pk-value" id="prDeadStockValue">0</div><div class="pk-sub" id="prDeadStockCount">0 منتج راكد</div></div>
+      <div class="product-kpi"><div class="pk-label">Total Products Sold</div><div class="pk-name">إجمالي القطع المباعة</div><div class="pk-value" id="prTotalSold">0</div><div class="pk-sub" id="prTotalRevenue">إجمالي المبيعات: 0</div></div>
+    </div>
+
+    <div class="product-report-tabs">
+      <button class="product-report-tab active" id="productTabTop" type="button" onclick="setProductReportTab('top')">Top Selling</button>
+      <button class="product-report-tab" id="productTabReturned" type="button" onclick="setProductReportTab('returned')">Most Returned</button>
+      <button class="product-report-tab" id="productTabDead" type="button" onclick="setProductReportTab('dead')">Dead Stock</button>
+    </div>
+
+    <div class="product-report-panel">
+      <div class="product-report-grid">
+        <div class="product-report-card">
+          <div class="table-wrap"><table id="productReportTable"><thead id="productReportTableHead"></thead><tbody id="productReportTableBody"></tbody></table></div>
+        </div>
+        <div class="product-report-card">
+          <h2 id="productChartTitle" style="margin:0 0 12px;font-size:15px">Top 10 Products</h2>
+          <div class="product-chart-box"><canvas id="productReportsChart"></canvas></div>
+          <div class="product-report-note" id="productReportNote">البيانات محسوبة من تفاصيل المنتجات داخل الأوردرات. التصنيف والتكلفة والمخزون يتم قراءتهم تلقائياً لو الأعمدة موجودة في جدول items.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="product-report-actions">
+      <button class="product-action-btn product-action-excel" type="button" onclick="exportProductReportExcel()">⬇ Export Excel</button>
+      <button class="product-action-btn product-action-print" type="button" onclick="printProductReports()">🖨️ Print</button>
+      <button class="product-action-btn product-action-refresh" type="button" onclick="refreshProductReports(event)">↻ Refresh</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Activity Log Page (Admin Only) ===== -->
+<section class="hidden" id="activityLogPage">
+  <div class="activity-log-shell">
+    <div class="activity-log-head">
+      <div class="activity-log-title"><div class="activity-log-title-badge">⚡</div><div><h1>Activity Log</h1><p>سجل مركزي لكل الحركات المهمة داخل السيستم — متاح للأدمن فقط</p></div></div>
+      <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+    </div>
+    <div class="activity-log-stats">
+      <div class="activity-log-stat"><span>إجمالي الحركات المعروضة</span><strong id="activityLogTotal">0</strong></div>
+      <div class="activity-log-stat"><span>المستخدمون النشطون</span><strong id="activityLogUsers">0</strong></div>
+      <div class="activity-log-stat"><span>حركات الأوردرات</span><strong id="activityLogOrders">0</strong></div>
+      <div class="activity-log-stat"><span>حركات الخزنة</span><strong id="activityLogKhazna">0</strong></div>
+    </div>
+    <div class="activity-log-toolbar">
+      <div><label>من تاريخ</label><input id="activityLogFrom" type="date"></div>
+      <div><label>إلى تاريخ</label><input id="activityLogTo" type="date"></div>
+      <div><label>بحث</label><input id="activityLogSearch" type="text" placeholder="اسم المستخدم، Ticket ID، العميل أو تفاصيل الحركة..."></div>
+      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option></select></div>
+      <button class="btn-filter" type="button" onclick="loadActivityLogs()">🔍 Filter</button>
+      <button class="btn-reset-date" type="button" onclick="resetActivityLogFilters()">✕ Reset</button>
+    </div>
+    <div class="activity-log-list" id="activityLogList"><div class="activity-log-loading">جاري تحميل سجل النشاط...</div></div>
+  </div>
+</section>
+
 <!-- ===== Analytics Page ===== -->
 <section class="hidden" id="analyticsPage">
 <div class="card">
@@ -352,7 +936,7 @@
         <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
           <table style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Score</th>
+              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Cancel</th><th>Conversion</th><th>Return</th><th>Cancel Rate</th><th>Score</th>
             </tr></thead>
             <tbody id="branchPerformanceBody"></tbody>
           </table>
@@ -366,7 +950,7 @@
         <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
           <table style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Shipping Company</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Score</th>
+              <th>Rank</th><th>Shipping Company</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Cancel</th><th>Conversion</th><th>Return</th><th>Cancel Rate</th><th>Score</th>
             </tr></thead>
             <tbody id="shippingCompanyPerformanceBody"></tbody>
           </table>
@@ -386,6 +970,7 @@
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(34,197,94,.18)">✅</div><div><div class="shipping-kpi-label" style="color:#57D85A">الموقعة (Signed)</div><div class="shipping-kpi-value" id="shipMiniSigned">0</div><div class="shipping-kpi-sub" id="shipMiniSignedSub">0% من الإجمالي</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(245,158,11,.18)">🚚</div><div><div class="shipping-kpi-label" style="color:#F59E0B">في التسليم (Delivering)</div><div class="shipping-kpi-value" id="shipMiniDelivering">0</div><div class="shipping-kpi-sub" id="shipMiniDeliveringSub">0% من الإجمالي</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(168,85,247,.18)">↩️</div><div><div class="shipping-kpi-label" style="color:#D946EF">المرتجعة (Returned)</div><div class="shipping-kpi-value" id="shipMiniReturned">0</div><div class="shipping-kpi-sub" id="shipMiniReturnedSub">0% من الإجمالي</div></div></div>
+    <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(207,250,254,.18)">🧊</div><div><div class="shipping-kpi-label" style="color:#67E8F9">الملغاة (Cancel)</div><div class="shipping-kpi-value" id="shipMiniCancelled">0</div><div class="shipping-kpi-sub" id="shipMiniCancelledSub">0% من الإجمالي</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(59,130,246,.18)">📊</div><div><div class="shipping-kpi-label" style="color:#3B82F6">معدل التسليم</div><div class="shipping-kpi-value" id="shipMiniConversionRate">0%</div><div class="shipping-kpi-sub">المستهدف 90%</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(239,68,68,.18)">✖</div><div><div class="shipping-kpi-label" style="color:#FF5555">معدل المرتجعات</div><div class="shipping-kpi-value" id="shipMiniCancelRate">0%</div><div class="shipping-kpi-sub">الحد الأقصى 10%</div></div></div>
     <span id="shipMiniTransit" class="hidden">0</span>
@@ -456,6 +1041,7 @@
 <div class="report-grid">
 <div class="report-card"><span>📦 Total Orders</span><strong id="reportTotalOrders">0</strong></div>
 <div class="report-card"><span>↩️ Total Returned</span><strong id="reportReturned">0</strong></div>
+<div class="report-card"><span>🧊 Total Cancel</span><strong id="reportCancel">0</strong></div>
 <div class="report-card"><span>👨‍⚕️ Fake Doctor</span><strong id="reportFakeDoctor">0</strong></div>
 <div class="report-card"><span>🚚 Fake Delivery Update</span><strong id="reportFakeDelivery">0</strong></div>
 </div>
@@ -561,27 +1147,35 @@
 <section class="hidden" id="branchsPage">
 <div class="card">
 <h1>⚙️ Settings</h1>
-<p>إعدادات النظام: الفروع، الدكاترة، وشركات الشحن.</p>
+<p>إعدادات النظام: المنتجات، الدكاترة، وشركات الشحن.</p>
 </div>
-<div class="card">
-<h2>🏢 OKB Branches</h2>
-<p style="margin-bottom:14px">إدارة فروع OKB وبياناتها.</p>
-<form id="branchForm">
-<div class="form-grid">
-<input id="branchName" placeholder="اسم الفرع" required=""/>
-<input id="branchCity" placeholder="المدينة" required=""/>
-<input id="branchManager" placeholder="اسم المسؤول" required=""/>
-<input id="branchPhone" placeholder="رقم التواصل" required=""/>
+<div class="card admin-only" id="okbItemsCard">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+<div>
+<h2 style="margin:0;">OKB Items 🛒</h2>
+<p style="margin:6px 0 0;">إدارة منتجات OKB وبياناتها.</p>
+</div>
+<button class="success" type="button" onclick="exportOKBItems()">⬇ Export Products</button>
+</div>
+
+<form id="itemForm">
+<input id="editingItemId" type="hidden"/>
+<div class="form-grid" style="grid-template-columns:2fr 1fr;gap:12px;">
+<input id="itemName" placeholder="اسم الصنف" required autocomplete="off"/>
+<input id="itemPrice" placeholder="السعر" required type="number" min="0" step="0.01"/>
 </div>
 <div class="actions">
-<button class="success" type="submit">➕ إضافة فرع</button>
-<button class="soft" onclick="branchForm.reset()" type="button">تفريغ</button>
+<button class="success" id="itemSubmitBtn" type="submit">➕ إضافة صنف</button>
+<button class="soft" onclick="resetItemForm()" type="button">تفريغ</button>
 </div>
 </form>
+
 <div class="table-wrap" style="margin-top:18px">
 <table>
-<thead><tr><th>#</th><th>اسم الفرع</th><th>المدينة</th><th>المسؤول</th><th>رقم التواصل</th><th>الإجراءات</th></tr></thead>
-<tbody id="branchsTableBody"></tbody>
+<thead>
+<tr><th>#</th><th>اسم الصنف</th><th>السعر</th><th>الإجراءات</th></tr>
+</thead>
+<tbody id="itemsTableBody"></tbody>
 </table>
 </div>
 </div>
@@ -661,6 +1255,7 @@
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -678,18 +1273,18 @@
     <button class="soft" onclick="clearProductCart('branch')" type="button" style="padding:7px 12px;font-size:11px">تفريغ</button>
   </div>
   <div class="smart-add-grid">
-    <div><label>اسم المنتج</label><input id="branchProductNameInput" placeholder="اكتب المنتج أو اختاره..."/></div>
-    <div><label>سعر القطعة</label><input id="branchProductPriceInput" type="number" min="0" step="0.01" placeholder="0"/></div>
+    <div><label>اسم المنتج</label><select id="branchProductNameInput" onchange="onProductSelectionChange('branch')"><option value="">جاري تحميل المنتجات...</option></select></div>
+    <div><label>سعر القطعة</label><input id="branchProductPriceInput" type="number" min="0" step="0.01" placeholder="يظهر تلقائيًا" readonly title="السعر محدد من Settings ولا يمكن تعديله"/></div>
     <div><label>الكمية</label><input id="branchProductQtyInput" type="number" min="1" value="1"/></div>
     <button class="smart-add-btn" onclick="addProductItem('branch')" type="button">+ أضف</button>
   </div>
   <div class="smart-cart-list" id="branchProductCartList"></div>
   <div class="smart-summary-grid">
     <div><label>خدمة التوصيل</label><input id="branchDeliveryInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
-    <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
+    <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="onDiscountInput('branch')"/></div>
     <div><label>المدفوع</label><input id="branchDepositInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch');checkBranchDepositImageRequirement();"/></div>
-    <div><label>الإجمالي</label><div class="smart-total-card" id="branchGrandTotal">0</div></div>
-    <div><label>المتبقي</label><div class="smart-total-card" id="branchRemainingTotal">0</div></div>
+    <div><label>الإجمالي القابل للتعديل</label><input class="smart-total-card smart-total-editable" id="branchGrandTotal" type="number" min="0" step="0.01" value="0" oninput="onManualGrandTotalInput('branch')"/></div>
+    <div><label>المتبقي</label><div class="remaining-discount-row"><div class="smart-total-card" id="branchRemainingTotal">0</div><small id="branchAutoDiscountHint" class="auto-discount-inline-hint" style="display:none;"></small></div></div>
   </div>
 </div>
 <div style="margin-top:12px;display:grid;grid-template-columns:1fr;gap:12px;">
@@ -719,6 +1314,7 @@
 <div class="stat"><span>Total Orders</span><strong id="bTotalOrders">0</strong></div>
 <div class="stat"><span>Total Signed</span><strong id="bTotalSigned">0</strong></div>
 <div class="stat"><span>Total Returned</span><strong id="bReturnedOrders">0</strong></div>
+<div class="stat"><span>Total Cancel</span><strong id="bCancelOrders">0</strong></div>
 <div class="stat"><span>Delivering</span><strong id="bDeliveringOrders">0</strong></div>
 <div class="stat"><span>Total Revenue</span><strong id="bTotalRevenue">0</strong></div>
 <div class="stat"><span>Total Deposit</span><strong id="bTotalDeposit">0</strong></div>
@@ -740,6 +1336,7 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -788,6 +1385,7 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -860,6 +1458,66 @@
 </section>
 </main>
 </div>
+
+<!-- ===== My Account Modal ===== -->
+<div class="my-account-modal" id="myAccountModal" onclick="if(event.target===this)closeMyAccountModal()">
+  <div class="my-account-dialog" role="dialog" aria-modal="true" aria-labelledby="myAccountTitle">
+    <div class="my-account-head">
+      <div class="my-account-title-wrap">
+        <div class="my-account-title-icon" aria-hidden="true">👤</div>
+        <div>
+          <h3 class="my-account-title" id="myAccountTitle">My Account</h3>
+          <p class="my-account-subtitle">تغيير كلمة المرور للحساب الحالي فقط</p>
+        </div>
+      </div>
+      <button class="my-account-close" type="button" onclick="closeMyAccountModal()" aria-label="إغلاق">✕</button>
+    </div>
+
+    <form class="my-account-form" id="myAccountForm" onsubmit="changeMyAccountPassword(event)">
+      <div class="my-account-field">
+        <label for="myCurrentPassword">كلمة المرور الحالية</label>
+        <div class="my-account-password-wrap">
+          <input class="my-account-input" id="myCurrentPassword" type="password" autocomplete="current-password" required>
+          <button class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myCurrentPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
+        </div>
+      </div>
+
+      <div class="my-account-field">
+        <label for="myNewPassword">كلمة المرور الجديدة</label>
+        <div class="my-account-password-wrap">
+          <input class="my-account-input" id="myNewPassword" type="password" autocomplete="new-password" required>
+          <button class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myNewPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
+        </div>
+      </div>
+
+      <div class="my-account-field">
+        <label for="myConfirmPassword">تأكيد كلمة المرور الجديدة</label>
+        <div class="my-account-password-wrap">
+          <input class="my-account-input" id="myConfirmPassword" type="password" autocomplete="new-password" required>
+          <button class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myConfirmPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
+        </div>
+      </div>
+
+      <div class="my-account-rules">
+        <div class="my-account-rules-title">🔐 قواعد الأمان</div>
+        <ul>
+          <li>لازم كلمة المرور الحالية تكون صحيحة.</li>
+          <li>كلمة المرور الجديدة ممكن تكون حروف أو أرقام أو الاثنين معًا.</li>
+          <li>تأكيد كلمة المرور لازم يطابق كلمة المرور الجديدة.</li>
+          <li>التغيير يتم للمستخدم الحالي فقط ولا يؤثر على صلاحيات الأدمن.</li>
+        </ul>
+      </div>
+
+      <div class="my-account-message" id="myAccountMessage" aria-live="polite"></div>
+
+      <div class="my-account-actions">
+        <button class="my-account-cancel" type="button" onclick="closeMyAccountModal()">إلغاء</button>
+        <button class="my-account-save" id="myAccountSaveBtn" type="submit">حفظ كلمة المرور</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ===== IMPORT EXCEL MODAL ===== -->
 <div id="importModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:none; align-items:center; justify-content:center; padding:15px; direction:rtl;">
 <div class="card" style="width:100%; max-width:700px; background:#f8f9fa; border:1px solid rgba(255,255,255,.14); border-radius:24px; padding:25px; box-shadow:0 20px 50px rgba(0,0,0,.5); max-height:90vh; overflow-y:auto;">
@@ -1054,6 +1712,48 @@
   </footer>
 
 </div>
+<script>
+(function () {
+  const STAR_COUNT = 34;
+  function initLoginFallingStars() {
+    const loginPage = document.getElementById('loginPage');
+    const layer = document.getElementById('loginStarsLayer');
+    if (!loginPage || !layer || layer.dataset.ready === '1') return;
+    layer.dataset.ready = '1';
+    for (let i = 0; i < STAR_COUNT; i++) {
+      const star = document.createElement('span');
+      star.className = 'login-shooting-star';
+      const duration = 3.8 + Math.random() * 3.0;
+      const delay = -(Math.random() * duration);
+      const size = 1.2 + Math.random() * 1.7;
+      const trail = 72 + Math.random() * 82;
+      const startX = -10 + Math.random() * 98;
+      const drift = 90 + Math.random() * 210;
+      star.style.setProperty('--duration', duration.toFixed(2) + 's');
+      star.style.setProperty('--delay', delay.toFixed(2) + 's');
+      star.style.setProperty('--star-size', size.toFixed(2) + 'px');
+      star.style.setProperty('--trail-length', trail.toFixed(0) + 'px');
+      star.style.setProperty('--start-x', startX.toFixed(2) + '%');
+      star.style.setProperty('--drift-x', drift.toFixed(0) + 'px');
+      star.addEventListener('animationiteration', function () {
+        if (loginPage.classList.contains('hidden')) return;
+        const starRect = star.getBoundingClientRect();
+        const boom = document.createElement('span');
+        boom.className = 'login-star-boom';
+        const x = Math.max(8, Math.min(window.innerWidth - 8, starRect.left + starRect.width / 2));
+        const y = window.innerHeight - 12;
+        boom.style.left = x + 'px';
+        boom.style.top = y + 'px';
+        layer.appendChild(boom);
+        boom.addEventListener('animationend', function () { boom.remove(); }, { once: true });
+      });
+      layer.appendChild(star);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initLoginFallingStars);
+  else initLoginFallingStars();
+})();
+</script>
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
