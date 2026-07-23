@@ -303,9 +303,6 @@
   .my-account-btn .my-account-label{display:none}
   .my-account-dialog{padding:22px 18px}
 }
-
-.smart-total-editable{width:100%;text-align:center;font-weight:900;outline:none;cursor:text;}
-.smart-total-editable:focus{border-color:#f59e0b!important;box-shadow:0 0 0 3px rgba(245,158,11,.12),0 0 14px rgba(245,158,11,.18);}
 </style>
 
 
@@ -387,12 +384,64 @@
 </style>
 
 <style>
-.remaining-discount-row{display:flex;align-items:center;gap:8px;min-width:0;}
-.remaining-discount-row .smart-total-card{flex:0 0 auto;min-width:82px;}
-.auto-discount-inline-hint{display:none;align-items:center;margin:0;padding:7px 11px;border-radius:9px;background:rgba(245,158,11,.16);border:1px solid rgba(251,191,36,.72);color:#fbbf24;font-size:14px;font-weight:900;line-height:1.45;white-space:normal;overflow:visible;text-overflow:clip;flex:1 1 220px;min-width:220px;box-shadow:0 0 12px rgba(245,158,11,.18);text-shadow:0 1px 2px rgba(0,0,0,.28);}
-@media(max-width:720px){.remaining-discount-row{align-items:stretch;flex-direction:column}.auto-discount-inline-hint{white-space:normal;width:100%}}
-.chip-cancel{background:linear-gradient(135deg,rgba(224,247,250,.95),rgba(207,250,254,.88))!important;border:1px solid rgba(103,232,249,.75)!important;color:#dc2626!important;font-weight:900!important;box-shadow:0 0 10px rgba(103,232,249,.22)!important;}
+/* ===== Pending Mini Dashboard — Compact Branch Summary ===== */
+#pendingPage .pending-summary.pending-summary-compact{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(105px,1fr));
+  gap:8px;
+  margin-bottom:12px;
+}
+#pendingPage .pending-summary-card{
+  min-height:76px;
+  padding:9px 10px;
+  border-radius:11px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+  background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));
+  border:1px solid var(--border-color);
+  box-shadow:0 5px 14px rgba(0,0,0,.08);
+}
+#pendingPage .pending-summary-card span{
+  font-size:9px;
+  font-weight:800;
+  color:var(--text-muted);
+  margin-bottom:3px;
+  white-space:nowrap;
+}
+#pendingPage .pending-summary-card strong{
+  font-size:19px;
+  line-height:1.05;
+  font-weight:900;
+  color:#ff9d3d;
+}
+#pendingPage .pending-summary-card small{
+  margin-top:4px;
+  font-size:7.5px;
+  line-height:1.25;
+  color:var(--text-muted);
+  white-space:normal;
+}
+#pendingPage .pending-branch-card{
+  border-color:var(--border-color);
+  background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));
+}
+#pendingPage .pending-branch-card strong{font-size:19px;color:#ff9d3d}
+#pendingPage .pending-summary-main{min-height:70px}
+@media(max-width:1250px){
+  #pendingPage .pending-summary.pending-summary-compact{grid-template-columns:repeat(4,minmax(110px,1fr));}
+}
+@media(max-width:800px){
+  #pendingPage .pending-summary.pending-summary-compact{grid-template-columns:repeat(2,minmax(110px,1fr));}
+}
+@media(max-width:480px){
+  #pendingPage .pending-summary.pending-summary-compact{grid-template-columns:1fr 1fr;gap:7px;}
+  #pendingPage .pending-summary-card{min-height:68px;padding:8px}
+}
 </style>
+
 </head>
 
 <body>
@@ -462,6 +511,16 @@
 </div>
 <div class="notif-wrap" title="Notifications">
 </div>
+<button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
+  <span class="pending-header-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.3 3.5 2.7 17a2 2 0 0 0 1.75 3h15.1a2 2 0 0 0 1.75-3L13.7 3.5a2 2 0 0 0-3.4 0Z"></path>
+      <path d="M12 9v4"></path>
+      <path d="M12 17h.01"></path>
+    </svg>
+  </span>
+  <span class="pending-header-label">Pending</span>
+</button>
 <button class="branch-stock-btn" id="branchStockHeaderBtn" type="button" onclick="showBranchStockPage()" title="Branch Stock">
   <span class="branch-stock-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path><path d="M9 11v4M15 11v4"></path></svg>
@@ -572,7 +631,6 @@
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
-<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -598,10 +656,10 @@
   <div class="smart-cart-list" id="dashProductCartList"></div>
   <div class="smart-summary-grid">
     <div><label>خدمة التوصيل</label><input id="dashDeliveryInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('dash')"/></div>
-    <div><label>الخصم</label><input id="dashDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="onDiscountInput('dash')"/></div>
+    <div><label>الخصم</label><input id="dashDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('dash')"/></div>
     <div><label>المدفوع</label><input id="dashDepositInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('dash');checkDepositImageRequirement();"/></div>
-    <div><label>الإجمالي القابل للتعديل</label><input class="smart-total-card smart-total-editable" id="dashGrandTotal" type="number" min="0" step="0.01" value="0" oninput="onManualGrandTotalInput('dash')"/></div>
-    <div><label>المتبقي</label><div class="remaining-discount-row"><div class="smart-total-card" id="dashRemainingTotal">0</div><small id="dashAutoDiscountHint" class="auto-discount-inline-hint" style="display:none;"></small></div></div>
+    <div><label>الإجمالي</label><div class="smart-total-card" id="dashGrandTotal">0</div></div>
+    <div><label>المتبقي</label><div class="smart-total-card" id="dashRemainingTotal">0</div></div>
   </div>
 </div>
 <div id="depositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:8px;">
@@ -629,7 +687,6 @@
 <div class="stat"><span>Total Orders</span><strong id="totalOrders">0</strong></div>
 <div class="stat"><span>Total Confirmed</span><strong id="confirmedOrders">0</strong></div>
 <div class="stat"><span>Total Returned</span><strong id="returnedOrders">0</strong></div>
-<div class="stat"><span>Total Cancel</span><strong id="cancelOrders">0</strong></div>
 <div class="stat"><span>Total Fake Doctor</span><strong id="fakeDoctorOrders">0</strong></div>
 <div class="stat"><span>Total Fake Delivery Update</span><strong id="fakeDeliveryUpdateOrders">0</strong></div>
 <div class="stat"><span>Total Signed</span><strong id="totalSigned">0</strong></div>
@@ -657,7 +714,6 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
-<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -936,7 +992,7 @@
         <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
           <table style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Cancel</th><th>Conversion</th><th>Return</th><th>Cancel Rate</th><th>Score</th>
+              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Score</th>
             </tr></thead>
             <tbody id="branchPerformanceBody"></tbody>
           </table>
@@ -950,7 +1006,7 @@
         <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
           <table style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Shipping Company</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Cancel</th><th>Conversion</th><th>Return</th><th>Cancel Rate</th><th>Score</th>
+              <th>Rank</th><th>Shipping Company</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Score</th>
             </tr></thead>
             <tbody id="shippingCompanyPerformanceBody"></tbody>
           </table>
@@ -970,7 +1026,6 @@
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(34,197,94,.18)">✅</div><div><div class="shipping-kpi-label" style="color:#57D85A">الموقعة (Signed)</div><div class="shipping-kpi-value" id="shipMiniSigned">0</div><div class="shipping-kpi-sub" id="shipMiniSignedSub">0% من الإجمالي</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(245,158,11,.18)">🚚</div><div><div class="shipping-kpi-label" style="color:#F59E0B">في التسليم (Delivering)</div><div class="shipping-kpi-value" id="shipMiniDelivering">0</div><div class="shipping-kpi-sub" id="shipMiniDeliveringSub">0% من الإجمالي</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(168,85,247,.18)">↩️</div><div><div class="shipping-kpi-label" style="color:#D946EF">المرتجعة (Returned)</div><div class="shipping-kpi-value" id="shipMiniReturned">0</div><div class="shipping-kpi-sub" id="shipMiniReturnedSub">0% من الإجمالي</div></div></div>
-    <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(207,250,254,.18)">🧊</div><div><div class="shipping-kpi-label" style="color:#67E8F9">الملغاة (Cancel)</div><div class="shipping-kpi-value" id="shipMiniCancelled">0</div><div class="shipping-kpi-sub" id="shipMiniCancelledSub">0% من الإجمالي</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(59,130,246,.18)">📊</div><div><div class="shipping-kpi-label" style="color:#3B82F6">معدل التسليم</div><div class="shipping-kpi-value" id="shipMiniConversionRate">0%</div><div class="shipping-kpi-sub">المستهدف 90%</div></div></div>
     <div class="shipping-kpi-item"><div class="shipping-kpi-icon" style="background:rgba(239,68,68,.18)">✖</div><div><div class="shipping-kpi-label" style="color:#FF5555">معدل المرتجعات</div><div class="shipping-kpi-value" id="shipMiniCancelRate">0%</div><div class="shipping-kpi-sub">الحد الأقصى 10%</div></div></div>
     <span id="shipMiniTransit" class="hidden">0</span>
@@ -1041,7 +1096,6 @@
 <div class="report-grid">
 <div class="report-card"><span>📦 Total Orders</span><strong id="reportTotalOrders">0</strong></div>
 <div class="report-card"><span>↩️ Total Returned</span><strong id="reportReturned">0</strong></div>
-<div class="report-card"><span>🧊 Total Cancel</span><strong id="reportCancel">0</strong></div>
 <div class="report-card"><span>👨‍⚕️ Fake Doctor</span><strong id="reportFakeDoctor">0</strong></div>
 <div class="report-card"><span>🚚 Fake Delivery Update</span><strong id="reportFakeDelivery">0</strong></div>
 </div>
@@ -1255,7 +1309,6 @@
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
-<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1281,10 +1334,10 @@
   <div class="smart-cart-list" id="branchProductCartList"></div>
   <div class="smart-summary-grid">
     <div><label>خدمة التوصيل</label><input id="branchDeliveryInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
-    <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="onDiscountInput('branch')"/></div>
+    <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
     <div><label>المدفوع</label><input id="branchDepositInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch');checkBranchDepositImageRequirement();"/></div>
-    <div><label>الإجمالي القابل للتعديل</label><input class="smart-total-card smart-total-editable" id="branchGrandTotal" type="number" min="0" step="0.01" value="0" oninput="onManualGrandTotalInput('branch')"/></div>
-    <div><label>المتبقي</label><div class="remaining-discount-row"><div class="smart-total-card" id="branchRemainingTotal">0</div><small id="branchAutoDiscountHint" class="auto-discount-inline-hint" style="display:none;"></small></div></div>
+    <div><label>الإجمالي</label><div class="smart-total-card" id="branchGrandTotal">0</div></div>
+    <div><label>المتبقي</label><div class="smart-total-card" id="branchRemainingTotal">0</div></div>
   </div>
 </div>
 <div style="margin-top:12px;display:grid;grid-template-columns:1fr;gap:12px;">
@@ -1314,7 +1367,6 @@
 <div class="stat"><span>Total Orders</span><strong id="bTotalOrders">0</strong></div>
 <div class="stat"><span>Total Signed</span><strong id="bTotalSigned">0</strong></div>
 <div class="stat"><span>Total Returned</span><strong id="bReturnedOrders">0</strong></div>
-<div class="stat"><span>Total Cancel</span><strong id="bCancelOrders">0</strong></div>
 <div class="stat"><span>Delivering</span><strong id="bDeliveringOrders">0</strong></div>
 <div class="stat"><span>Total Revenue</span><strong id="bTotalRevenue">0</strong></div>
 <div class="stat"><span>Total Deposit</span><strong id="bTotalDeposit">0</strong></div>
@@ -1336,7 +1388,6 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
-<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1361,6 +1412,32 @@
 <div class="pagination" id="branchOrdersPagination"></div>
 </div>
 </section>
+<!-- ===== Pending Orders Page ===== -->
+<section class="hidden" id="pendingPage">
+  <div class="pending-shell">
+    <div class="pending-head">
+      <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>عملاء الفروع بحالة Delivering الذين مرّ عليهم 3 أيام أو أكثر بدون تحديث</p></div></div>
+      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(true)">↻ تحديث</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
+    </div>
+    <div class="pending-summary pending-summary-compact">
+      <div class="pending-summary-card pending-summary-main"><span>إجمالي المتأخر</span><strong id="pendingTotalCount">0</strong></div>
+      <div class="pending-summary-card pending-summary-main"><span>أكثر من 7 أيام</span><strong id="pendingCriticalCount">0</strong></div>
+      <div class="pending-summary-card pending-summary-main"><span>أقدم أوردر</span><strong id="pendingOldestDays">0 يوم</strong></div>
+
+      <div class="pending-summary-card pending-branch-card" data-pending-branch="مدينة نصر"><span>مدينة نصر</span><strong id="pendingBranchNasrCount">0</strong><small>إجمالي المتأخرات +3 أيام</small></div>
+      <div class="pending-summary-card pending-branch-card" data-pending-branch="اسكندرية"><span>اسكندرية</span><strong id="pendingBranchAlexCount">0</strong><small>إجمالي المتأخرات +3 أيام</small></div>
+      <div class="pending-summary-card pending-branch-card" data-pending-branch="طنطا"><span>طنطا</span><strong id="pendingBranchTantaCount">0</strong><small>إجمالي المتأخرات +3 أيام</small></div>
+      <div class="pending-summary-card pending-branch-card" data-pending-branch="المنصورة"><span>المنصورة</span><strong id="pendingBranchMansouraCount">0</strong><small>إجمالي المتأخرات +3 أيام</small></div>
+    </div>
+    <div class="pending-toolbar">
+      <input id="pendingSearch" type="text" placeholder="ابحث باسم العميل، الهاتف أو رقم الأوردر..." oninput="renderPendingOrders()">
+      <select id="pendingStatusFilter" disabled title="الحالة مثبتة على Delivering"><option value="Delivering">Delivering</option></select>
+      <select id="pendingBranchFilter" class="hidden" onchange="renderPendingOrders()"><option value="all">كل الفروع</option></select>
+    </div>
+    <div id="pendingOrdersList" class="pending-list"><div class="pending-loading">جاري تحميل الأوردرات المتأخرة...</div></div>
+  </div>
+</section>
+
 <!-- ===== Khazna Page ===== -->
 <section class="hidden" id="khaznaPage">
 <!-- Header -->
@@ -1385,7 +1462,6 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
-<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1449,7 +1525,7 @@
 <table>
 <thead><tr>
 <th>#</th><th>العميل</th><th>الموبايل</th>
-<th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
+<th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="khaznaOrdersBody"></tbody>
 </table>

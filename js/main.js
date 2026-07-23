@@ -411,9 +411,10 @@ function isReceptionist() { return isSecretary(); }
 function isCashier() { return currentUser && getRoleKey(currentUser.role) === 'cashier'; }
 function isStoreManager() { return currentUser && getRoleKey(currentUser.role) === 'store_manager'; }
 function isAccountManager() { return currentUser && getRoleKey(currentUser.role) === 'account_manager'; }
-function canManageDailyLock() { return isAdmin() || isAccountManager(); }
+function canManageDailyLock() { return isAdmin() || isAccountManager() || isCashier(); }
+function canUnlockDailyLock() { return isAdmin() || isAccountManager(); }
 function canManageKhaznaAndTransfer() { return isAdmin() || isAccountManager(); }
-function canViewKhazna() { return isAdmin() || isAccountManager(); }
+function canViewKhazna() { return isAdmin() || isAccountManager() || isCashier(); }
 function canCollectOrders() { return isAdmin() || isAccountManager() || isCashier(); }
 function isAgent() { return currentUser && getRoleKey(currentUser.role) === "agent"; }
 function isOperationManager() { const r = getRoleKey(currentUser && currentUser.role); return r === "manager" || r === "operation_manager" || r === "delivery_manager"; }
@@ -733,6 +734,13 @@ function canCurrentUserCollect(order) {
   return getCollectMeta(order).count < 2;
 }
 
+function isFinalizedDeliveredOrder(order) {
+  return String(order?.status || '').trim() === 'Signed' && Number(getCollectMeta(order).count || 0) >= 2;
+}
+function showDeliveredOrderLockedMessage() {
+  alert('تم تسليم وتحصيل هذا الأوردر، لا يجوز التعديل على أوردر تم تسليمه.');
+}
+
 function getCollectButtonHtml(order, src) {
   if (!canCollectOrders()) return "";
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) {
@@ -770,7 +778,6 @@ function calcRevenueBreakdown(list) {
     signed: sum(list.filter(o => o.status === "Signed")),
     returning: sum(list.filter(o => o.status === "Returning")),
     returned: sum(list.filter(o => o.status === "Returned")),
-    cancelled: sum(list.filter(o => o.status === "Cancel")),
     transit: sum(list.filter(o => o.status === "Transit")),
     fakeDoctor: sum(list.filter(o => isFakeDoctorOrder(o))),
     fakeDelivery: sum(list.filter(o => isFakeDeliveryUpdateOrder(o)))
@@ -1247,6 +1254,8 @@ const productReportsBtn = document.getElementById('productReportsHeaderBtn');
 if (productReportsBtn) productReportsBtn.style.display = canViewProductReports() ? 'inline-flex' : 'none';
 const branchStockBtn = document.getElementById('branchStockHeaderBtn');
 if (branchStockBtn) branchStockBtn.style.display = 'inline-flex';
+const pendingBtn = document.getElementById('pendingHeaderBtn');
+if (pendingBtn) pendingBtn.style.display = (isAdmin() || isStoreManager() || isCashier()) ? 'inline-flex' : 'none';
 const activityBtn = document.getElementById("activityLogHeaderBtn");
 if (activityBtn) activityBtn.style.display = isAdmin() ? "inline-flex" : "none";
 
@@ -1310,6 +1319,8 @@ function resetAppState() {
   analyticsDateTo = null;
   shippingDateFrom = null;
   shippingDateTo = null;
+  shippingRankBranchOrders = [];
+  shippingRankBranchDataLoaded = false;
 
   Object.keys(pageState).forEach(k => pageState[k] = 1);
 
@@ -1429,8 +1440,74 @@ function setActiveMenu(pageId) {
   });
 }
 
+
+// ===== Pending Orders — Branch Delivering only (3+ days without update) =====
+let pendingOrders = [];
+const PENDING_BRANCH_NAMES = ['مدينة نصر','اسكندرية','طنطا','المنصورة'];
+function pendingReferenceDate(order) { return order?.updated_at || order?.status_updated_at || order?.modified_at || order?.created_at || null; }
+function pendingDays(order) { const raw=pendingReferenceDate(order); if(!raw)return 0; const t=new Date(raw).getTime(); if(!Number.isFinite(t))return 0; return Math.max(0,Math.floor((Date.now()-t)/(24*60*60*1000))); }
+function pendingOrderBranch(order){ const b=String(order?.branch||'').trim(); return PENDING_BRANCH_NAMES.includes(b)?b:''; }
+function canSeePendingOrder(order){
+  const branch=pendingOrderBranch(order); if(!branch)return false;
+  if(isAdmin())return true;
+  if(isStoreManager() || isCashier())return getCurrentUserManagedBranches().includes(branch);
+  return false;
+}
+function setupPendingBranchFilter(){
+  const el=document.getElementById('pendingBranchFilter'); if(!el)return;
+  if(isAdmin()){
+    const cur=el.value||'all';
+    el.innerHTML='<option value="all">كل الفروع</option>'+PENDING_BRANCH_NAMES.map(b=>`<option value="${escapeHTML(b)}">${escapeHTML(b)}</option>`).join('');
+    el.value=PENDING_BRANCH_NAMES.includes(cur)?cur:'all'; el.classList.remove('hidden');
+  } else { el.value='all'; el.classList.add('hidden'); }
+}
+async function showPendingPage(){
+  if(!(isAdmin()||isStoreManager()||isCashier())){alert('صفحة Pending متاحة للأدمن ومدير الفرع والكاشير فقط');return;}
+  hideAllPages(); document.getElementById('pendingPage')?.classList.remove('hidden'); setActiveMenu('pendingPage'); setupPendingBranchFilter(); await loadPendingOrders(false);
+}
+async function loadPendingOrders(showMessage){
+  const list=document.getElementById('pendingOrdersList');if(list)list.innerHTML='<div class="pending-loading">جاري تحميل عملاء الفروع المتأخرين...</div>';
+  try{
+    const {data,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').order('created_at',{ascending:false}).limit(1500);
+    if(error)throw error;
+    pendingOrders=(data||[]).filter(o=>pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingDays(b)-pendingDays(a));
+    setupPendingBranchFilter(); renderPendingOrders();
+    if(showMessage)alert(`تم تحديث القائمة — ${pendingOrders.length} عميل متأخر بحالة Delivering`);
+  }catch(e){if(list)list.innerHTML=`<div class="pending-empty">تعذر تحميل البيانات: ${escapeHTML(e.message||String(e))}</div>`;}
+}
+function renderPendingBranchSummary(){
+  const branchIds={
+    'مدينة نصر':'pendingBranchNasrCount',
+    'اسكندرية':'pendingBranchAlexCount',
+    'طنطا':'pendingBranchTantaCount',
+    'المنصورة':'pendingBranchMansouraCount'
+  };
+  const allowed=isAdmin()?PENDING_BRANCH_NAMES:getCurrentUserManagedBranches();
+  document.querySelectorAll('.pending-branch-card').forEach(card=>{
+    const branch=card.dataset.pendingBranch||'';
+    card.style.display=allowed.includes(branch)?'flex':'none';
+  });
+  Object.entries(branchIds).forEach(([branch,id])=>{
+    const el=document.getElementById(id);
+    if(el)el.textContent=num(pendingOrders.filter(o=>pendingOrderBranch(o)===branch&&pendingDays(o)>=3).length);
+  });
+}
+function renderPendingOrders(){
+  const list=document.getElementById('pendingOrdersList');if(!list)return;
+  renderPendingBranchSummary();
+  const q=String(document.getElementById('pendingSearch')?.value||'').trim().toLowerCase();
+  const branchFilter=isAdmin()?(document.getElementById('pendingBranchFilter')?.value||'all'):'all';
+  const rows=pendingOrders.filter(o=>(branchFilter==='all'||pendingOrderBranch(o)===branchFilter)&&(!q||[o.customer_name,o.phone,o.phone2,o.order_number,o.ticket_id,o.employee_name,o.doctor_name,o.area,pendingOrderBranch(o)].some(v=>String(v||'').toLowerCase().includes(q))));
+  document.getElementById('pendingTotalCount').textContent=num(rows.length);
+  document.getElementById('pendingCriticalCount').textContent=num(rows.filter(o=>pendingDays(o)>=7).length);
+  document.getElementById('pendingOldestDays').textContent=(rows.length?num(Math.max(...rows.map(pendingDays))):'0')+' يوم';
+  if(!rows.length){list.innerHTML='<div class="pending-empty">لا توجد أوردرات فروع بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
+  list.innerHTML=rows.map(o=>`<div class="pending-row"><div class="pending-days">${num(pendingDays(o))}<small>يوم</small></div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="pending-status">Delivering</span><span class="pending-meta">آخر تحديث: ${formatDate(pendingReferenceDate(o))}</span></div><div><span class="pending-meta">رقم الأوردر: ${escapeHTML(o.order_number||'—')}</span><span class="pending-meta">Ticket: ${escapeHTML(getTicketId(o))}</span></div><div><span class="pending-meta">${escapeHTML(o.employee_name||'—')}</span><span class="pending-meta">${escapeHTML(o.doctor_name||'')}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(o.area||'')}</span></div><button class="pending-open-btn" type="button" onclick="openPendingOrder('${o.id}')">فتح الأوردر</button></div>`).join('');
+}
+async function openPendingOrder(orderId){const o=pendingOrders.find(x=>String(x.id)===String(orderId));if(!o)return;const branch=pendingOrderBranch(o);if(!branch)return;const ticketId=getTicketId(o);await openBranchPage(branch);setTimeout(()=>{const search=document.getElementById('bSearchInput');if(search){search.value=ticketId;search.dispatchEvent(new Event('input',{bubbles:true}));search.focus();}},250);}
+
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "branchPage", "khaznaPage", "activityLogPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "branchPage", "khaznaPage", "activityLogPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
@@ -1438,7 +1515,26 @@ function hideAllPages() {
 
 function showOrdersPage() { hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-function showShippingRankPage() { if (!canViewShippingRank()) return; branchShippingRankOverride = null; hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
+async function showShippingRankPage() {
+  if (!canViewShippingRank()) return;
+  branchShippingRankOverride = null;
+  hideAllPages();
+  $('shippingRankPage').classList.remove('hidden');
+  setActiveMenu('shippingRankPage');
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  const appContent = document.querySelector('.app-content');
+  if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+  try {
+    await loadShippingRankBranchOrders();
+  } catch (error) {
+    console.error('Shipping Rank branch source error:', error);
+    alert(error.message || 'تعذر تحديث تقرير الفروع');
+  }
+
+  renderShippingRank();
+  renderShippingCharts();
+}
 function showDoctorRankPage() { if (!canViewAdminReports()) return; hideAllPages(); $("doctorRankPage").classList.remove("hidden"); setActiveMenu("doctorRankPage"); setTimeout(() => { renderDoctorRank(); renderDoctorCharts(); }, 150); }
 function showBranchRankPage() { hideAllPages(); $("branchRankPage").classList.remove("hidden"); setActiveMenu("branchRankPage"); if (!$("reportFromDate").value || !$("reportToDate").value) { setReportMode("daily"); } else { updateReportTabs(); renderReport(); } }
 function showUsersPage() {
@@ -1573,67 +1669,19 @@ function cartProductsTotal(scope) {
   return getCartArray(scope).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0);
 }
 
-function getManualGrandTotalState(scope) {
-  const prefix = cartPrefix(scope);
-  const el = document.getElementById(prefix + 'GrandTotal');
-  return el?.dataset?.manual === '1';
-}
-
-function setManualGrandTotalState(scope, value) {
-  const prefix = cartPrefix(scope);
-  const el = document.getElementById(prefix + 'GrandTotal');
-  if (el) el.dataset.manual = value ? '1' : '0';
-}
-
-function updateAutoDiscountHint(scope, baseTotal, finalTotal, discount) {
-  const prefix = cartPrefix(scope);
-  const hint = document.getElementById(prefix + 'AutoDiscountHint');
-  if (!hint) return;
-  if (discount > 0) {
-    hint.style.display = 'inline-flex';
-    hint.textContent = `⚠ سيتم تسجيل خصم ${money(discount)} جنيه على الأوردر`;
-  } else {
-    hint.style.display = 'none';
-    hint.textContent = '';
-  }
-}
-
-function onManualGrandTotalInput(scope) {
-  setManualGrandTotalState(scope, true);
-  syncProductCartTotals(scope, { source: 'manual-total' });
-}
-
-function onDiscountInput(scope) {
-  setManualGrandTotalState(scope, false);
-  syncProductCartTotals(scope, { source: 'discount' });
-}
-
-function syncProductCartTotals(scope, options = {}) {
+function syncProductCartTotals(scope) {
   const prefix = cartPrefix(scope);
   const productsTotal = cartProductsTotal(scope);
   const delivery = Number(document.getElementById(prefix + 'DeliveryInput')?.value || 0);
-  const discountEl = document.getElementById(prefix + 'DiscountInput');
-  const grandEl = document.getElementById(prefix + 'GrandTotal');
+  const discount = Math.max(0, Number(document.getElementById(prefix + 'DiscountInput')?.value || 0));
   const deposit = Number(document.getElementById(prefix + 'DepositInput')?.value || 0);
-  const baseTotal = Math.max(0, productsTotal + delivery);
-
-  let discount = Math.max(0, Number(discountEl?.value || 0));
-  let grand = Math.max(0, baseTotal - discount);
-  const manualMode = getManualGrandTotalState(scope);
-
-  if (manualMode && grandEl) {
-    const typed = Math.max(0, Number(grandEl.value || 0));
-    grand = typed;
-    discount = Math.max(0, baseTotal - grand);
-    if (discountEl) discountEl.value = discount ? discount.toFixed(2).replace(/\.00$/, '') : '';
-  } else if (grandEl) {
-    grandEl.value = grand;
-  }
-
+  const grand = Math.max(0, productsTotal + delivery - discount);
   const remaining = Math.max(0, grand - deposit);
+
+  const grandEl = document.getElementById(prefix + 'GrandTotal');
   const remainingEl = document.getElementById(prefix + 'RemainingTotal');
+  if (grandEl) grandEl.textContent = money(grand);
   if (remainingEl) remainingEl.textContent = money(remaining);
-  updateAutoDiscountHint(scope, baseTotal, grand, discount);
 
   if (scope === 'branch') {
     const bPrice = document.getElementById('bPrice');
@@ -1645,7 +1693,7 @@ function syncProductCartTotals(scope, options = {}) {
     if (bPrice) bPrice.value = grand;
     if (bDeposit) bDeposit.value = deposit;
     if (bDelivery) bDelivery.value = delivery;
-    if (bQty) bQty.value = getCartArray(scope).reduce((sum,p)=>sum+Number(p.qty||1),0) || 1;
+    if (bQty) bQty.value = getCartArray(scope).reduce((s,p)=>s+Number(p.qty||1),0) || 1;
     if (bUnit) bUnit.value = productsTotal;
     if (bNames) bNames.value = productCartToText(getCartArray(scope));
   } else {
@@ -1658,21 +1706,10 @@ function syncProductCartTotals(scope, options = {}) {
     if (price) price.value = grand;
     if (depositEl) depositEl.value = deposit;
     if (deliveryEl) deliveryEl.value = delivery;
-    if (qtyEl) qtyEl.value = getCartArray(scope).reduce((sum,p)=>sum+Number(p.qty||1),0) || 1;
+    if (qtyEl) qtyEl.value = getCartArray(scope).reduce((s,p)=>s+Number(p.qty||1),0) || 1;
     if (unitEl) unitEl.value = productsTotal;
     if (namesEl) namesEl.value = productCartToText(getCartArray(scope));
   }
-}
-
-function confirmCalculatedDiscountBeforeSave(scope) {
-  syncProductCartTotals(scope);
-  const prefix = cartPrefix(scope);
-  const discount = Math.max(0, Number(document.getElementById(prefix + 'DiscountInput')?.value || 0));
-  if (discount <= 0) return true;
-  const productsTotal = cartProductsTotal(scope);
-  const delivery = Number(document.getElementById(prefix + 'DeliveryInput')?.value || 0);
-  const finalTotal = Number(document.getElementById(prefix + 'GrandTotal')?.value || 0);
-  return confirm(`تم احتساب خصم بقيمة ${money(discount)} ج.م\nإجمالي المنتجات والتوصيل: ${money(productsTotal + delivery)} ج.م\nالإجمالي بعد التعديل: ${money(finalTotal)} ج.م\n\nهل تريد حفظ الأوردر بهذا الخصم؟`);
 }
 
 function renderProductCart(scope) {
@@ -1782,10 +1819,6 @@ function clearProductCart(scope) {
   if (productSelect) productSelect.value = '';
   if (productPrice) productPrice.value = '';
   if (productQty) productQty.value = '1';
-  const grandEl = document.getElementById(prefix + 'GrandTotal');
-  if (grandEl) { grandEl.value = '0'; grandEl.dataset.manual = '0'; }
-  const hint = document.getElementById(prefix + 'AutoDiscountHint');
-  if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
   renderProductCart(scope);
 }
 
@@ -1818,8 +1851,6 @@ function setProductCartFromOrder(scope, order) {
   if (deliveryEl) deliveryEl.value = Number(order?.delivery_fee || 0) || '';
   if (discountEl) discountEl.value = Number(meta.discount || 0) || '';
   if (depositEl) depositEl.value = Number(order?.deposit || 0) || '';
-  const grandEl = document.getElementById(prefix + 'GrandTotal');
-  if (grandEl) { grandEl.value = Number(order?.price || 0); grandEl.dataset.manual = '1'; }
   renderProductCart(scope);
 }
 
@@ -1963,7 +1994,7 @@ async function printBranchKhaznaReportForCashier() {
         <td style="padding:4px;">${escapeHTML(o.customer_name || '')}</td>
         <td style="padding:4px;">${escapeHTML(o.phone || '')}</td>
         <td style="padding:4px;">${escapeHTML(o.doctor_name || '—')}</td>
-        <td style="padding:4px;font-weight:700;direction:ltr;">${escapeHTML(o.order_number || '—')}</td>
+        <td style="padding:4px;font-weight:700;direction:ltr;">${escapeHTML(getTicketId(o) || '—')}</td>
         <td style="padding:4px;font-size:10px;">${escapeHTML(o.product_names || '—')}</td>
         <td style="padding:4px;text-align:right;">${enMoney(o.price)}</td>
         <td style="padding:4px;text-align:right;">${Number(o.deposit||0) > 0 ? enMoney(o.deposit) : '—'}</td>
@@ -1975,7 +2006,7 @@ async function printBranchKhaznaReportForCashier() {
       'العميل': o.customer_name || '',
       'الموبايل': o.phone || '',
       'الدكتور': o.doctor_name || '',
-      'رقم الأوردر': o.order_number || '',
+      'Ticket ID': getTicketId(o) || '',
       'المنتجات': o.product_names || '',
       'السعر': Number(o.price || 0),
       'المدفوع': Number(o.deposit || 0),
@@ -2043,7 +2074,7 @@ async function printBranchKhaznaReportForCashier() {
       <div class="stat-box"><div class="label">عدد الأوردرات</div><div class="value" style="color:#f59e0b;">${enNumber(reportOrders.length)}</div></div>
     </div>
   <table>
-    <thead><tr><th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th><th>رقم الأوردر</th><th>المنتجات</th><th>السعر</th><th>المدفوع</th><th>الحالة</th></tr></thead>
+    <thead><tr><th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th><th>Ticket ID</th><th>المنتجات</th><th>السعر</th><th>المدفوع</th><th>الحالة</th></tr></thead>
     <tbody>${orderRows}</tbody>
   </table>
   <div style="margin-top:20px;border-top:2px solid #000;padding-top:10px;font-weight:bold;font-size:15px;direction:ltr;text-align:right;">
@@ -2353,7 +2384,6 @@ function renderStats(filtered) {
   const revenue = calcRevenueBreakdown(filtered);
   const confirmedCount = filtered.filter(o => o.status === "تم التأكيد").length;
   const returnedCount = filtered.filter(o => o.status === "Returned").length;
-  const cancelCount = filtered.filter(o => o.status === "Cancel").length;
   const fakeDoctorCount = filtered.filter(o => isFakeDoctorOrder(o)).length;
   const fakeDeliveryCount = filtered.filter(o => isFakeDeliveryUpdateOrder(o)).length;
   const signedCount = filtered.filter(o => o.status === "Signed").length;
@@ -2365,7 +2395,6 @@ function renderStats(filtered) {
   totalOrders.innerHTML = statHTML(filtered.length, revenue.total, "Total Value");
   confirmedOrders.innerHTML = statHTML(confirmedCount, revenue.confirmed, "Revenue", "good");
   returnedOrders.innerHTML = statHTML(returnedCount, revenue.returned, "Returned Value", "bad");
-  if ($("cancelOrders")) $("cancelOrders").innerHTML = statHTML(cancelCount, revenue.cancelled, "Cancel Value", "warn");
   fakeDoctorOrders.innerHTML = statHTML(fakeDoctorCount, revenue.fakeDoctor, "Fake Value", "warn");
   fakeDeliveryUpdateOrders.innerHTML = statHTML(fakeDeliveryCount, revenue.fakeDelivery, "Fake Delivery Value", "warn");
   totalSigned.innerHTML = statHTML(signedCount, revenue.signed, "Signed Value", "good");
@@ -2398,7 +2427,6 @@ function renderOrders() {
     const o = page.rows[i];
     let statusClass = "chip-transit";
     if (o.status === "Returned") statusClass = "chip-returned";
-    else if (o.status === "Cancel") statusClass = "chip-cancel";
     else if (o.status === "Transit") statusClass = "chip-transit";
     else if (o.status === "Signed") statusClass = "chip-signed";
     else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = "chip-fake";    
@@ -2496,11 +2524,6 @@ orderForm.addEventListener("submit", async (e) => {
     return;
   }
   syncProductCartTotals('dash');
-  if (!confirmCalculatedDiscountBeforeSave('dash')) {
-    submitButton.disabled = false;
-    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
-    return;
-  }
   const qty        = Math.max(1, Number(document.getElementById("quantity")?.value || 1));
   const delivFee   = Number(document.getElementById("deliveryFee")?.value || 0);
   const totalPrice = Number(document.getElementById("price")?.value || 0);
@@ -2651,7 +2674,7 @@ function checkBranchDepositImageRequirement() {
 window.editOrder = function (id) {
   const o = orders.find(x => String(x.id) === String(id));
   if (!o) return;
-  if (String(o.status || '').trim() === 'Signed' && !isAdmin()) { alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط'); return; }
+  if (isFinalizedDeliveredOrder(o)) { showDeliveredOrderLockedMessage(); return; }
   if (!isAdmin() && o.employee_name !== currentUser.name) { alert("غير مسموح بتعديل أوردرات موظف آخر"); return; }
   editId = id;
   employeeName.value = o.employee_name || "";
@@ -2730,7 +2753,6 @@ function getShippingAnalysisRows(sourceOrders) {
     const signed = countStatus(list, "Signed");
     const transit = countStatus(list, "Transit");
     const returned = countStatus(list, "Returned");
-    const cancelled = countStatus(list, "Cancel");
     const fakeDelivery = getFakeDeliveryUpdateCount(list);
     const delivering = countStatus(list, "Delivering");
     
@@ -2740,18 +2762,15 @@ function getShippingAnalysisRows(sourceOrders) {
       signed,
       transit,
       returned,
-      cancelled,
       fakeDelivery,
       delivering,
       conversionRate: percent(signed, total),
       fakeRate: percent(fakeDelivery, total),
       deliveringRate: percent(delivering, total),
       returnRate: percent(returned, total),
-      cancelRate: percent(cancelled, total),
       fakeRateNum: percentNum(fakeDelivery, total),
       deliveringRateNum: percentNum(delivering, total),
-      returnRateNum: percentNum(returned, total),
-      cancelRateNum: percentNum(cancelled, total) 
+      returnRateNum: percentNum(returned, total) 
     };
   });
 }
@@ -2871,12 +2890,17 @@ function renderAnalytics() {
 }
 
 // ===== دوال الترتيب =====
-function getShippingRankRows() { 
-  const src = getShippingFilteredOrders(); 
-  return getShippingAnalysisRows(src).map(r => ({ 
-    ...r, 
-    score: (r.returnRateNum * 2) + (r.cancelRateNum * 1.25) + (r.fakeRateNum * 1.5)
-  })).sort((a, b) => a.score - b.score); 
+function getShippingRankRows() {
+  const src = getShippingFilteredOrders();
+  return getShippingAnalysisRows(src)
+    .filter(r => String(r.company || '').trim())
+    .map(r => {
+      const conversion = percentNum(r.signed, r.total);
+      const returnRate = percentNum(r.returned, r.total);
+      const fakeRate = percentNum((r.fakeDoctor || 0) + (r.fakeDelivery || 0), r.total);
+      return { ...r, conversionRate: conversion.toFixed(1) + '%', conversionRateNum: conversion, returnRate: returnRate.toFixed(1) + '%', returnRateNum: returnRate, fakeRate: fakeRate.toFixed(1) + '%', fakeRateNum: fakeRate, score: conversion - (returnRate * 1.5) - fakeRate };
+    })
+    .sort((a, b) => b.score - a.score || b.signed - a.signed || b.total - a.total);
 }
 
 function getDoctorRankRows() { 
@@ -2947,12 +2971,11 @@ function getFilteredDoctorRankRows() {
 function updateShippingMiniDashboard() {
   const DELIVERY_TARGET = 90;
   const RETURN_TARGET = 10;
-  const src = getShippingFilteredOrders();
+  const src = getShippingRankBranchFilteredOrders();
   const total = src.length;
   const signed = src.filter(o => o.status === "Signed").length;
   const delivering = src.filter(o => o.status === "Delivering").length;
   const returned = src.filter(o => o.status === "Returned").length;
-  const cancelled = src.filter(o => o.status === "Cancel").length;
   const conversionNum = percentNum(signed, total);
   const cancelNum = percentNum(returned, total);
   const remainingToTarget = Math.max(0, DELIVERY_TARGET - conversionNum);
@@ -2964,13 +2987,11 @@ function updateShippingMiniDashboard() {
   setText("shipMiniDelivering", num(delivering));
   setText("shipMiniTransit", num(delivering));
   setText("shipMiniReturned", num(returned));
-  setText("shipMiniCancelled", num(cancelled));
   setText("shipMiniConversionRate", conversionNum.toFixed(1) + "%");
   setText("shipMiniCancelRate", cancelNum.toFixed(1) + "%");
   setText("shipMiniSignedSub", percent(signed, total) + " من الإجمالي");
   setText("shipMiniDeliveringSub", percent(delivering, total) + " من الإجمالي");
   setText("shipMiniReturnedSub", percent(returned, total) + " من الإجمالي");
-  setText("shipMiniCancelledSub", percent(cancelled, total) + " من الإجمالي");
 
   setText("shipTargetCurrentConversion", conversionNum.toFixed(1) + "%");
   setText("shipTargetCurrentConversionInline", conversionNum.toFixed(1) + "%");
@@ -3013,7 +3034,7 @@ function updateShippingMiniDashboard() {
 }
 
 function getBranchPerformanceRows() {
-  const src = getShippingFilteredOrders();
+  const src = getShippingRankBranchFilteredOrders();
   const branchesMap = [
     { branch: "مدينة نصر", company: "Nasr City Branch" },
     { branch: "اسكندرية", company: "Alexandria Branch" },
@@ -3022,26 +3043,26 @@ function getBranchPerformanceRows() {
   ];
 
   return branchesMap.map(item => {
-    const list = src.filter(o => o.shipping_company === item.company || o.shipping_company === item.branch);
+    const list = src.filter(o =>
+      o.branch === item.branch ||
+      o.shipping_company === item.company ||
+      o.shipping_company === item.branch
+    );
     const total = list.length;
     const signed = countStatus(list, "Signed");
     const delivering = countStatus(list, "Delivering");
     const returned = countStatus(list, "Returned");
-    const cancelled = countStatus(list, "Cancel");
     const conversionNum = percentNum(signed, total);
     const returnNum = percentNum(returned, total);
-    const cancelNum = percentNum(cancelled, total);
     return {
       name: item.branch,
       total,
       signed,
       delivering,
       returned,
-      cancelled,
       conversionRate: conversionNum.toFixed(1) + "%",
       returnRate: returnNum.toFixed(1) + "%",
-      cancelRate: cancelNum.toFixed(1) + "%",
-      score: conversionNum - (returnNum * 1.5) - (cancelNum * 1.25)
+      score: conversionNum - (returnNum * 1.5)
     };
   }).sort((a, b) => b.score - a.score);
 }
@@ -3065,11 +3086,9 @@ function getShippingCompanyPerformanceRows() {
       signed: r.signed,
       delivering: r.delivering || 0,
       returned: r.returned,
-      cancelled: r.cancelled || 0,
       conversionRate: r.conversionRate,
       returnRate: r.returnRate,
-      cancelRate: r.cancelRate || "0.0%",
-      score: (r.signed ? percentNum(r.signed, r.total) : 0) - (r.returnRateNum * 1.5) - ((r.cancelRateNum || 0) * 1.25)
+      score: (r.signed ? percentNum(r.signed, r.total) : 0) - (r.returnRateNum * 1.5)
     }))
     .sort((a, b) => b.score - a.score);
 }
@@ -3080,14 +3099,13 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
 
   const activeRows = rows.filter(r => Number(r.total || 0) > 0);
   if (!activeRows.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="empty">${emptyText}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">${emptyText}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = activeRows.map((r, i) => {
     const returnValue = Number(String(r.returnRate || "0").replace("%", "")) || 0;
     const conversionValue = Number(String(r.conversionRate || "0").replace("%", "")) || 0;
-    const cancelValue = Number(String(r.cancelRate || "0").replace("%", "")) || 0;
     const returnColor = returnValue > 10 ? "#EF4444" : "#57D85A";
     const conversionColor = conversionValue >= 90 ? "#57D85A" : "#F59E0B";
     return `<tr>
@@ -3097,10 +3115,8 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
       <td>${num(r.signed)}</td>
       <td>${num(r.delivering || 0)}</td>
       <td>${num(r.returned)}</td>
-      <td><span class="chip chip-cancel">${num(r.cancelled || 0)}</span></td>
       <td style="color:${conversionColor};font-weight:900">${r.conversionRate}</td>
       <td style="color:${returnColor};font-weight:900">${r.returnRate}</td>
-      <td style="color:#dc2626;font-weight:900">${r.cancelRate || "0.0%"}</td>
       <td>${Number(r.score || 0).toFixed(1)}</td>
     </tr>`;
   }).join("");
@@ -3211,6 +3227,26 @@ function resetShippingDateFilter() {
   renderShippingRank(); renderShippingCharts();
 }
 
+function getShippingRankBranchFilteredOrders() {
+  let src = getShippingRankBranchSource();
+
+  if (branchShippingRankOverride) {
+    src = src.filter(o => String(o.branch || '').trim() === branchShippingRankOverride);
+  } else if (isStoreManager() || isCashier()) {
+    const managedBranches = getCurrentUserManagedBranches();
+    src = src.filter(o => managedBranches.includes(String(o.branch || '').trim()));
+  }
+
+  if (!shippingDateFrom && !shippingDateTo) return src;
+  return src.filter(o => {
+    const d = String(o.created_at || '').split('T')[0];
+    if (!d) return true;
+    if (shippingDateFrom && shippingDateTo) return d >= shippingDateFrom && d <= shippingDateTo;
+    if (shippingDateFrom) return d >= shippingDateFrom;
+    return d <= shippingDateTo;
+  });
+}
+
 function getShippingFilteredOrders() {
   if (!orders || !orders.length) return [];
 
@@ -3243,7 +3279,7 @@ function getShippingFilteredOrders() {
 }
 
 function renderShippingCharts() {
-  const src = getShippingFilteredOrders();
+  const src = getShippingRankBranchFilteredOrders();
   destroyChart("shippingBarChart");
   destroyChart("shippingConversionLineChart");
   destroyChart("shippingStatusDoughnutChart");
@@ -3265,7 +3301,6 @@ function renderShippingCharts() {
     byDate[d].total += 1;
     if (o.status === 'Signed') byDate[d].signed += 1;
     if (o.status === 'Returned') byDate[d].returned += 1;
-    if (o.status === 'Cancel') byDate[d].cancelled = (byDate[d].cancelled || 0) + 1;
     if (o.status === 'Delivering') byDate[d].delivering += 1;
   });
   const labels = Object.keys(byDate).sort((a,b) => {
@@ -3278,8 +3313,7 @@ function renderShippingCharts() {
   const signed = src.filter(o => o.status === 'Signed').length;
   const delivering = src.filter(o => o.status === 'Delivering').length;
   const returned = src.filter(o => o.status === 'Returned').length;
-  const cancelled = src.filter(o => o.status === 'Cancel').length;
-  const others = Math.max(0, src.length - signed - delivering - returned - cancelled);
+  const others = Math.max(0, src.length - signed - delivering - returned);
   const baseLineOptions = (maxY = 100) => ({
     responsive: true,
     maintainAspectRatio: false,
@@ -3290,7 +3324,7 @@ function renderShippingCharts() {
   const convCtx = document.getElementById('shippingConversionLineChart');
   if (convCtx) charts['shippingConversionLineChart'] = new Chart(convCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل التسليم', data: conversionData, borderColor: '#57D85A', backgroundColor: 'rgba(87,216,90,.15)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 90%', data: labels.map(() => 90), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(100) });
   const doughnutCtx = document.getElementById('shippingStatusDoughnutChart');
-  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Cancel','Others'], datasets: [{ data: [signed, delivering, returned, cancelled, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#67E8F9','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, src.length)})` } } } } });
+  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, src.length)})` } } } } });
   const returnCtx = document.getElementById('shippingReturnLineChart');
   if (returnCtx) charts['shippingReturnLineChart'] = new Chart(returnCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل المرتجعات', data: returnData, borderColor: '#FF5555', backgroundColor: 'rgba(239,68,68,.12)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 10%', data: labels.map(() => 10), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(25) });
 }
@@ -3314,7 +3348,7 @@ function downloadCSV(fileName, headers, rows) {
 function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor","Order Number", "Customer", "Phone","Phone2", "Shipping Company", "Area", "Products", "Delivery Fee", "Discount", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name,o.order_number || "", o.customer_name, o.phone,o.phone2, o.shipping_company, o.area, o.product_names || "", o.delivery_fee || 0, getOrderMeta(o).discount || 0, o.price, o.deposit || 0, Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)), o.status, stripCollectMeta(o.notes || ""), o.created_at])); }
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
-function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-dashboard.csv", ["Rank", "Shipping Company", "Total Order", "Signed", "Delivering", "Returned", "Cancel", "Conversion Rate", "Return Rate", "Cancel Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.delivering, r.returned, r.cancelled || 0, r.conversionRate, r.returnRate, r.cancelRate || "0.0%", r.score.toFixed(1)])); }
+function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-dashboard.csv", ["Rank", "Shipping Company", "Total Order", "Signed", "Delivering", "Returned", "Conversion Rate", "Cancel Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.delivering, r.returned, r.conversionRate, r.returnRate, r.score.toFixed(1)])); }
 function exportDoctorRank() { const r = getDoctorRankRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctor-rank.csv", ["Rank", "Doctor", "Total Orders", "Signed", "Returned", "Fake", "Total Revenue", "Fake Rate", "Return Rate", "Score"], r.map((x, i) => [i + 1, x.doctor, x.total, x.signed, x.returned, x.fakeDoctor, x.revenue, x.fakeRate, x.returnRate, x.score.toFixed(1)])); }
 
 // ===== دوال المستخدمين =====
@@ -3989,7 +4023,6 @@ function renderReport() {
 
   $("reportTotalOrders").textContent = num(list.length);
   $("reportReturned").textContent = num(list.filter(o => o.status === "Returned").length);
-  if ($("reportCancel")) $("reportCancel").textContent = num(list.filter(o => o.status === "Cancel").length);
   $("reportFakeDoctor").textContent = num(list.filter(o => isFakeDoctorOrder(o)).length);
   $("reportFakeDelivery").textContent = num(list.filter(o => isFakeDeliveryUpdateOrder(o)).length);
 
@@ -4083,7 +4116,6 @@ function exportCurrentReport() {
     ["From", from], ["To", to],
     ["Total Orders", list.length],
     ["Total Returned", list.filter(o => o.status === "Returned").length],
-    ["Total Cancel", list.filter(o => o.status === "Cancel").length],
     ["Total Fake Doctor", list.filter(o => isFakeDoctorOrder(o)).length],
     ["Total Fake Delivery Update", list.filter(o => isFakeDeliveryUpdateOrder(o)).length],
     ["Worst Shipping", worstShipping ? `${worstShipping.name} (${worstShipping.rate.toFixed(1)}%)` : "—"],
@@ -4351,7 +4383,7 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
       finalStatus = "تم التأكيد";
     }
     else if (rawStatus.includes("ملغي") || lowerStatus.includes("cancel")) {
-      finalStatus = "Cancel";
+      finalStatus = "ملغي";
     }
 
     let finalEmployee = staticValues["employee_name"] ? staticValues["employee_name"] : String(row[mapping["employee_name"]] || "").trim();
@@ -4518,6 +4550,50 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(ensureCashierBran
 let currentBranchName = '';
 let branchShippingRankOverride = null;
 let branchOrders = [];
+
+// Shipping Rank branch report uses the exact same source as branch pages:
+// direct orders query by the `branch` column, refreshed whenever the report opens.
+let shippingRankBranchOrders = [];
+let shippingRankBranchDataLoaded = false;
+
+async function loadShippingRankBranchOrders() {
+  const branchNames = ['مدينة نصر', 'اسكندرية', 'طنطا', 'المنصورة'];
+  let allBranchOrders = [];
+
+  for (const branchName of branchNames) {
+    let branchData = [];
+    const pageSize = 1000;
+    let from = 0;
+
+    while (true) {
+      const to = from + pageSize - 1;
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*')
+        .eq('branch', branchName)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw new Error(`تعذر تحميل أوردرات فرع ${branchName}: ${error.message}`);
+      branchData = branchData.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    allBranchOrders = allBranchOrders.concat(branchData);
+  }
+
+  shippingRankBranchOrders = allBranchOrders;
+  shippingRankBranchDataLoaded = true;
+  return shippingRankBranchOrders;
+}
+
+function getShippingRankBranchSource() {
+  if (branchShippingRankOverride && currentBranchName === branchShippingRankOverride && Array.isArray(branchOrders)) {
+    return branchOrders;
+  }
+  return shippingRankBranchDataLoaded ? shippingRankBranchOrders : orders;
+}
 let branchActiveDateFrom = null;
 let branchActiveDateTo = null;
 let branchPageNum = 1;
@@ -4651,12 +4727,11 @@ function getBranchStatusButtonHtml(order) {
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) {
     return disabledActionButton('إلغاء', 'هذه اليومية مقفولة');
   }
-  if (order.status === 'Returned' || order.status === 'Cancel') {
-    const label = order.status === 'Cancel' ? 'Cancel' : 'Returned';
-    return `<span class="branch-cancel-disabled ${order.status === 'Cancel' ? 'chip-cancel' : ''}" title="الأوردر ملغي بالفعل">${label}</span>`;
+  if (order.status === 'Returned') {
+    return `<span class="branch-cancel-disabled" title="الأوردر ملغي بالفعل">ملغي</span>`;
   }
-if (order.status === 'Signed' && !isAdmin() && !isExecutiveAssistant() && !isSecretary() && !isAccountManager()) {
-    return `<span class="branch-cancel-disabled" title="لا يمكن إلغاء أوردر Signed إلا للأدمن فقط">Signed</span>`;
+if (isFinalizedDeliveredOrder(order)) {
+    return `<span class="branch-cancel-disabled" title="تم تسليم وتحصيل الأوردر نهائياً">تم التسليم</span>`;
   }
   return `<button onclick="openBranchCancelStatusModal('${order.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#EF4444,#B91C1C);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(239,68,68,.25);">إلغاء</button>`;
 }
@@ -4666,7 +4741,7 @@ function openBranchCancelStatusModal(orderId) {
   if (!order) return;
   if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
-  if (order.status === 'Signed' && !isAdmin() && !isExecutiveAssistant() && !isSecretary() && !isAccountManager()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
+  if (isFinalizedDeliveredOrder(order)) { showDeliveredOrderLockedMessage(); return; }
 
   let modal = document.getElementById('branchCancelStatusModal');
   if (!modal) {
@@ -4677,12 +4752,6 @@ function openBranchCancelStatusModal(orderId) {
       <div style="width:420px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl;">
         <h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary);">إلغاء الأوردر</h3>
         <p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px;"></p>
-        <label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800;">نوع الإلغاء <span style="color:#EF4444">*</span></label>
-        <select id="branchCancelTypeSelect" style="width:100%;margin-bottom:12px;padding:10px 12px;border-radius:10px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border-color);">
-          <option value="">اختر نوع الإلغاء</option>
-          <option value="doctor_group">الغاء من الدكتور في الجروب</option>
-          <option value="customer_courier">الغاء من العميل مع المندوب</option>
-        </select>
         <label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800;">سبب الإلغاء <span style="color:#EF4444">*</span></label>
         <textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px;"></textarea>
         <div style="display:flex;gap:10px;justify-content:flex-start;">
@@ -4695,8 +4764,6 @@ function openBranchCancelStatusModal(orderId) {
   modal.dataset.orderId = orderId;
   const customer = document.getElementById('branchCancelModalCustomer');
   if (customer) customer.textContent = `العميل: ${order.customer_name || '—'} | الحالة الحالية: ${order.status || '—'}`;
-  const typeSelect = document.getElementById('branchCancelTypeSelect');
-  if (typeSelect) typeSelect.value = '';
   const reason = document.getElementById('branchCancelReasonInput');
   if (reason) reason.value = '';
   modal.style.display = 'flex';
@@ -4711,43 +4778,38 @@ function closeBranchCancelStatusModal() {
 async function confirmBranchCancelStatus() {
   const modal = document.getElementById('branchCancelStatusModal');
   const orderId = modal?.dataset?.orderId;
-  const typeEl = document.getElementById('branchCancelTypeSelect');
-  const cancelType = String(typeEl?.value || '').trim();
   const reasonEl = document.getElementById('branchCancelReasonInput');
   const reason = String(reasonEl?.value || '').trim();
   if (!orderId) return;
-  if (!cancelType) { alert('اختر نوع الإلغاء أولاً'); typeEl?.focus(); return; }
-  if (!reason) { alert('لازم تكتب سبب الإلغاء'); reasonEl?.focus(); return; }
+  if (!reason) { alert('لازم تكتب سبب الإلغاء قبل تحويل الأوردر Returned'); reasonEl?.focus(); return; }
 
   const order = branchOrders.find(x => String(x.id) === String(orderId));
   if (!order) return;
   if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
-  if (order.status === 'Signed' && !isAdmin() && !isExecutiveAssistant() && !isSecretary() && !isAccountManager()) { alert('لا يمكن إلغاء أوردر Signed إلا للأدمن فقط'); return; }
+  if (isFinalizedDeliveredOrder(order)) { showDeliveredOrderLockedMessage(); return; }
 
-  const targetStatus = cancelType === 'doctor_group' ? 'Cancel' : 'Returned';
-  const cancelTypeLabel = cancelType === 'doctor_group' ? 'الغاء من الدكتور في الجروب' : 'الغاء من العميل مع المندوب';
-  const noteLine = `نوع الإلغاء: ${cancelTypeLabel} | سبب الإلغاء: ${reason}`;
+  const noteLine = `سبب الإلغاء: ${reason}`;
   const newNotes = appendVisibleOrderNote(order.notes || '', noteLine);
   const btn = document.getElementById('branchCancelConfirmBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'جاري الحفظ...'; }
 
   const { error } = await supabaseClient
     .from('orders')
-    .update({ status: targetStatus, notes: newNotes })
+    .update({ status: 'Returned', notes: newNotes })
     .eq('id', orderId);
 
   if (btn) { btn.disabled = false; btn.textContent = 'إلغاء أوردر العميل'; }
   if (error) { alert('مشكلة في تعديل الحالة: ' + error.message); return; }
 
-  await logActivity('order_cancelled',`تم إلغاء أوردر وتحويله إلى ${targetStatus}`,`العميل: ${order.customer_name || '—'} | النوع: ${cancelTypeLabel} | السبب: ${reason}`,getActivityOrderInfo(order));
+  await logActivity('order_cancelled','تم إلغاء أوردر وتحويله إلى Returned',`العميل: ${order.customer_name || '—'} | السبب: ${reason}`,getActivityOrderInfo(order));
   closeBranchCancelStatusModal();
   await loadBranchOrders();
   await loadOrders();
-  alert(`تم تحويل الأوردر إلى ${targetStatus} وإضافة نوع وسبب الإلغاء في الملاحظات`);
+  alert('تم تحويل الأوردر إلى Returned وإضافة سبب الإلغاء في الملاحظات');
 }
 
-function openBranchShippingRankFromBranch() {
+async function openBranchShippingRankFromBranch() {
   if (!(isAdmin() || isOperationManager())) { alert('زر Shipping Rank من صفحة الفرع متاح للأدمن و Operation Manager فقط'); return; }
   if (!currentBranchName) { alert('افتح صفحة فرع أولاً'); return; }
   branchShippingRankOverride = currentBranchName;
@@ -4759,13 +4821,16 @@ function openBranchShippingRankFromBranch() {
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   const appContent = document.querySelector('.app-content');
   if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  setTimeout(() => {
-    renderShippingRank();
-    renderShippingCharts();
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    const appContent = document.querySelector('.app-content');
-    if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  }, 120);
+  try {
+    await loadShippingRankBranchOrders();
+  } catch (error) {
+    console.error('Shipping Rank branch source error:', error);
+    alert(error.message || 'تعذر تحديث تقرير الفرع');
+  }
+  renderShippingRank();
+  renderShippingCharts();
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 }
 
 function closeBranchShippingRankToBranch() {
@@ -4785,7 +4850,6 @@ function renderBranchOrders() {
   const setEl = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   setEl('bTotalOrders', filtered.length);
   setEl('bReturnedOrders', filtered.filter(o => o.status === 'Returned').length);
-  setEl('bCancelOrders', filtered.filter(o => o.status === 'Cancel').length);
   setEl('bFakeDoctorOrders', filtered.filter(o => isFakeDoctorOrder(o)).length);
   setEl('bFakeDeliveryUpdateOrders', filtered.filter(o => isFakeDeliveryUpdateOrder(o)).length);
   setEl('bTotalSigned', filtered.filter(o => o.status === 'Signed').length);
@@ -4822,7 +4886,6 @@ function renderBranchOrders() {
   rows.forEach((o, i) => {
     let statusClass = 'chip-transit';
     if (o.status === 'Returned') statusClass = 'chip-returned';
-    else if (o.status === 'Cancel') statusClass = 'chip-cancel';
     else if (o.status === 'Signed') statusClass = 'chip-signed';
     else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = 'chip-fake';
     const price = Number(o.price || 0);
@@ -4988,7 +5051,6 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
     syncProductCartTotals('branch');
-    if (!confirmCalculatedDiscountBeforeSave('branch')) return;
     const bQty       = Math.max(1, Number(document.getElementById('bQuantity')?.value || 1));
     const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
     const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
@@ -5113,7 +5175,7 @@ function transferBranchOrder(orderId) {
   if (!canManageKhaznaAndTransfer()) { alert('زر التحويل متاح للأدمن و Account Manager فقط'); return; }
   const o = branchOrders.find(x => String(x.id) === String(orderId)) || khaznaOrders.find(x => String(x.id) === String(orderId));
   if (o && isOrderLockedByDaily(o)) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
-  if (o && o.status === 'Signed') { alert('لا يمكن تحويل أوردر تم تسليمه بالفعل (Signed) لشركة شحن أخرى.'); return; }
+  if (o && isFinalizedDeliveredOrder(o)) { showDeliveredOrderLockedMessage(); return; }
   transferOrderId = orderId;
   const sel = document.getElementById('transferShippingSelect');
   if (sel) {
@@ -5259,6 +5321,7 @@ async function loadBranchDailyLocks() {
 }
 
 function isOrderLockedByDaily(order) {
+  if (String(order?.status || '').trim() !== 'Signed') return false;
   const d = getOrderDateKey(order);
   if (!d) return false;
   
@@ -5294,7 +5357,7 @@ function renderKhaznaLockUI() {
     lockBtn.style.display = (isSingleDate && !isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
   }
   if (unlockBtn) {
-    unlockBtn.style.display = (isSingleDate && isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+    unlockBtn.style.display = (isSingleDate && isLocked && canUnlockDailyLock()) ? 'inline-flex' : 'none';
   }
 
   if (lockBadge) {
@@ -5323,7 +5386,7 @@ async function refreshKhaznaLockState() {
 
 async function lockKhaznaDay() {
   if (!canManageDailyLock()) { 
-    alert('قفل اليومية متاح للأدمن و Account Manager فقط'); 
+    alert('قفل اليومية متاح للأدمن و Account Manager والكاشير فقط'); 
     return; 
   }
   
@@ -5333,7 +5396,7 @@ async function lockKhaznaDay() {
     return; 
   }
   
-  const msg = `هل أنت متأكد من قفل يومية ${date} لفرع ${currentBranchName}؟\nلن يمكن تعديل أو حذف أي أوردر بتاريخ هذا اليوم بعد القفل.`;
+  const msg = `هل أنت متأكد من قفل يومية ${date} لفرع ${currentBranchName}؟\nسيتم قفل أوردرات Signed فقط في هذا اليوم، وأي حالة أخرى لن تتأثر.`;
   if (!confirm(msg)) return;
 
   const payload = {
@@ -5373,7 +5436,7 @@ async function lockKhaznaDay() {
 }
 
 async function unlockKhaznaDay() {
-  if (!canManageDailyLock()) { 
+  if (!canUnlockDailyLock()) { 
     alert('فتح القفل متاح للأدمن و Account Manager فقط'); 
     return; 
   }
@@ -5409,7 +5472,7 @@ async function unlockKhaznaDay() {
 
 function openKhaznaPage() {
   if (!canViewKhazna()) { 
-    alert('الخزنة متاحة للأدمن و Account Manager فقط'); 
+    alert('الخزنة متاحة للأدمن و Account Manager والكاشير فقط'); 
     return; 
   }
   
@@ -5620,7 +5683,7 @@ function renderKhaznaOrders() {
   const visibleKhaznaOrders = getKhaznaFilteredOrders();
   
   if (!visibleKhaznaOrders.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">لا توجد أوردرات في هذه الفترة</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">لا توجد أوردرات في هذه الفترة</td></tr>';
     return;
   }
   
@@ -5643,6 +5706,7 @@ function renderKhaznaOrders() {
       <td>${enMoney(price)}</td>
       <td>${deposit > 0 ? enMoney(deposit) : '—'}</td>
       <td>${remaining > 0 ? enMoney(remaining) : '—'}</td>
+      <td>${o.payment_image ? `<button class="view-payment-btn" onclick="viewPaymentImage('${o.payment_image}')" style="background:#0D9488;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;">📷 عرض</button>` : '<span class="chip chip-cancelled" style="font-size:10px">لا يوجد</span>'}</td>
       <td><span class="chip ${statusClass}" style="font-size:10px;">${o.status || ''}</span></td>
       <td style="font-size:11px;">${formatDate(getOrderAccountingDateISO(o))}</td>
       <td class="branch-actions-cell">
@@ -5763,7 +5827,7 @@ function printKhaznaReport() {
       <td class="arabic-cell customer-cell">${escapeHTML(o.customer_name || '')}</td>
       <td class="phone-cell">${escapeHTML(o.phone || '')}</td>
       <td class="arabic-cell doctor-cell">${escapeHTML(o.doctor_name || '—')}</td>
-      <td class="ticket-cell">${escapeHTML(o.order_number || '—')}</td>
+      <td class="ticket-cell">${escapeHTML(getTicketId(o) || '—')}</td>
       <td class="arabic-cell products-cell">${escapeHTML(o.product_names || '—')}</td>
       <td class="money-cell">${enMoney(o.price)}</td>
       <td class="money-cell">${Number(o.deposit || 0) > 0 ? enMoney(o.deposit) : '—'}</td>
@@ -5775,7 +5839,7 @@ function printKhaznaReport() {
     'العميل': o.customer_name || '',
     'الموبايل': o.phone || '',
     'الدكتور': o.doctor_name || '',
-    'رقم الأوردر': o.order_number || '',
+    'Ticket ID': getTicketId(o) || '',
     'المنتجات': o.product_names || '',
     'السعر': Number(o.price || 0),
     'المدفوع': Number(o.deposit || 0),
@@ -5987,7 +6051,7 @@ function printKhaznaReport() {
           <th>العميل</th>
           <th>الموبايل</th>
           <th>الدكتور</th>
-          <th>رقم الأوردر</th>
+          <th>Ticket ID</th>
           <th>المنتجات</th>
           <th>السعر</th>
           <th>المدفوع</th>
@@ -6330,9 +6394,13 @@ async function confirmCollectOrder() {
     if (typeof renderOrders       === 'function') renderOrders();
     if (typeof renderAnalytics    === 'function') renderAnalytics();
 
-    await logActivity('order_collected','تم تحصيل أوردر',`إجمالي المبيعات: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي: ${money(net)} | الطريقة: ${paymentMethod}`,getActivityOrderInfo(currentOrder));
+    await logActivity('order_collected','تم تحصيل أوردر',`إجمالي المبيعات: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي: ${money(net)} | الطريقة: ${paymentMethod} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
+    if (proofFile && proofUrl) {
+      await logActivity('payment_proof_attached','تم إرفاق إثبات دفع أثناء التحصيل',`العميل: ${currentOrder?.customer_name || '—'} | طريقة الدفع: ${paymentMethod} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
+    }
 
-    alert(`✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي المبيعات: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed`);
+    const finalNotice = newCount >= 2 ? '\n\nتم تسليم وتحصيل هذا الأوردر، لا يجوز التعديل على أوردر تم تسليمه.' : '';
+    alert(`✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي المبيعات: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`);
     closeCollectModal();
 
   } catch(err) {
