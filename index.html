@@ -345,7 +345,7 @@
 .product-report-filters label{display:block;font-size:10px;color:var(--text-muted);margin-bottom:5px}.product-report-filters input,.product-report-filters select{width:100%;min-height:40px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border-color);border-radius:9px;padding:8px 10px}
 .product-kpis{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:12px;margin-bottom:15px}.product-kpi{padding:15px;border-radius:14px;background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));border:1px solid var(--border-color);min-height:116px}.product-kpi .pk-label{font-size:10px;color:var(--text-muted);margin-bottom:9px}.product-kpi .pk-name{font-size:13px;font-weight:900;color:var(--text-primary);margin-bottom:6px}.product-kpi .pk-value{font-size:20px;font-weight:900;color:#ff67f4}.product-kpi .pk-sub{font-size:10px;color:var(--text-muted);margin-top:4px}
 .product-report-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.product-report-tab{padding:9px 15px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);font-weight:800;cursor:pointer}.product-report-tab.active{color:#fff;border-color:#ff4df3;background:linear-gradient(135deg,#9333ea,#d946ef);box-shadow:0 0 15px rgba(217,70,239,.3)}
-.product-report-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.75fr);gap:14px}.product-report-card{background:var(--bg-soft);border:1px solid var(--border-color);border-radius:15px;padding:14px}.product-chart-box{height:360px;position:relative}.product-report-note{padding:10px 12px;border-radius:10px;background:rgba(255,77,243,.055);border:1px solid rgba(255,77,243,.16);color:var(--text-muted);font-size:10px;margin-top:12px}
+.product-report-grid{display:grid;grid-template-columns:1fr;gap:14px}.product-report-card{background:var(--bg-soft);border:1px solid var(--border-color);border-radius:15px;padding:14px}.product-chart-box{height:360px;position:relative}.product-report-note{padding:10px 12px;border-radius:10px;background:rgba(255,77,243,.055);border:1px solid rgba(255,77,243,.16);color:var(--text-muted);font-size:10px;margin-top:12px}
 .product-report-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}.product-action-btn{min-height:40px;padding:9px 16px;border:none;border-radius:10px;color:#fff;font-weight:800;cursor:pointer}.product-action-excel{background:#16a34a}.product-action-print{background:#6366f1}.product-action-refresh{background:#0d9488}
 .product-report-empty{padding:34px;text-align:center;color:var(--text-muted)}
 @media(max-width:1150px){.product-report-filters{grid-template-columns:repeat(2,1fr)}.product-kpis{grid-template-columns:1fr 1fr}.product-report-grid{grid-template-columns:1fr}}
@@ -353,10 +353,10 @@
 
 
 /* ===== Branch Stock ===== */
-.branch-stock-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:38px;padding:7px 18px 7px 10px;border:2px solid #f5f7ff;border-radius:999px;background:rgba(38,31,77,.52);color:#fff;font-family:Inter,Cairo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.2px;cursor:pointer;overflow:hidden;box-shadow:0 0 5px rgba(255,255,255,.95),0 0 14px rgba(135,105,255,.72),inset 0 0 8px rgba(255,255,255,.13);text-shadow:0 0 7px rgba(255,255,255,.95);transition:.2s ease}
-.branch-stock-btn:hover{transform:translateY(-1px);background:rgba(70,54,128,.58);box-shadow:0 0 8px #fff,0 0 20px rgba(135,105,255,.82),inset 0 0 10px rgba(255,255,255,.18)}
+.branch-stock-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:38px;padding:7px 18px 7px 10px;border:2px solid #55f2bd;border-radius:999px;background:linear-gradient(135deg,rgba(10,70,57,.72),rgba(4,30,27,.88));color:#7fffd4;font-family:Inter,Cairo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.2px;cursor:pointer;overflow:hidden;box-shadow:0 0 7px rgba(85,242,189,.95),0 0 18px rgba(85,242,189,.46),inset 0 0 10px rgba(85,242,189,.12);text-shadow:0 0 8px rgba(85,242,189,.95);transition:.2s ease}
+.branch-stock-btn:hover{transform:translateY(-1px);background:linear-gradient(135deg,rgba(14,96,76,.8),rgba(5,43,36,.92));box-shadow:0 0 11px #55f2bd,0 0 27px rgba(85,242,189,.64),inset 0 0 12px rgba(85,242,189,.2)}
 .branch-stock-btn:active{transform:scale(.98)}
-.branch-stock-icon{width:24px;height:24px;border:1.8px solid currentColor;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 7px rgba(255,255,255,.65)}
+.branch-stock-icon{width:24px;height:24px;border:1.8px solid currentColor;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 7px rgba(85,242,189,.7)}
 .branch-stock-icon svg{width:15px;height:15px;display:block}
 .branch-stock-shell{position:relative;min-height:calc(100vh - 120px);overflow:hidden;border-radius:22px;padding:22px;background:radial-gradient(circle at 12% 8%,rgba(135,105,255,.11),transparent 30%),radial-gradient(circle at 90% 90%,rgba(14,165,233,.08),transparent 32%),var(--bg-card);border:1px solid var(--border-color)}
 .branch-stock-shell:before{content:'BRANCH  •  STOCK  •  CONTROL';position:absolute;left:3%;top:47%;font:900 clamp(30px,5.5vw,82px)/1 Inter,sans-serif;letter-spacing:8px;color:rgba(255,255,255,.028);transform:rotate(-13deg);white-space:nowrap;pointer-events:none}
@@ -490,7 +490,7 @@
 <!-- ===== Top Header ===== -->
 <header class="app-header">
 <div class="app-brand">
-<button class="sidebar-toggle-btn" id="sidebarToggle" title="إخفاء/إظهار القائمة">
+<button class="sidebar-toggle-btn sidebar-toggle-disabled" id="sidebarToggle" type="button" title="القائمة غير مستخدمة" aria-disabled="true">
 <svg fill="none" height="20" id="toggleIcon" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="20">
 <line x1="3" x2="21" y1="6" y2="6"></line>
 <line x1="3" x2="21" y1="12" y2="12"></line>
@@ -511,6 +511,36 @@
 </div>
 <div class="notif-wrap" title="Notifications">
 </div>
+<button class="dashboard-header-btn" id="dashboardHeaderBtn" type="button" onclick="showOrdersPage()" title="Dashboard">
+  <span class="dashboard-header-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+      <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+      <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+      <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+    </svg>
+  </span>
+  <span class="dashboard-header-label">Dashboard</span>
+</button>
+<button class="shipping-rank-header-btn" id="shippingRankHeaderBtn" type="button" onclick="showShippingRankPage()" title="Shipping Rank">
+  <span class="shipping-rank-header-icon" aria-hidden="true">🚚</span>
+  <span class="shipping-rank-header-label">Shipping Rank</span>
+</button>
+<div class="header-okb-stores-wrap">
+  <button class="header-okb-stores-btn" id="okbStoresHeaderBtn" type="button" onclick="toggleOKBStores(this)" title="OKB Stores">
+    <span class="header-okb-stores-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path><path d="M9 11v4M15 11v4"></path></svg>
+    </span>
+    <span class="header-okb-stores-label">OKB Stores</span>
+    <span class="okb-arrow">▾</span>
+  </button>
+  <div class="okb-branches header-okb-branches" id="okbBranchesMenu" style="display:none;">
+    <button class="okb-branch-btn" data-branch="مدينة نصر" onclick="openBranchPage('مدينة نصر')">فرع مدينة نصر</button>
+    <button class="okb-branch-btn" data-branch="اسكندرية" onclick="openBranchPage('اسكندرية')">فرع اسكندرية</button>
+    <button class="okb-branch-btn" data-branch="طنطا" onclick="openBranchPage('طنطا')">فرع طنطا</button>
+    <button class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
+  </div>
+</div>
 <button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
   <span class="pending-header-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -527,8 +557,22 @@
   </span>
   <span class="branch-stock-label">Branch Stock</span>
 </button>
+<div class="header-settings-wrap" id="headerSettingsWrap">
+  <button class="settings-header-btn" id="settingsHeaderBtn" type="button" onclick="toggleHeaderSettingsMenu(event)" title="Settings">
+    <span class="settings-header-icon" aria-hidden="true">⚙️</span>
+    <span class="settings-header-label">Settings</span>
+    <span class="settings-header-arrow">▾</span>
+  </button>
+  <div class="header-settings-menu" id="headerSettingsMenu">
+    <button class="header-settings-item settings-page-item" type="button" onclick="openHeaderSettingsPage('settings')">⚙️ <span>Settings</span></button>
+    <button class="header-settings-item users-page-item" type="button" onclick="openHeaderSettingsPage('users')">👥 <span>Users</span></button>
+    <button class="header-settings-item daily-report-page-item" type="button" onclick="openHeaderSettingsPage('daily')">📋 <span>Daily Report</span></button>
+    <button class="header-settings-item doctor-rank-page-item" type="button" onclick="openHeaderSettingsPage('doctorRank')">👨‍⚕️ <span>Doctor Rank</span></button>
+  </div>
+</div>
 <button class="activity-log-btn" id="activityLogHeaderBtn" type="button" onclick="showActivityLogPage()" title="Activity Log">
   <span class="activity-log-icon" aria-hidden="true">
+    <span class="activity-log-notification hidden" id="activityLogNotification" aria-label="New activities">0</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"></path><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg>
   </span>
   <span class="activity-log-label">Activity Log</span>
@@ -539,6 +583,10 @@
   </span>
   <span class="product-reports-label">Product Reports</span>
 </button>
+<button class="theme-toggle" onclick="toggleTheme()" title="تبديل الوضع الليلي">
+<span class="icon-moon">🌙</span>
+<span class="icon-sun">☀️</span>
+</button>
 <button class="my-account-btn" type="button" onclick="openMyAccountModal()" title="My Account">
   <span class="my-account-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -548,56 +596,13 @@
   </span>
   <span class="my-account-label">My Account</span>
 </button>
-<button class="theme-toggle" onclick="toggleTheme()" title="تبديل الوضع الليلي">
-<span class="icon-moon">🌙</span>
-<span class="icon-sun">☀️</span>
+<button class="logout-header-btn" id="logoutHeaderBtn" type="button" onclick="logout()" title="Log out">
+  <span class="logout-header-icon" aria-hidden="true">🚪</span>
+  <span class="logout-header-label">Log out</span>
 </button>
 </div>
 </header>
 <div class="app-body">
-<!-- ===== Sidebar ===== -->
-<aside class="sidebar" id="sidebar">
-<div class="sidebar-menu">
-<button class="menu-item mi-dashboard" data-page="ordersPage" onclick="showOrdersPage()">
-<span class="mi-icon">📦</span><span>Dashboard</span>
-</button>
-<button class="menu-item mi-report restricted-role-hide" data-page="branchRankPage" onclick="showBranchRankPage()">
-<span class="mi-icon">📋</span><span>Daily Report</span>
-</button>
-<button class="menu-item mi-analysis store-manager-hide" data-page="analyticsPage" onclick="showAnalyticsPage()">
-<span class="mi-icon">📊</span><span>Analysis</span>
-</button>
-<button class="menu-item mi-shipping admin-manager-only store-manager-show" data-page="shippingRankPage" onclick="showShippingRankPage()">
-<span class="mi-icon">🚚</span><span>Shipping Rank</span>
-</button>
-<button class="menu-item mi-doctor admin-manager-only restricted-role-hide" data-page="doctorRankPage" onclick="showDoctorRankPage()">
-<span class="mi-icon">👨‍⚕️</span><span>Doctor Rank</span>
-</button>
-<button class="menu-item mi-users admin-only executive-assistant-show" data-page="usersPage" onclick="showUsersPage()">
-<span class="mi-icon">👥</span><span>Users</span>
-</button>
-<button class="menu-item mi-settings admin-only" data-page="branchsPage" onclick="showBranchsPage()">
-<span class="mi-icon">⚙️</span><span>Settings</span>
-</button>
-<!-- ===== OKB Stores Button ===== -->
-<div class="okb-stores-wrap">
-<button class="okb-stores-btn" onclick="toggleOKBStores(this)">
-<span class="mi-icon">🏪</span>
-<span>OKB Stores</span>
-<span class="okb-arrow">▾</span>
-</button>
-<div class="okb-branches" id="okbBranchesMenu" style="display:none;">
-<button class="okb-branch-btn" data-branch="مدينة نصر" onclick="openBranchPage('مدينة نصر')">فرع مدينة نصر</button>
-<button class="okb-branch-btn" data-branch="اسكندرية" onclick="openBranchPage('اسكندرية')">فرع اسكندرية</button>
-<button class="okb-branch-btn" data-branch="طنطا" onclick="openBranchPage('طنطا')">فرع طنطا</button>
-<button class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
-</div>
-</div>
-<button class="menu-item mi-logout" onclick="logout()">
-<span class="mi-icon">🚪</span><span>Logout</span>
-</button>
-</div>
-</aside>
 <!-- ===== Main Content ===== -->
 <main class="app-content">
 <!-- ===== Orders Page ===== -->
@@ -851,8 +856,8 @@
       <div><label>Date Range — من</label><input id="productReportFrom" type="date"></div>
       <div><label>Date Range — إلى</label><input id="productReportTo" type="date"></div>
       <div><label>Branch</label><select id="productReportBranch"><option value="all">كل الفروع</option></select></div>
-      <div><label>Category</label><select id="productReportCategory"><option value="all">كل التصنيفات</option></select></div>
-      <div><label>User — البائع</label><select id="productReportUser"><option value="all">كل المستخدمين</option></select></div>
+      <div><label>Doctor — الدكتور</label><select id="productReportDoctor"><option value="all">كل الدكاترة</option></select></div>
+      <div><label>Search — المنتج</label><input id="productReportSearch" type="search" placeholder="ابحث باسم المنتج..." oninput="applyProductReportFilters()"></div>
       <button class="btn-filter" type="button" onclick="applyProductReportFilters()">🔍 Filter</button>
       <button class="btn-reset-date" type="button" onclick="resetProductReportFilters()">✕ Reset</button>
     </div>
@@ -980,6 +985,7 @@
       </div>
       <button id="branchShippingBackBtn" class="soft hidden" onclick="closeBranchShippingRankToBranch()" style="background:#64748B;color:#fff;border:none;">← رجوع للفرع</button>
       <button class="success" onclick="exportShippingRank()">⬇ Export</button>
+      <button class="soft" id="refreshShippingRankBtn" onclick="refreshShippingRankData(event)">↻ Refresh</button>
     </div>
   </div>
   <div id="globalShippingRankSections" style="margin-top:18px;">
@@ -992,7 +998,7 @@
         <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
           <table style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Score</th>
+              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Cancel</th>
             </tr></thead>
             <tbody id="branchPerformanceBody"></tbody>
           </table>
@@ -1079,6 +1085,7 @@
 <input id="reportToDate" type="date"/>
 <button class="btn-filter" onclick="applyReportFilter()">🔍 Filter</button>
 <button class="btn-reset-date" onclick="resetReportFilter()">✕ Reset</button>
+<button class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">↻ Refresh</button>
 <button class="success" onclick="exportCurrentReport()">⬇ Export</button>
 </div>
 </div>
@@ -1098,6 +1105,10 @@
 <div class="report-card"><span>↩️ Total Returned</span><strong id="reportReturned">0</strong></div>
 <div class="report-card"><span>👨‍⚕️ Fake Doctor</span><strong id="reportFakeDoctor">0</strong></div>
 <div class="report-card"><span>🚚 Fake Delivery Update</span><strong id="reportFakeDelivery">0</strong></div>
+<div class="report-card"><span>Nasr City Branch</span><strong id="reportNasrCity">0</strong></div>
+<div class="report-card"><span>Alexandria Branch</span><strong id="reportAlexandria">0</strong></div>
+<div class="report-card"><span>Mansoura Branch</span><strong id="reportMansoura">0</strong></div>
+<div class="report-card"><span>TanTa Branch</span><strong id="reportTanta">0</strong></div>
 </div>
 <div class="report-list">
 <div class="report-box">
@@ -1242,11 +1253,13 @@
 <input id="settingCodeDoctor" placeholder="Code Doctor" />
 <button class="success" type="submit">➕ إضافة دكتور</button>
 <div class="doctors-actions-row">
-  <button class="danger" onclick="cleanAllDoctors()">🗑️ مسح كل الدكاترة</button>
+  <input id="settingDoctorSearch" type="search" placeholder="🔎 بحث باسم الدكتور..." oninput="filterDoctorsSettings()" />
+  <button class="danger" id="cleanAllDoctorsBtn" type="button" onclick="cleanAllDoctors()">🗑️ مسح كل الدكاترة</button>
   <label style="background:#2563eb;color:#fff;">
     📥 Import Excel
     <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importDoctorsFromExcel(event)">
   </label>
+  <button class="success" type="button" onclick="exportDoctorsSettings()">⬇ Export</button>
 </div>
 <input type="file" id="doctorImportInput" accept=".xlsx,.xls,.csv" 
   style="display:none" onchange="importDoctorsFromExcel(event)">
@@ -1400,10 +1413,17 @@
 <button class="okb-stores-btn accounting-only" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
 <button class="okb-stores-btn branch-shipping-rank-only hidden" onclick="openBranchShippingRankFromBranch()" style="width:auto;padding:8px 16px;font-size:13px;">🚚 Shipping Rank</button>
 </div>
+<div class="branch-bulk-actions hidden" id="branchBulkActions">
+  <strong id="branchSelectedCount">0 عميل محدد</strong>
+  <button class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
+  <button class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
+  <button class="branch-bulk-transfer hidden" id="branchBulkTransferBtn" type="button" onclick="transferSelectedBranchOrders()">🔄 تحويل</button>
+  <button class="soft" type="button" onclick="clearBranchOrderSelection()">إلغاء التحديد</button>
+</div>
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>الموظف</th><th>الدكتور</th><th>رقم الاوردر </th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
+<th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>الموظف</th><th>الدكتور</th><th>رقم الاوردر </th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
 <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="branchOrdersTableBody"></tbody>
@@ -1469,9 +1489,7 @@
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
 </select>
-<select id="khaznaFilterEmployee" style="flex:0 0 auto;min-width:160px;max-width:200px;min-height:40px;padding:8px 12px;font-size:13px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;color:var(--text-primary);">
-<option value="الكل">كل الموظفين</option>
-</select>
+<button id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
 <button onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
 <button id="lockDailyBtn" onclick="lockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔒 قفل اليومية</button>
 <button id="unlockDailyBtn" onclick="unlockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#10b981;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔓 فتح القفل</button>
