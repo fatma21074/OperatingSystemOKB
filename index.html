@@ -901,7 +901,10 @@
   <div class="activity-log-shell">
     <div class="activity-log-head">
       <div class="activity-log-title"><div class="activity-log-title-badge">⚡</div><div><h1>Activity Log</h1><p>سجل مركزي لكل الحركات المهمة داخل السيستم — متاح للأدمن فقط</p></div></div>
-      <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="soft" type="button" onclick="refreshActivityLogPage(this)">↻ Refresh</button>
+        <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+      </div>
     </div>
     <div class="activity-log-stats">
       <div class="activity-log-stat"><span>إجمالي الحركات المعروضة</span><strong id="activityLogTotal">0</strong></div>
@@ -1148,6 +1151,7 @@
 <option value="manager">manager</option>
 <option value="admin">admin</option>
 <option value="account_manager">Account Manager</option>
+<option value="account_supervisor">Account Supervisor</option>
 <option value="executive_assistant">Executive Assistant</option>
 <option value="secretary">Secretary</option>
 <option value="cashier">Cashier</option>
@@ -1155,7 +1159,7 @@
 </select>
 </div>
 <div id="newUserBranchesWrap" class="hidden" style="margin-top:12px;padding:12px;background:var(--bg-soft);border:1px solid var(--border-color);border-radius:10px;">
-<label style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:block;">🏪 اختر الفرع/الفروع المتاحة للمستخدم (Store Manager / Cashier)</label>
+<label style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:block;">🏪 اختر الفرع/الفروع المُدارة (Store Manager / Cashier / Account Supervisor)</label>
 <div style="display:flex;flex-wrap:wrap;gap:14px;">
 <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" class="new-user-branch-cb" value="مدينة نصر"/> فرع مدينة نصر</label>
 <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" class="new-user-branch-cb" value="اسكندرية"/> فرع اسكندرية</label>
@@ -1188,6 +1192,7 @@
       <option value="manager">manager</option>
       <option value="admin">admin</option>
       <option value="account_manager">Account Manager</option>
+      <option value="account_supervisor">Account Supervisor</option>
       <option value="executive_assistant">Executive Assistant</option>
       <option value="secretary">Secretary</option>
 <option value="cashier">Cashier</option>
@@ -1211,8 +1216,10 @@
 <!-- ===== Settings Page ===== -->
 <section class="hidden" id="branchsPage">
 <div class="card">
-<h1>⚙️ Settings</h1>
-<p>إعدادات النظام: المنتجات، الدكاترة، وشركات الشحن.</p>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  <div><h1>⚙️ Settings</h1><p style="margin-bottom:0;">إعدادات النظام: المنتجات، الدكاترة، وشركات الشحن.</p></div>
+  <button class="soft" id="settingsRefreshBtn" type="button" onclick="refreshSettingsPage(this)">↻ Refresh</button>
+</div>
 </div>
 <div class="card admin-only" id="okbItemsCard">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
@@ -1220,7 +1227,9 @@
 <h2 style="margin:0;">OKB Items 🛒</h2>
 <p style="margin:6px 0 0;">إدارة منتجات OKB وبياناتها.</p>
 </div>
-<button class="success" type="button" onclick="exportOKBItems()">⬇ Export Products</button>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+  <button class="success" type="button" onclick="exportOKBItems()">⬇ Export Products</button>
+</div>
 </div>
 
 <form id="itemForm">
@@ -1232,6 +1241,7 @@
 <div class="actions">
 <button class="success" id="itemSubmitBtn" type="submit">➕ إضافة صنف</button>
 <button class="soft" onclick="resetItemForm()" type="button">تفريغ</button>
+<input id="settingItemSearch" type="search" placeholder="🔎 بحث باسم الصنف..." oninput="filterOKBItemsSettings()" style="min-height:38px;min-width:210px;padding:8px 11px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-input);color:var(--text-primary);"/>
 </div>
 </form>
 
@@ -1243,15 +1253,17 @@
 <tbody id="itemsTableBody"></tbody>
 </table>
 </div>
+<div class="pagination" id="itemsSettingsPagination"></div>
 </div>
 <div class="card">
 <h2>👨‍⚕️ OKB Doctors</h2>
 <p style="margin-bottom:14px">أضف أسماء الدكاترة هنا، وستظهر تلقائيًا في قائمة اختيار الدكتور داخل إضافة الأوردر.</p>
 <form id="doctorSettingsForm">
+<input id="editingDoctorId" type="hidden"/>
 <div class="form-grid" style="grid-template-columns:2fr 1fr auto; align-items:center; gap:12px">
 <input id="settingDoctorName" placeholder="اسم الدكتور" required=""/>
 <input id="settingCodeDoctor" placeholder="Code Doctor" />
-<button class="success" type="submit">➕ إضافة دكتور</button>
+<button class="success" id="doctorSettingsSubmitBtn" type="submit">➕ إضافة دكتور</button>
 <div class="doctors-actions-row">
   <input id="settingDoctorSearch" type="search" placeholder="🔎 بحث باسم الدكتور..." oninput="filterDoctorsSettings()" />
   <button class="danger" id="cleanAllDoctorsBtn" type="button" onclick="cleanAllDoctors()">🗑️ مسح كل الدكاترة</button>
@@ -1381,7 +1393,7 @@
 <div class="stat"><span>Total Signed</span><strong id="bTotalSigned">0</strong></div>
 <div class="stat"><span>Total Returned</span><strong id="bReturnedOrders">0</strong></div>
 <div class="stat"><span>Delivering</span><strong id="bDeliveringOrders">0</strong></div>
-<div class="stat"><span>Total Revenue</span><strong id="bTotalRevenue">0</strong></div>
+<div class="stat"><span>Cancel</span><strong id="bCancelOrders">0</strong></div>
 <div class="stat"><span>Total Deposit</span><strong id="bTotalDeposit">0</strong></div>
 </div>
 <div class="toolbar">
@@ -1467,7 +1479,10 @@
 <h1 style="margin:0;font-size:20px;">🏦 الخزنة — <span id="khaznaTitle">فرع</span></h1>
 <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">تقفيل اليومية ومطابقة الخزينة</p>
 </div>
-<button onclick="closeKhaznaPage()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">← رجوع للفرع</button>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+  <button type="button" onclick="refreshKhaznaPage(this)" style="padding:8px 16px;border-radius:8px;border:none;background:#0d9488;color:#fff;cursor:pointer;font-size:13px;font-weight:800;">↻ Refresh</button>
+  <button type="button" onclick="closeKhaznaPage()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">← رجوع للفرع</button>
+</div>
 </div>
 </div>
 <!-- Khazna Toolbar -->

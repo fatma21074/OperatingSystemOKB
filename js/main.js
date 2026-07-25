@@ -20,6 +20,8 @@ let shippingCompanyFilterMenu = null;
 
 let doctorsSettingsPage = 1;
 const DOCTORS_PAGE_SIZE = 10;
+let itemsSettingsPage = 1;
+const ITEMS_SETTINGS_PAGE_SIZE = 10;
 
 const PAGE_SIZE = 20;
 let pageState = {
@@ -55,6 +57,67 @@ let activityLogs = [];
 let activityLogRealtimeChannel = null;
 let activityLogPollingTimer = null;
 let activityLogUnreadCount = 0;
+let onlinePresenceChannel = null;
+let onlinePresenceUsers = new Map();
+const onlinePresenceSessionKey = (() => {
+  const key = sessionStorage.getItem('okb_presence_session_key') || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  sessionStorage.setItem('okb_presence_session_key', key);
+  return key;
+})();
+function renderOnlineUsersCount(){
+  const countEl = document.getElementById('activityLogUsers');
+  if (countEl) countEl.textContent = num(onlinePresenceUsers.size);
+}
+function syncOnlinePresenceUsers(channel = onlinePresenceChannel){
+  if (!channel) { onlinePresenceUsers = new Map(); renderOnlineUsersCount(); return; }
+  const users = new Map();
+  const state = channel.presenceState?.() || {};
+  Object.values(state).flat().forEach(presence => {
+    const userKey = String(presence?.user_id || presence?.username || presence?.session_key || '');
+    if (userKey && !users.has(userKey)) users.set(userKey, presence);
+  });
+  onlinePresenceUsers = users;
+  renderOnlineUsersCount();
+}
+async function stopOnlinePresence(){
+  const channel = onlinePresenceChannel;
+  onlinePresenceChannel = null;
+  if (channel) {
+    try { await channel.untrack(); } catch(e) {}
+    try { await supabaseClient.removeChannel(channel); } catch(e) {}
+  }
+  onlinePresenceUsers = new Map();
+  renderOnlineUsersCount();
+}
+async function startOnlinePresence(){
+  await stopOnlinePresence();
+  if (!currentUser) return;
+  const channel = supabaseClient.channel('okb-online-users-v1', {
+    config: { presence: { key: onlinePresenceSessionKey } }
+  });
+  onlinePresenceChannel = channel;
+  channel
+    .on('presence', { event: 'sync' }, () => syncOnlinePresenceUsers(channel))
+    .on('presence', { event: 'join' }, () => syncOnlinePresenceUsers(channel))
+    .on('presence', { event: 'leave' }, () => syncOnlinePresenceUsers(channel))
+    .subscribe(async status => {
+      if (status !== 'SUBSCRIBED' || onlinePresenceChannel !== channel || !currentUser) return;
+      await channel.track({
+        session_key: onlinePresenceSessionKey,
+        user_id: String(currentUser.id || currentUser.username || onlinePresenceSessionKey),
+        username: String(currentUser.username || ''),
+        user_name: String(currentUser.name || currentUser.username || 'User'),
+        role: String(currentUser.role || ''),
+        online_at: new Date().toISOString()
+      });
+    });
+}
+window.addEventListener('pagehide', () => {
+  try { onlinePresenceChannel?.untrack(); } catch(e) {}
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted && currentUser) startOnlinePresence();
+});
 function activityLogSeenStorageKey(){
   return `okb_activity_log_seen_${currentUser?.username || currentUser?.id || 'admin'}`;
 }
@@ -204,10 +267,22 @@ async function loadActivityLogs(){
   activityLogs=(data||[]).filter(x=>!q||[x.user_name,x.username,x.action_title,x.action_details,x.ticket_id,x.customer_name,x.branch_name].some(v=>String(v||'').toLowerCase().includes(q)));
   renderActivityLogs();
 }
+async function refreshActivityLogPage(button){
+  if(!isAdmin()) return;
+  const oldText=button?.textContent;
+  if(button){button.disabled=true;button.textContent='جاري التحديث...';}
+  try{
+    syncOnlinePresenceUsers();
+    await Promise.all([loadActivityLogs(),refreshActivityLogUnreadCount()]);
+    markActivityLogsRead();
+  }finally{
+    if(button){button.disabled=false;button.textContent=oldText||'↻ Refresh';}
+  }
+}
 function renderActivityLogs(){
   const list=document.getElementById('activityLogList'); if(!list) return;
   document.getElementById('activityLogTotal').textContent=num(activityLogs.length);
-  document.getElementById('activityLogUsers').textContent=num(new Set(activityLogs.map(x=>x.user_id||x.username||x.user_name)).size);
+  renderOnlineUsersCount();
   document.getElementById('activityLogOrders').textContent=num(activityLogs.filter(x=>String(x.action_type||'').startsWith('order_')).length);
   document.getElementById('activityLogKhazna').textContent=num(activityLogs.filter(x=>['daily_locked','daily_unlocked','order_collected'].includes(x.action_type)).length);
   if(!activityLogs.length){list.innerHTML='<div class="activity-log-empty">لا توجد حركات مطابقة للفلاتر الحالية</div>';return;}
@@ -537,7 +612,7 @@ function setSavedStockTakes(list){ localStorage.setItem(STOCK_TAKES_STORAGE_KEY,
 function stockTakeStorageId(){ return `ST-${Date.now()}-${Math.random().toString(36).slice(2,7)}`; }
 function getAccessibleStockBranches(){
   const all=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
-  if(isStoreManager()||isCashier()){ const m=getCurrentUserManagedBranches(); return m.length?m:all; }
+  if(isStoreManager()||isCashier()||isAccountSupervisor()){ const m=getCurrentUserManagedBranches(); return m.length?m:[]; }
   return all;
 }
 function populateStockTakeFilters(){
@@ -662,7 +737,12 @@ function isSecretary() { const r = getRoleKey(currentUser && currentUser.role); 
 function isReceptionist() { return isSecretary(); }
 function isCashier() { return currentUser && getRoleKey(currentUser.role) === 'cashier'; }
 function isStoreManager() { return currentUser && getRoleKey(currentUser.role) === 'store_manager'; }
-function isAccountManager() { return currentUser && getRoleKey(currentUser.role) === 'account_manager'; }
+function isAccountSupervisor() { return currentUser && getRoleKey(currentUser.role) === 'account_supervisor'; }
+function isAccountManager() {
+  if (!currentUser) return false;
+  const role = getRoleKey(currentUser.role);
+  return role === 'account_manager' || role === 'account_supervisor';
+}
 function canManageDailyLock() { return isAdmin() || isAccountManager() || isCashier(); }
 function canUnlockDailyLock() { return isAdmin() || isAccountManager(); }
 function canManageKhaznaAndTransfer() { return isAdmin() || isAccountManager(); }
@@ -678,8 +758,16 @@ function getCurrentUserManagedBranches() {
   if (Array.isArray(currentUser.managed_branches)) return currentUser.managed_branches;
   try { return JSON.parse(currentUser.managed_branches) || []; } catch(e) { return []; }
 }
+function isOrderInManagedBranches(order, branches = getCurrentUserManagedBranches()) {
+  if (!branches.length) return false;
+  const shippingNames = branches.map(getBranchShippingCompanyName).filter(Boolean);
+  return branches.includes(order?.branch) ||
+    branches.includes(order?.shipping_company) ||
+    shippingNames.includes(order?.shipping_company);
+}
 function canAccessBranch(branchName) {
-  if (isAdmin() || isManager() || isExecutiveAssistant() || isSecretary() || isAccountManager()) return true;
+  if (isAccountSupervisor()) return getCurrentUserManagedBranches().includes(branchName);
+  if (isAdmin() || isManager() || isExecutiveAssistant() || isSecretary() || getRoleKey(currentUser?.role) === 'account_manager') return true;
   if (isStoreManager() || isCashier()) return getCurrentUserManagedBranches().includes(branchName);
   return true;
 }
@@ -901,7 +989,7 @@ function setBranchStatusToDelivering() {
 }
 
 function canEditKhaznaShippingCost() {
-  return isAdmin() || isAccountManager();
+  return isAdmin();
 }
 
 function renderKhaznaShippingCostPermissionUI() {
@@ -1454,8 +1542,9 @@ async function login() {
   setActiveMenu("ordersPage");
 }
 
-function logout() {
+async function logout() {
   stopActivityLogNotifications();
+  await stopOnlinePresence();
   sessionStorage.removeItem("okb_current_user");
   sessionStorage.clear();
   resetAppState();
@@ -1529,6 +1618,7 @@ document.querySelectorAll('[data-page="usersPage"]').forEach(el => {
   el.style.display = (isAdmin() || isExecutiveAssistant()) ? "" : "none";
 });
 startActivityLogNotifications();
+startOnlinePresence();
 
   document.querySelectorAll(".settings-menu-btn").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isExecutiveAssistant())));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
@@ -1557,7 +1647,7 @@ startActivityLogNotifications();
     el.classList.toggle("hidden", !isAdmin());
   });
 
-  if (isStoreManager() || isCashier()) {
+  if (isStoreManager() || isCashier() || isAccountSupervisor()) {
     const managed = getCurrentUserManagedBranches();
     document.querySelectorAll(".okb-branch-btn").forEach(btn => {
       const branchName = btn.dataset.branch;
@@ -1644,7 +1734,9 @@ async function loadOrders() {
     from += pageSize;
   }
 
-  orders = allOrders;
+  orders = isAccountSupervisor()
+    ? allOrders.filter(order => isOrderInManagedBranches(order))
+    : allOrders;
   renderDoctorOptions(); 
   renderShippingOptions(); 
   renderOrders(); 
@@ -1821,6 +1913,16 @@ function showBranchsPage() {
   loadOKBItems();
   loadDoctors();
   loadShippingSystems();
+}
+
+async function refreshSettingsPage(button) {
+  const oldText = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'جاري التحديث...'; }
+  try {
+    await Promise.all([loadOKBItems(), loadDoctors(), loadShippingSystems()]);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText || '↻ Refresh'; }
+  }
 }
 
 function closeHeaderSettingsMenu() {
@@ -2605,11 +2707,10 @@ function exportBranchOrders() {
 }
 
 function getVisibleOrders() {
-  if (isCashier() || isStoreManager()) {
+  if (isCashier() || isStoreManager() || isAccountSupervisor()) {
     const managed = getCurrentUserManagedBranches();
     if (!managed.length) return [];
-    const managedShippingCompanies = managed.map(getBranchShippingCompanyName);
-    return orders.filter(o => managed.includes(o.branch) || managedShippingCompanies.includes(o.shipping_company));
+    return orders.filter(o => isOrderInManagedBranches(o, managed));
   }
   return orders;
 }
@@ -3288,9 +3389,9 @@ function updateShippingMiniDashboard() {
   if (scope) {
     if (branchShippingRankOverride) {
       scope.textContent = `فرع ${branchShippingRankOverride}`;
-    } else if (isStoreManager()) {
+    } else if (isStoreManager() || isAccountSupervisor()) {
       const branches = getCurrentUserManagedBranches();
-      scope.textContent = branches.length ? branches.map(b => `فرع ${b}`).join(" / ") : "فروع المدير";
+      scope.textContent = branches.length ? branches.map(b => `فرع ${b}`).join(" / ") : "لا توجد فروع مُدارة";
     } else {
       scope.textContent = "جميع الفروع";
     }
@@ -3519,7 +3620,7 @@ function getShippingFilteredOrders() {
     const branchShippingName = getBranchShippingCompanyName(branchName);
     src = src.filter(o => o.branch === branchName || o.shipping_company === branchName || o.shipping_company === branchShippingName);
   }
-  else if (isStoreManager()) {
+  else if (isStoreManager() || isAccountSupervisor()) {
     const managedBranches = getCurrentUserManagedBranches();
     const managedShippingNames = managedBranches.map(b => getBranchShippingCompanyName(b)).filter(Boolean);
     src = src.filter(o =>
@@ -3616,7 +3717,7 @@ function exportDoctorRank() { const r = getDoctorRankRows(); if (!r.length) { al
 // ===== دوال المستخدمين =====
 function onNewRoleChange() {
   const role = $("newRole").value;
-  $("newUserBranchesWrap").classList.toggle("hidden", !(role === "store_manager" || role === "cashier"));
+  $("newUserBranchesWrap").classList.toggle("hidden", !["store_manager","cashier","account_supervisor"].includes(role));
 }
 
 function getSelectedNewUserBranches() {
@@ -3633,9 +3734,9 @@ userForm.addEventListener("submit", async (e) => {
 
   const userData = { name: newUserName.value.trim(), username: newUsername.value.trim(), password: newPassword.value.trim(), role: role, active: true };
 
-  if (!execOnly && (role === "store_manager" || role === "cashier")) {
+  if (!execOnly && ["store_manager","cashier","account_supervisor"].includes(role)) {
     const branches = getSelectedNewUserBranches();
-    if (!branches.length) { alert("اختر فرع واحد على الأقل لـ Store Manager / Cashier"); return; }
+    if (!branches.length) { alert("اختر فرع واحد على الأقل لهذا الحساب"); return; }
     userData.managed_branches = JSON.stringify(branches);
   }
 
@@ -3647,7 +3748,7 @@ userForm.addEventListener("submit", async (e) => {
 });
 
 function getRoleDisplayName(role) {
-  const map = { admin: "Admin", manager: "Operation Manager", operation_manager: "Operation Manager", delivery_manager: "Operation Manager", agent: "Agent", executive_assistant: "Executive Assistant", receptionist: "Secretary", secretary: "Secretary", cashier: "Cashier", store_manager: "Store Manager", account_manager: "Account Manager" };
+  const map = { admin: "Admin", manager: "Operation Manager", operation_manager: "Operation Manager", delivery_manager: "Operation Manager", agent: "Agent", executive_assistant: "Executive Assistant", receptionist: "Secretary", secretary: "Secretary", cashier: "Cashier", store_manager: "Store Manager", account_manager: "Account Manager", account_supervisor: "Account Supervisor" };
   return map[String(role || "").toLowerCase()] || role || "";
 }
 
@@ -3658,7 +3759,7 @@ function renderUsers() {
   }
   usersTableBody.innerHTML = users.map(u => {
     let managedBranchesText = "—";
-    if (["store_manager", "cashier"].includes(String(u.role || "").toLowerCase())) {
+    if (["store_manager", "cashier", "account_supervisor"].includes(String(u.role || "").toLowerCase())) {
       try {
         const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
         managedBranchesText = arr.length ? arr.join(", ") : "—";
@@ -3714,7 +3815,7 @@ window.toggleUserActive = async function (id, currentActive) {
 // ===== تعديل صلاحية المستخدم (Admin Only) =====
 function onEditRoleChange() {
   const role = $("editRoleSelect").value;
-  $("editRoleBranchesWrap").classList.toggle("hidden", !(role === "store_manager" || role === "cashier"));
+  $("editRoleBranchesWrap").classList.toggle("hidden", !["store_manager","cashier","account_supervisor"].includes(role));
 }
 
 window.openEditRoleModal = function (id) {
@@ -3727,7 +3828,7 @@ window.openEditRoleModal = function (id) {
   $("editRoleSelect").value = String(u.role || "agent").toLowerCase();
 
   document.querySelectorAll(".edit-role-branch-cb").forEach(cb => cb.checked = false);
-  if (["store_manager", "cashier"].includes(String(u.role || "").toLowerCase())) {
+  if (["store_manager", "cashier", "account_supervisor"].includes(String(u.role || "").toLowerCase())) {
     try {
       const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
       document.querySelectorAll(".edit-role-branch-cb").forEach(cb => { cb.checked = arr.includes(cb.value); });
@@ -3748,9 +3849,9 @@ async function saveEditedRole() {
   const newRoleVal = $("editRoleSelect").value;
 
   const updateData = { role: newRoleVal };
-  if (newRoleVal === "store_manager" || newRoleVal === "cashier") {
+  if (["store_manager","cashier","account_supervisor"].includes(newRoleVal)) {
     const branches = Array.from(document.querySelectorAll(".edit-role-branch-cb:checked")).map(cb => cb.value);
-    if (!branches.length) { alert("اختر فرع واحد على الأقل لـ Store Manager / Cashier"); return; }
+    if (!branches.length) { alert("اختر فرع واحد على الأقل لهذا الحساب"); return; }
     updateData.managed_branches = JSON.stringify(branches);
   } else {
     updateData.managed_branches = null;
@@ -3782,14 +3883,25 @@ function renderOKBItems() {
     return;
   }
 
-  if (!okbItems.length) {
-    tbody.innerHTML = `<tr><td colspan="4" class="empty">لا توجد منتجات مضافة</td></tr>`;
+  const query = String(document.getElementById('settingItemSearch')?.value || '').trim().toLowerCase();
+  const visibleItems = okbItems.filter(item =>
+    !query || String(item?.item_name || '').toLowerCase().includes(query)
+  );
+
+  if (!visibleItems.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty">${query ? 'لا توجد منتجات مطابقة للبحث' : 'لا توجد منتجات مضافة'}</td></tr>`;
+    renderOKBItemsPagination(0);
     return;
   }
 
-  tbody.innerHTML = okbItems.map((item, index) => `
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / ITEMS_SETTINGS_PAGE_SIZE));
+  itemsSettingsPage = Math.min(Math.max(1, itemsSettingsPage), totalPages);
+  const start = (itemsSettingsPage - 1) * ITEMS_SETTINGS_PAGE_SIZE;
+  const pageRows = visibleItems.slice(start, start + ITEMS_SETTINGS_PAGE_SIZE);
+
+  tbody.innerHTML = pageRows.map((item, index) => `
     <tr>
-      <td>${index + 1}</td>
+      <td>${start + index + 1}</td>
       <td>${escapeHTML(item.item_name || "")}</td>
       <td style="font-weight:800;direction:ltr;">${money(item.price || 0)}</td>
       <td>
@@ -3802,6 +3914,34 @@ function renderOKBItems() {
       </td>
     </tr>
   `).join("");
+  renderOKBItemsPagination(visibleItems.length);
+}
+
+function filterOKBItemsSettings() {
+  itemsSettingsPage = 1;
+  renderOKBItems();
+}
+
+function changeOKBItemsSettingsPage(page) {
+  itemsSettingsPage = page;
+  renderOKBItems();
+}
+
+function renderOKBItemsPagination(total) {
+  const container = document.getElementById('itemsSettingsPagination');
+  if (!container) return;
+  if (total <= ITEMS_SETTINGS_PAGE_SIZE) { container.innerHTML = ''; return; }
+  const totalPages = Math.ceil(total / ITEMS_SETTINGS_PAGE_SIZE);
+  const current = Math.min(Math.max(1, itemsSettingsPage), totalPages);
+  let html = `<button onclick="changeOKBItemsSettingsPage(${current - 1})" ${current === 1 ? 'disabled' : ''}>السابق</button>`;
+  const first = Math.max(1, current - 2);
+  const last = Math.min(totalPages, current + 2);
+  if (first > 1) html += `<button onclick="changeOKBItemsSettingsPage(1)">1</button>${first > 2 ? '<span class="pagination-info">...</span>' : ''}`;
+  for (let page = first; page <= last; page++) html += `<button class="${page === current ? 'active' : ''}" onclick="changeOKBItemsSettingsPage(${page})">${page}</button>`;
+  if (last < totalPages) html += `${last < totalPages - 1 ? '<span class="pagination-info">...</span>' : ''}<button onclick="changeOKBItemsSettingsPage(${totalPages})">${totalPages}</button>`;
+  html += `<button onclick="changeOKBItemsSettingsPage(${current + 1})" ${current === totalPages ? 'disabled' : ''}>التالي</button>`;
+  html += `<span class="pagination-info">صفحة ${current} من ${totalPages} | إجمالي ${total} منتج</span>`;
+  container.innerHTML = html;
 }
 
 function resetItemForm() {
@@ -4030,7 +4170,7 @@ function renderDoctorsSettings() {
       <td>${start + i + 1}</td>
       <td>${d.name || ""}</td>
       <td>${d.code || ""}</td>
-      <td>${isAdmin() ? `<button class="danger" style="padding:6px 10px;font-size:12px" onclick="deleteDoctor('${d.id}')">حذف</button>` : '<span style="color:var(--text-muted);font-size:11px">إضافة فقط</span>'}</td>
+      <td>${isAdmin() ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><button class="edit" type="button" style="padding:6px 10px;font-size:12px" onclick="editDoctorSettings('${d.id}')">✏️ تعديل</button><button class="danger" type="button" style="padding:6px 10px;font-size:12px" onclick="deleteDoctor('${d.id}')">حذف</button></div>` : '<span style="color:var(--text-muted);font-size:11px">إضافة فقط</span>'}</td>
     </tr>
   `).join("");
 
@@ -4103,36 +4243,60 @@ function changeDoctorsSettingsPage(page) {
   renderDoctorsSettings();
 }
 
+function resetDoctorSettingsForm() {
+  document.getElementById('doctorSettingsForm')?.reset();
+  const editingId = document.getElementById('editingDoctorId');
+  const submitBtn = document.getElementById('doctorSettingsSubmitBtn');
+  if (editingId) editingId.value = '';
+  if (submitBtn) submitBtn.textContent = '➕ إضافة دكتور';
+}
+
+function editDoctorSettings(id) {
+  if (!isAdmin()) { alert('تعديل بيانات الدكتور متاح للأدمن فقط'); return; }
+  const doctor = doctorsList.find(row => String(row.id) === String(id));
+  if (!doctor) { alert('بيانات الدكتور غير موجودة'); return; }
+  document.getElementById('editingDoctorId').value = doctor.id;
+  document.getElementById('settingDoctorName').value = doctor.name || '';
+  document.getElementById('settingCodeDoctor').value = doctor.code || '';
+  document.getElementById('doctorSettingsSubmitBtn').textContent = '✅ حفظ تعديل الدكتور';
+  document.getElementById('settingDoctorName').focus();
+}
+
 $("doctorSettingsForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!isAdmin() && !isExecutiveAssistant()) { alert("غير مسموح"); return; }
   const name = $("settingDoctorName").value.trim();
   const code = $("settingCodeDoctor").value.trim();
+  const editingId = String(document.getElementById('editingDoctorId')?.value || '').trim();
+  if (editingId && !isAdmin()) { alert('تعديل بيانات الدكتور متاح للأدمن فقط'); return; }
   if (!name) { alert("اكتب اسم الدكتور"); return; }
 
-  const payload = { name };
-  if (code) payload.code = code;
-
-  const { data, error } = await supabaseClient.from("doctors").insert([payload]).select().single();
-  if (error) { alert("مشكلة في إضافة الدكتور: " + error.message); return; }
+  const payload = { name, code: code || null };
+  const result = editingId
+    ? await supabaseClient.from("doctors").update(payload).eq('id', editingId).select().single()
+    : await supabaseClient.from("doctors").insert([payload]).select().single();
+  if (result.error) { alert((editingId ? "مشكلة في تعديل الدكتور: " : "مشكلة في إضافة الدكتور: ") + result.error.message); return; }
 
   await logActivity(
     'user_management',
-    'إضافة دكتور جديد',
-    `تمت إضافة الدكتور: ${name}${code ? ` | الكود: ${code}` : ''} | بواسطة: ${currentUser?.name || currentUser?.username || 'User'}`,
+    editingId ? 'تعديل بيانات دكتور' : 'إضافة دكتور جديد',
+    `${editingId ? 'تم تعديل' : 'تمت إضافة'} الدكتور: ${name}${code ? ` | الكود: ${code}` : ''} | بواسطة: ${currentUser?.name || currentUser?.username || 'User'}`,
     { branch_name: 'Settings / Doctors' }
   );
 
-  $("doctorSettingsForm").reset();
+  resetDoctorSettingsForm();
   await loadDoctors();
-  alert("تم إضافة الدكتور بنجاح");
+  alert(editingId ? "تم تعديل بيانات الدكتور بنجاح" : "تم إضافة الدكتور بنجاح");
 });
 
 window.deleteDoctor = async function (id) {
   if (!isAdmin()) { alert("غير مسموح"); return; }
+  const doctor = doctorsList.find(row => String(row.id) === String(id));
   if (!confirm("هل أنت متأكد من حذف هذا الدكتور؟")) return;
   const { error } = await supabaseClient.from("doctors").delete().eq("id", id);
   if (error) { alert("مشكلة في الحذف: " + error.message); return; }
+  await logActivity('user_management','حذف دكتور',`تم حذف الدكتور: ${doctor?.name || id}${doctor?.code ? ` | الكود: ${doctor.code}` : ''}`,{ branch_name:'Settings / Doctors' });
+  if (String(document.getElementById('editingDoctorId')?.value || '') === String(id)) resetDoctorSettingsForm();
   await loadDoctors();
 };
 
@@ -5024,7 +5188,7 @@ function renderBranchOrders() {
   setEl('bInTransitOrders', filtered.filter(o => o.status === 'Transit' || o.status === 'In transit').length);
   setEl('bDeliveringOrders', filtered.filter(o => o.status === 'Delivering').length);
   setEl('bReturningOrders', filtered.filter(o => o.status === 'Returning').length);
-  setEl('bTotalRevenue', money(rev));
+  setEl('bCancelOrders', filtered.filter(o => o.status === 'Cancel').length);
   setEl('bTotalDeposit', money(dep));
 
   const empSel = document.getElementById('bFilterEmployee');
@@ -5851,6 +6015,16 @@ function closeKhaznaPage() {
   document.getElementById('khaznaTitle').textContent = currentBranchName;
 }
 
+async function refreshKhaznaPage(button) {
+  const oldText = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'جاري التحديث...'; }
+  try {
+    await loadKhaznaData();
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText || '↻ Refresh'; }
+  }
+}
+
 async function loadKhaznaData() {
   const from = document.getElementById('khaznaFromDate').value;
   const to = document.getElementById('khaznaToDate').value;
@@ -5999,7 +6173,7 @@ function renderKhaznaStats() {
 }
 
 function editShippingCost() {
-  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن و Account Manager فقط'); return; }
+  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن فقط'); return; }
   if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
   document.getElementById('kShippingCostEdit').style.display = 'block';
   document.getElementById('kShippingCostInput').value = khaznaShippingCost || '';
@@ -6007,7 +6181,7 @@ function editShippingCost() {
 }
 
 function saveShippingCost() {
-  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن و Account Manager فقط'); return; }
+  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن فقط'); return; }
   if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
   const val = Number(document.getElementById('kShippingCostInput').value || 0);
   khaznaShippingCost = val;
@@ -6172,7 +6346,7 @@ function printKhaznaReport() {
       <td class="arabic-cell customer-cell">${escapeHTML(o.customer_name || '')}</td>
       <td class="phone-cell">${escapeHTML(o.phone || '')}</td>
       <td class="arabic-cell doctor-cell">${escapeHTML(o.doctor_name || '—')}</td>
-      <td class="ticket-cell">${escapeHTML(getTicketId(o) || '—')}</td>
+      <td class="ticket-cell">${escapeHTML(o.order_number || '—')}</td>
       <td class="arabic-cell products-cell">${escapeHTML(o.product_names || '—')}</td>
       <td class="money-cell">${enMoney(o.price)}</td>
       <td class="money-cell">${Number(o.deposit || 0) > 0 ? enMoney(o.deposit) : '—'}</td>
@@ -6184,7 +6358,7 @@ function printKhaznaReport() {
     'العميل': o.customer_name || '',
     'الموبايل': o.phone || '',
     'الدكتور': o.doctor_name || '',
-    'Ticket ID': getTicketId(o) || '',
+    'رقم الأوردر': o.order_number || '',
     'المنتجات': o.product_names || '',
     'السعر': Number(o.price || 0),
     'المدفوع': Number(o.deposit || 0),
@@ -6396,7 +6570,7 @@ function printKhaznaReport() {
           <th>العميل</th>
           <th>الموبايل</th>
           <th>الدكتور</th>
-          <th>Ticket ID</th>
+          <th>رقم الأوردر</th>
           <th>المنتجات</th>
           <th>السعر</th>
           <th>المدفوع</th>
