@@ -922,13 +922,31 @@ function getDoctorCodeByName(name) {
   const doc = doctorsList.find(d => (d.name || '') === name);
   return doc ? (doc.code || '') : '';
 }
-// يستخرج كود الدكتور (3 حروف إنجليزي) من نص، ويتجاهل الأرقام
+function extractDoctorInfo(text) {
+    const value = String(text || "").trim();
+
+    const codeMatch = value.match(/\b([A-Za-z]{3})\b/);
+
+    const doctorCode = codeMatch ? codeMatch[1].toUpperCase() : "";
+
+    const doctorName = value
+        .replace(/\b[A-Za-z]{3}\b/g, "")
+        .replace(/[-–—]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    return {
+        doctorName,
+        doctorCode
+    };
+}
+
 function extractDoctorCodeFromText(...values) {
-  for (const v of values) {
-    const m = String(v || '').match(/[A-Za-z]{3}/);
-    if (m) return m[0].toUpperCase();
-  }
-  return '';
+    for (const v of values) {
+        const info = extractDoctorInfo(v);
+        if (info.doctorCode) return info.doctorCode;
+    }
+    return "";
 }
 
 function matchesOrderSearch(order, search) {
@@ -4848,7 +4866,8 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
   progressDiv.textContent = "جاري تحضير البيانات ومعالجة الأوردرات...";
 
   const ordersToInsert = [];
-  
+  const doctorsMap = new Map();
+
   for (const row of excelDataRows) {
     let pVal = Number(String(row[mapping["price"]] || "").replace(/[^0-9.]/g, '')) || 0; 
     const depositVal = mapping["deposit"] ? (Number(String(row[mapping["deposit"]] || "").replace(/[^0-9.]/g, '')) || 0) : 0;
@@ -4901,11 +4920,20 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
     if (!finalEmployee) finalEmployee = (currentUser ? currentUser.name : "System Import");
 
     let finalShipping = staticValues["shipping_company"] ? staticValues["shipping_company"] : String(row[mapping["shipping_company"]] || "").trim();
+    const doctorInfo = extractDoctorInfo(
+    mapping["doctor_name"]
+        ? row[mapping["doctor_name"]]
+        : ""
+      );
 
+    const doctorCode =
+    mapping["doctor_code"]
+        ? extractDoctorCodeFromText(row[mapping["doctor_code"]])
+        : doctorInfo.doctorCode;
     const orderObj = {
       employee_name: finalEmployee,
-      doctor_name: String(row[mapping["doctor_name"]] || "").trim(),
-      doctor_code: mapping["doctor_code"] ? extractDoctorCodeFromText(row[mapping["doctor_code"]]) : "",
+      doctor_name: doctorInfo.doctorName,
+      doctor_code: doctorCode,
       customer_name: String(row[mapping["customer_name"]] || "").trim(),
       phone: String(row[mapping["phone"]] || "").trim(),
       shipping_company: finalShipping,
@@ -4915,15 +4943,20 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
       payment_image: paymentImageUrl,
       status: finalStatus,
       fake_doctor: finalStatus === "Fake Doctor",
-      fake_delivery_update: finalStatus === "Fake Delivery Update",
       notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : "",
       ...(await reserveNextOrderIdentifiers())
     };
     
     console.log("📦 Final Order Object:", orderObj);
     ordersToInsert.push(orderObj);
+    if (doctorCode) {
+    doctorsMap.set(doctorCode, {
+        name: doctorInfo.doctorName,
+        code: doctorCode,
+        active: true
+    });
+}
   }
-
   const BATCH_SIZE = 50; 
   let successCount = 0;
   let hasError = false;
@@ -4946,6 +4979,45 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
   }
 
   if (!hasError) {
+    try {
+
+    const { data: existingDoctors } = await supabaseClient
+        .from("doctors")
+        .select("code");
+
+    const existingCodes = new Set(
+        (existingDoctors || []).map(d => d.code)
+    );
+
+    const newDoctors = [];
+
+    doctorsMap.forEach(doc => {
+
+        if (!existingCodes.has(doc.code)) {
+            newDoctors.push(doc);
+        }
+
+    });
+
+    if (newDoctors.length > 0) {
+
+        const { error } = await supabaseClient
+            .from("doctors")
+            .insert(newDoctors);
+
+        if (error) {
+            console.error("Doctors Import Error:", error);
+        } else {
+            console.log(`✅ Added ${newDoctors.length} new doctors`);
+        }
+
+    }
+
+} catch (err) {
+
+    console.error(err);
+
+}
     progressDiv.innerHTML = `<span style="color:#86efac;">✅ تم استيراد وإدخال ${successCount} أوردر بنجاح!</span>`;
     alert(`رائع! تم إدخال عدد ${successCount} أوردر بنجاح تام إلى قاعدة البيانات.`);
     closeImportModal();
