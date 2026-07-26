@@ -1597,7 +1597,7 @@ if (productReportsBtn) productReportsBtn.style.display = canViewProductReports()
 const branchStockBtn = document.getElementById('branchStockHeaderBtn');
 if (branchStockBtn) branchStockBtn.style.display = (isAdmin() || isStoreManager() || isCashier() || isAccountManager()) ? 'inline-flex' : 'none';
 const pendingBtn = document.getElementById('pendingHeaderBtn');
-if (pendingBtn) pendingBtn.style.display = (isAdmin() || isStoreManager() || isCashier()) ? 'inline-flex' : 'none';
+if (pendingBtn) pendingBtn.style.display = (isAdmin() || isStoreManager() || isCashier() || isAccountSupervisor()) ? 'inline-flex' : 'none';
 const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
 if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
 const settingsHeaderWrap = document.getElementById('headerSettingsWrap');
@@ -1812,7 +1812,7 @@ function pendingOrderBranch(order){ const b=String(order?.branch||'').trim(); re
 function canSeePendingOrder(order){
   const branch=pendingOrderBranch(order); if(!branch)return false;
   if(isAdmin())return true;
-  if(isStoreManager() || isCashier())return getCurrentUserManagedBranches().includes(branch);
+  if(isStoreManager() || isCashier() || isAccountSupervisor())return getCurrentUserManagedBranches().includes(branch);
   return false;
 }
 function setupPendingBranchFilter(){
@@ -1824,7 +1824,7 @@ function setupPendingBranchFilter(){
   } else { el.value='all'; el.classList.add('hidden'); }
 }
 async function showPendingPage(){
-  if(!(isAdmin()||isStoreManager()||isCashier())){alert('صفحة Pending متاحة للأدمن ومدير الفرع والكاشير فقط');return;}
+  if(!(isAdmin()||isStoreManager()||isCashier()||isAccountSupervisor())){alert('صفحة Pending متاحة للأدمن ومدير الفرع والكاشير وAccount Supervisor فقط');return;}
   hideAllPages(); document.getElementById('pendingPage')?.classList.remove('hidden'); setActiveMenu('pendingPage'); setupPendingBranchFilter(); await loadPendingOrders(false);
 }
 async function loadPendingOrders(showMessage){
@@ -2556,7 +2556,7 @@ async function printBranchSummaryReportForCashier() {
         .from('orders')
         .select('*')
         .eq('branch', currentBranchName)
-        .eq('status', 'Signed')
+        .in('status', ['Signed', 'Returned'])
         .order('created_at', { ascending: false })
         .range(rangeFrom, rangeTo);
 
@@ -2566,25 +2566,31 @@ async function printBranchSummaryReportForCashier() {
       rangeFrom += pageSize;
     }
 
-    const reportOrders = allData.filter(o => isOrderInAccountingDateRange(o, from || null, to || null));
+    const reportOrders = allData.filter(o =>
+      (o.status === 'Signed' || isReturnWithin14Days(o)) &&
+      isOrderInAccountingDateRange(o, from || null, to || null)
+    );
     if (!reportOrders.length) {
-      alert(`لا توجد أوردرات Signed لفرع ${currentBranchName} في الفترة ${from} → ${to}`);
+      alert(`لا توجد أوردرات Signed أو مرتجع خلال 14 يوم لفرع ${currentBranchName} في الفترة ${from} → ${to}`);
       return;
     }
 
-    const totalSales = reportOrders.reduce((sum, order) => sum + Number(order.price || 0), 0);
-    const totalExpenses = reportOrders.reduce((sum, order) => {
+    const signedReportOrders = reportOrders.filter(o => o.status === 'Signed');
+    const return14Orders = reportOrders.filter(isReturnWithin14Days);
+    const totalSales = signedReportOrders.reduce((sum, order) => sum + Number(order.price || 0), 0);
+    const totalReturn14 = return14Orders.reduce((sum, order) => sum + Number(order.price || 0), 0);
+    const totalExpenses = signedReportOrders.reduce((sum, order) => {
       const last = getLatestCollectEntry(order);
       return sum + Number(last?.shipping || 0);
     }, 0);
-    const totalTransfers = reportOrders.reduce((sum, order) => {
+    const totalTransfers = signedReportOrders.reduce((sum, order) => {
       const last = getLatestCollectEntry(order);
       const method = String(last?.payment_method || '').toLowerCase();
       return (method === 'instapay' || method === 'wallet')
         ? sum + Number(last?.sales || order.price || 0)
         : sum;
     }, 0);
-    const netDaily = totalSales - totalExpenses - totalTransfers;
+    const netDaily = totalSales - totalReturn14 - totalExpenses - totalTransfers;
     const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
 
     const reportHTML = `<!DOCTYPE html>
@@ -2616,6 +2622,7 @@ async function printBranchSummaryReportForCashier() {
   .divider-solid { border-top:3px solid #000; margin:8px 0; }
   .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; font-size:14px; font-weight:800; }
   .row .value { direction:ltr; font-weight:900; white-space:nowrap; }
+  .return-row { color:#dc2626; font-weight:900; }
   .net { border:3px solid #000; padding:9px 6px; margin:8px 0; font-size:16px; font-weight:900; }
   .formula { direction:ltr; text-align:center; font-size:12px; font-weight:800; line-height:1.55; margin:6px 0; }
   .footer { text-align:center; font-size:11px; font-weight:700; line-height:1.55; margin-top:8px; }
@@ -2639,13 +2646,14 @@ async function printBranchSummaryReportForCashier() {
   <div class="divider"></div>
 
   <div class="row"><span>إجمالي المبيعات</span><span class="value">${enMoney(totalSales)} EGP</span></div>
+  <div class="row return-row"><span>مرتجع خلال 14 يوم</span><span class="value">- ${enMoney(totalReturn14)} EGP</span></div>
   <div class="row"><span>إجمالي المصروفات</span><span class="value">${enMoney(totalExpenses)} EGP</span></div>
   <div class="row"><span>إجمالي التحويلات</span><span class="value">${enMoney(totalTransfers)} EGP</span></div>
 
   <div class="divider-solid"></div>
 
   <div class="row net"><span>صافي اليومية</span><span class="value">${enMoney(netDaily)} EGP</span></div>
-  <div class="formula">${enMoney(totalSales)} - ${enMoney(totalExpenses)} - ${enMoney(totalTransfers)} = ${enMoney(netDaily)}</div>
+  <div class="formula">${enMoney(totalSales)} - ${enMoney(totalReturn14)} - ${enMoney(totalExpenses)} - ${enMoney(totalTransfers)} = ${enMoney(netDaily)}</div>
 
   <div class="divider"></div>
   <div class="footer">تاريخ الطباعة<br>${printDate}</div>
@@ -2738,7 +2746,7 @@ function getFilteredOrders() {
   const shippingFilter = shippingFilterEl ? shippingFilterEl.value : "الكل";
   return getVisibleOrders().filter(o => {
     const matchSearch = matchesOrderSearch(o, search);
-    const matchStatus = statusFilter === "الكل" || o.status === statusFilter;
+    const matchStatus = matchesOrderStatusFilter(o, statusFilter);
     const matchEmployee = !isAdmin() || employeeFilter === "الكل" || o.employee_name === employeeFilter;
     const matchShipping = shippingFilter === "الكل" || o.shipping_company === shippingFilter;
     const matchDate = isInDateRange(o);
@@ -2821,7 +2829,7 @@ function renderOrders() {
         <td>${deposit > 0 ? `<span class="deposit-badge">💰 ${money(deposit)}</span>` : "—"}</td>
         <td>${remaining > 0 ? money(remaining) : "—"}</td>
         <td>${paymentImage}</td>
-        <td><span class="chip ${statusClass}">${o.status || ""}</span></td>
+        <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
         <td class="notes-cell" title="${safeNotes}">${displayNotes || ''}</td>
         <td>${formatDate(o.created_at)}</td>
         <td><div style="display:flex;gap:4px"><button class="edit" style="padding:4px 10px;font-size:11px" onclick="editOrder('${o.id}')">تعديل</button>${isAdmin() ? `<button class="danger" style="padding:4px 10px;font-size:11px" onclick="deleteOrder('${o.id}')">حذف</button>` : ''}</div></td>
@@ -5102,7 +5110,7 @@ function getBranchFilteredOrders() {
 
   return branchOrders.filter(o => {
     const matchSearch = matchesOrderSearch(o, search);
-    const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
+    const matchStatus = matchesOrderStatusFilter(o, statusFilter);
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
     const matchDate = (() => {
       if (!branchActiveDateFrom && !branchActiveDateTo) return true;
@@ -5142,6 +5150,27 @@ function appendVisibleOrderNote(notes, addition) {
   return clean;
 }
 
+function isReturnWithin14Days(order) {
+  return /نوع الإلغاء:\s*مرتجع خلال 14 يوم/i.test(String(order?.notes || ''));
+}
+
+function getReturnWithin14DaysDateISO(order) {
+  const notes = String(order?.notes || '');
+  const match = notes.match(/تاريخ مرتجع خلال 14 يوم:\s*([^\s]+)/i);
+  return match?.[1] || order?.updated_at || order?.created_at || '';
+}
+
+function getOrderDisplayStatus(order) {
+  return isReturnWithin14Days(order) ? 'مرتجع خلال 14 يوم' : String(order?.status || '');
+}
+
+function matchesOrderStatusFilter(order, filterValue) {
+  if (!filterValue || filterValue === 'الكل') return true;
+  if (filterValue === 'Returned14') return isReturnWithin14Days(order);
+  if (filterValue === 'Returned') return order?.status === 'Returned' && !isReturnWithin14Days(order);
+  return order?.status === filterValue;
+}
+
 function getBranchStatusButtonHtml(order) {
   if (!canChangeBranchOrderStatus()) return '';
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) return disabledActionButton('إلغاء', 'هذه اليومية مقفولة');
@@ -5155,7 +5184,7 @@ function openBranchCancelStatusModal(orderId) {
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
   if (isFinalizedDeliveredOrder(order)) { showDeliveredOrderLockedMessage(); return; }
   let modal=$('branchCancelStatusModal');
-  if(!modal){ modal=document.createElement('div'); modal.id='branchCancelStatusModal'; modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;align-items:center;justify-content:center;padding:18px;'; modal.innerHTML=`<div style="width:470px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl"><h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary)">إلغاء الأوردر</h3><p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px"></p><label for="branchCancelTypeSelect" style="display:block;margin-bottom:7px;color:var(--text-muted);font-size:12px;font-weight:900">نوع الإلغاء</label><select id="branchCancelTypeSelect" style="width:100%;margin-bottom:14px"><option value="Cancel">الغاء من الدكتور علي الجروب</option><option value="Returned">الغاء من العميل مع المندوب</option></select><label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800">سبب الإلغاء <span style="color:#EF4444">*</span></label><textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px"></textarea><div style="display:flex;gap:10px;justify-content:flex-start"><button id="branchCancelConfirmBtn" onclick="confirmBranchCancelStatus()" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:900">تأكيد الإلغاء</button><button onclick="closeBranchCancelStatusModal()" style="background:var(--bg-soft);color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px 18px;font-weight:800">إغلاق</button></div></div>`; document.body.appendChild(modal); }
+  if(!modal){ modal=document.createElement('div'); modal.id='branchCancelStatusModal'; modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;align-items:center;justify-content:center;padding:18px;'; modal.innerHTML=`<div style="width:470px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl"><h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary)">إلغاء الأوردر</h3><p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px"></p><label for="branchCancelTypeSelect" style="display:block;margin-bottom:7px;color:var(--text-muted);font-size:12px;font-weight:900">نوع الإلغاء</label><select id="branchCancelTypeSelect" style="width:100%;margin-bottom:14px"><option value="Cancel">الغاء من الدكتور علي الجروب</option><option value="Returned">الغاء من العميل مع المندوب</option><option value="Returned14">مرتجع خلال 14 يوم</option></select><label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800">سبب الإلغاء <span style="color:#EF4444">*</span></label><textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px"></textarea><div style="display:flex;gap:10px;justify-content:flex-start"><button id="branchCancelConfirmBtn" onclick="confirmBranchCancelStatus()" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:900">تأكيد الإلغاء</button><button onclick="closeBranchCancelStatusModal()" style="background:var(--bg-soft);color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px 18px;font-weight:800">إغلاق</button></div></div>`; document.body.appendChild(modal); }
   modal.dataset.orderId=orderId; $('branchCancelModalCustomer').textContent=`العميل: ${order.customer_name||'—'} | الحالة الحالية: ${order.status||'—'}`; $('branchCancelReasonInput').value=''; if($('branchCancelTypeSelect'))$('branchCancelTypeSelect').value='Cancel'; modal.style.display='flex'; setTimeout(()=>$('branchCancelReasonInput')?.focus(),50);
 }
 function closeBranchCancelStatusModal(){ const modal=$('branchCancelStatusModal'); if(modal)modal.style.display='none'; }
@@ -5163,9 +5192,14 @@ async function confirmBranchCancelStatus(){
   const modal=$('branchCancelStatusModal'); const orderId=modal?.dataset?.orderId; const reasonEl=$('branchCancelReasonInput'); const reason=String(reasonEl?.value||'').trim(); const target=$('branchCancelTypeSelect')?.value||'Cancel';
   if(!orderId)return; if(!reason){alert('لازم تكتب سبب الإلغاء');reasonEl?.focus();return;}
   const order=branchOrders.find(x=>String(x.id)===String(orderId)); if(!order)return;
-  const typeLabel=target==='Cancel'?'الغاء من الدكتور في الجروب':'الغاء من العميل مع المندوب'; const noteLine=`نوع الإلغاء: ${typeLabel}\nسبب الإلغاء: ${reason}`; const newNotes=appendVisibleOrderNote(order.notes||'',noteLine); const btn=$('branchCancelConfirmBtn'); if(btn){btn.disabled=true;btn.textContent='جاري الحفظ...';}
-  const {error}=await supabaseClient.from('orders').update({status:target,notes:newNotes}).eq('id',orderId); if(btn){btn.disabled=false;btn.textContent='تأكيد الإلغاء';} if(error){alert('مشكلة في تعديل الحالة: '+error.message);return;}
-  await logActivity('order_cancelled',target==='Cancel'?'إلغاء من الدكتور في الجروب':'إلغاء من العميل مع المندوب',`العميل: ${order.customer_name||'—'} | الحالة: ${target} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadOrders(); alert(target==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
+  const isReturn14=target==='Returned14';
+  const dbStatus=isReturn14?'Returned':target;
+  const typeLabel=target==='Cancel'?'الغاء من الدكتور في الجروب':isReturn14?'مرتجع خلال 14 يوم':'الغاء من العميل مع المندوب';
+  const returnDateLine=isReturn14?`\nتاريخ مرتجع خلال 14 يوم: ${new Date().toISOString()}`:'';
+  const noteLine=`نوع الإلغاء: ${typeLabel}\nسبب الإلغاء: ${reason}${returnDateLine}`;
+  const newNotes=appendVisibleOrderNote(order.notes||'',noteLine); const btn=$('branchCancelConfirmBtn'); if(btn){btn.disabled=true;btn.textContent='جاري الحفظ...';}
+  const {error}=await supabaseClient.from('orders').update({status:dbStatus,notes:newNotes}).eq('id',orderId); if(btn){btn.disabled=false;btn.textContent='تأكيد الإلغاء';} if(error){alert('مشكلة في تعديل الحالة: '+error.message);return;}
+  await logActivity('order_cancelled',typeLabel,`العميل: ${order.customer_name||'—'} | الحالة: ${isReturn14?'مرتجع خلال 14 يوم':dbStatus} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadOrders(); alert(isReturn14?'تم تسجيل الأوردر مرتجع خلال 14 يوم وإضافته إلى خزنة اليوم':dbStatus==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
 }
 
 function openBranchShippingRankFromBranch() {
@@ -5270,7 +5304,7 @@ function renderBranchOrders() {
       <td>${deposit > 0 ? '<span class="deposit-badge">💰 ' + money(deposit) + '</span>' : '—'}</td>
       <td>${remaining > 0 ? money(remaining) : '—'}</td>
       <td>${paymentBtn}</td>
-      <td><span class="chip ${statusClass}">${o.status || ''}</span></td>
+      <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
       <td class="branch-notes-cell">${cleanVisibleOrderNotes(o.notes || '')}</td>
       <td>${formatDate(o.created_at)}</td>
       <td class="branch-actions-cell">
@@ -5768,6 +5802,9 @@ function getOrderDateKey(order) {
 }
 
 function getOrderAccountingDateISO(order) {
+  if (isReturnWithin14Days(order)) {
+    return String(getReturnWithin14DaysDateISO(order));
+  }
   const lastCollect = (typeof getLatestCollectEntry === 'function') ? getLatestCollectEntry(order) : null;
   if (order && String(order.status || '') === 'Signed' && lastCollect && lastCollect.at) {
     return String(lastCollect.at);
@@ -6027,7 +6064,7 @@ function openKhaznaPage() {
     document.getElementById('khaznaBarcodeSearch').value = '';
   }
   if (document.getElementById('khaznaFilterStatus')) {
-    document.getElementById('khaznaFilterStatus').value = 'Signed';
+    document.getElementById('khaznaFilterStatus').value = 'الكل';
   }
   if (document.getElementById('khaznaFilterEmployee')) {
     document.getElementById('khaznaFilterEmployee').value = 'الكل';
@@ -6075,7 +6112,7 @@ async function loadKhaznaData() {
       .from('orders')
       .select('*')
       .eq('branch', currentBranchName)
-      .eq('status', 'Signed')
+      .in('status', ['Signed', 'Returned'])
       .order('created_at', { ascending: false })
       .range(rangeFrom, rangeTo);
 
@@ -6086,7 +6123,7 @@ async function loadKhaznaData() {
   }
 
   khaznaOrders = allData
-    .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
+    .filter(o => (o.status === 'Signed' || isReturnWithin14Days(o)) && isOrderInAccountingDateRange(o, from || null, to || null))
     .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
 
   khaznaSelectedIds = new Set();
@@ -6156,14 +6193,18 @@ function renderKhaznaStats() {
   renderKhaznaEmployeeFilter();
   
   const visibleKhaznaOrders = getKhaznaFilteredOrders();
-  const totalSales = visibleKhaznaOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+  const signedOrders = visibleKhaznaOrders.filter(o => o.status === 'Signed');
+  const return14Total = visibleKhaznaOrders
+    .filter(isReturnWithin14Days)
+    .reduce((s, o) => s + Number(o.price || 0), 0);
+  const totalSales = signedOrders.reduce((s, o) => s + Number(o.price || 0), 0);
   
   const originalKhaznaOrdersForCalc = khaznaOrders;
   khaznaOrders = visibleKhaznaOrders;
   const shippingTotal = getKhaznaShippingTotal();
   const transfersTotal = getKhaznaTransfersTotal();
   khaznaOrders = originalKhaznaOrdersForCalc;
-  const net = totalSales - shippingTotal - transfersTotal;
+  const net = totalSales - return14Total - shippingTotal - transfersTotal;
 
   const fmt = v => enMoney(v);
   const setEl = (id, v) => { 
@@ -6172,6 +6213,7 @@ function renderKhaznaStats() {
   };
 
   setEl('kTotalSales', fmt(totalSales));
+  setEl('kReturn14Total', fmt(return14Total));
   setEl('kShippingCost', fmt(shippingTotal));
   setEl('kTransfers', fmt(transfersTotal));
   setEl('kNetAmount', fmt(net));
@@ -6228,7 +6270,7 @@ function renderKhaznaOrders() {
   const visibleKhaznaOrders = getKhaznaFilteredOrders();
   
   if (!visibleKhaznaOrders.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty">لا توجد أوردرات في هذه الفترة</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="empty">لا توجد أوردرات في هذه الفترة</td></tr>';
     return;
   }
   
@@ -6237,6 +6279,8 @@ function renderKhaznaOrders() {
     const price = Number(o.price || 0);
     const deposit = Number(o.deposit || 0);
     const remaining = price - deposit;
+    const latestCollect = getLatestCollectEntry(o);
+    const shippingExpense = Number(latestCollect?.shipping || 0);
     
     let statusClass = 'chip-transit';
     if (o.status === 'Returned') statusClass = 'chip-returned';
@@ -6247,13 +6291,15 @@ function renderKhaznaOrders() {
     
     rows += `<tr>
       <td>${i + 1}</td>
-      <td>${o.customer_name || ''}</td>
-      <td>${o.phone || ''}</td>
+      <td>${escapeHTML(o.customer_name || '')}</td>
+      <td>${escapeHTML(o.phone || '')}</td>
+      <td>${escapeHTML(o.doctor_name || '—')}</td>
       <td>${enMoney(price)}</td>
       <td>${deposit > 0 ? enMoney(deposit) : '—'}</td>
       <td>${remaining > 0 ? enMoney(remaining) : '—'}</td>
       <td>${o.payment_image ? `<button class="view-payment-btn" onclick="viewPaymentImage('${o.payment_image}')" style="background:#0D9488;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;">📷 عرض</button>` : '<span class="chip chip-cancelled" style="font-size:10px">لا يوجد</span>'}</td>
-      <td><span class="chip ${statusClass}" style="font-size:10px;">${o.status || ''}</span></td>
+      <td>${enMoney(shippingExpense)}</td>
+      <td><span class="chip ${statusClass}" style="font-size:10px;">${getOrderDisplayStatus(o)}</span></td>
       <td style="font-size:11px;">${formatDate(getOrderAccountingDateISO(o))}</td>
       <td class="branch-actions-cell">
         <div style="display:flex;gap:5px;align-items:center;">
@@ -6358,10 +6404,15 @@ function printKhaznaReport() {
 
   const originalKhaznaOrdersForCalc = khaznaOrders;
   khaznaOrders = reportOrders;
-  const totalSales = reportOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+  const totalSales = reportOrders
+    .filter(o => o.status === 'Signed')
+    .reduce((s, o) => s + Number(o.price || 0), 0);
+  const return14Total = reportOrders
+    .filter(isReturnWithin14Days)
+    .reduce((s, o) => s + Number(o.price || 0), 0);
   const shippingTotal = getKhaznaShippingTotal();
   const transfersTotal = getKhaznaTransfersTotal();
-  const net = totalSales - shippingTotal - transfersTotal;
+  const net = totalSales - return14Total - shippingTotal - transfersTotal;
   khaznaOrders = originalKhaznaOrdersForCalc;
 
   const printDate = new Date().toLocaleDateString('en-GB') + ' ' +
@@ -6377,7 +6428,7 @@ function printKhaznaReport() {
       <td class="arabic-cell products-cell">${escapeHTML(o.product_names || '—')}</td>
       <td class="money-cell">${enMoney(o.price)}</td>
       <td class="money-cell">${Number(o.deposit || 0) > 0 ? enMoney(o.deposit) : '—'}</td>
-      <td class="status-cell"><span>${escapeHTML(o.status || '')}</span></td>
+      <td class="status-cell"><span>${escapeHTML(getOrderDisplayStatus(o))}</span></td>
     </tr>`).join('');
 
   const downloadRows = reportOrders.map((o, i) => ({
@@ -6389,7 +6440,7 @@ function printKhaznaReport() {
     'المنتجات': o.product_names || '',
     'السعر': Number(o.price || 0),
     'المدفوع': Number(o.deposit || 0),
-    'الحالة': o.status || ''
+    'الحالة': getOrderDisplayStatus(o)
   }));
 
   const safeDownloadRowsJSON = JSON.stringify(downloadRows).replace(/</g, '\\u003c');
@@ -7497,12 +7548,12 @@ function getKhaznaFilteredOrders() {
   const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
 
   return khaznaOrders.filter(o => {
-    if (o.status !== 'Signed') return false;
+    if (o.status !== 'Signed' && !isReturnWithin14Days(o)) return false;
     
     // ✅ استخدام matchesOrderSearch بدلاً من البحث اليدوي
     const matchSearch = !search || matchesOrderSearch(o, search);
     
-    const matchStatus = statusFilter === 'الكل' || o.status === statusFilter;
+    const matchStatus = matchesOrderStatusFilter(o, statusFilter);
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
     
     return matchSearch && matchStatus && matchEmp;

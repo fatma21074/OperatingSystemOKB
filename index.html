@@ -712,6 +712,7 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Returned14">مرتجع خلال 14 يوم</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1406,6 +1407,7 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Returned14">مرتجع خلال 14 يوم</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1490,6 +1492,7 @@
 <option value="الكل">كل الحالات</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Returned14">مرتجع خلال 14 يوم</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1525,6 +1528,11 @@
 </div>
 </div>
 </div>
+<div class="card" style="text-align:center;border:1px solid rgba(220,38,38,0.35);">
+<p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">مرتجع خلال 14 يوم</p>
+<strong id="kReturn14Total" style="font-size:24px;color:#dc2626;">0</strong>
+<p style="margin:4px 0 0;font-size:11px;color:#dc2626;">يُخصم من إجمالي المبيعات</p>
+</div>
 <div class="card" style="text-align:center;border:1px solid rgba(168,85,247,0.3);">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">التحويلات</p>
 <strong id="kTransfers" style="font-size:24px;color:#a855f7;">0</strong>
@@ -1533,7 +1541,7 @@
 <div class="card" style="text-align:center;border:1px solid rgba(16,185,129,0.3);">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">صافي الخزنة</p>
 <strong id="kNetAmount" style="font-size:24px;color:#10b981;">0</strong>
-<p style="margin:4px 0 0;font-size:11px;color:var(--text-muted);">مبيعات − مصروفات − تحويلات</p>
+<p style="margin:4px 0 0;font-size:11px;color:var(--text-muted);">مبيعات − مرتجع 14 يوم − مصروفات − تحويلات</p>
 </div>
 <div class="card" style="text-align:center;border:1px solid rgba(245,158,11,0.3);">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">عدد الأوردرات</p>
@@ -1550,8 +1558,8 @@
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>العميل</th><th>الموبايل</th>
-<th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
+<th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th>
+<th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>مصروف الشحنة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="khaznaOrdersBody"></tbody>
 </table>
