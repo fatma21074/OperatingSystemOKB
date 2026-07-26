@@ -3708,7 +3708,34 @@ function downloadCSV(fileName, headers, rows) {
   a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url);
 }
 
-function exportData() { const f = getFilteredOrders(); if (!f.length) { alert("لا توجد بيانات للتصدير"); return; } downloadCSV("orders-data.csv", ["Employee", "Doctor","Order Number", "Customer", "Phone","Phone2", "Shipping Company", "Area", "Products", "Delivery Fee", "Discount", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"], f.map(o => [o.employee_name, o.doctor_name,o.order_number || "", o.customer_name, o.phone,o.phone2, o.shipping_company, o.area, o.product_names || "", o.delivery_fee || 0, getOrderMeta(o).discount || 0, o.price, o.deposit || 0, Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)), o.status, stripCollectMeta(o.notes || ""), o.created_at])); }
+function exportData() {
+  const f = getFilteredOrders();
+  if (!f.length) { alert("لا توجد بيانات للتصدير"); return; }
+  downloadCSV(
+    "orders-data.csv",
+    ["Employee", "Doctor", "Doctor Code", "Order Number", "Customer", "Phone", "Phone2", "Shipping Company", "Area", "Products", "Delivery Fee", "Discount", "Price", "Deposit", "Remaining", "Status", "Notes", "Created At"],
+    f.map(o => [
+      o.employee_name,
+      o.doctor_name,
+      getDoctorCodeByName(o.doctor_name) || o.doctor_code || "",
+      o.order_number || "",
+      o.customer_name,
+      o.phone,
+      o.phone2,
+      o.shipping_company,
+      o.area,
+      o.product_names || "",
+      o.delivery_fee || 0,
+      getOrderMeta(o).discount || 0,
+      o.price,
+      o.deposit || 0,
+      Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)),
+      o.status,
+      stripCollectMeta(o.notes || ""),
+      o.created_at
+    ])
+  );
+}
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
 function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-dashboard.csv", ["Rank", "Shipping Company", "Total Order", "Signed", "Delivering", "Returned", "Conversion Rate", "Cancel Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.delivering, r.returned, r.conversionRate, r.returnRate, r.score.toFixed(1)])); }
