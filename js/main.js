@@ -3897,10 +3897,32 @@ function renderDoctorCharts() {
 
 // ===== دوال التصدير =====
 function downloadCSV(fileName, headers, rows) {
-  const csv = [headers, ...rows].map(row => row.map(v => `"${String(v || "").replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }), url = URL.createObjectURL(blob), a = document.createElement("a");
-  a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url);
-  logActivity('data_exported','تصدير بيانات',`الملف: ${fileName} | عدد الصفوف: ${rows.length} | الصيغة: CSV`);
+  if (typeof XLSX === 'undefined') {
+    alert('مكتبة Excel غير متاحة. تأكد من اتصال الإنترنت وحاول مرة أخرى.');
+    return;
+  }
+
+  const data = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // عرض أعمدة تلقائي بسيط حسب أطول قيمة في كل عمود
+  const colWidths = headers.map((_, colIndex) => {
+    let maxLen = String(headers[colIndex] || '').length;
+    rows.forEach(row => {
+      const len = String(row[colIndex] ?? '').length;
+      if (len > maxLen) maxLen = len;
+    });
+    return { wch: Math.min(Math.max(maxLen + 2, 8), 60) };
+  });
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+  const xlsxFileName = fileName.replace(/\.csv$/i, '') + '.xlsx';
+  XLSX.writeFile(wb, xlsxFileName);
+
+  logActivity('data_exported', 'تصدير بيانات', `الملف: ${xlsxFileName} | عدد الصفوف: ${rows.length} | الصيغة: Excel`);
 }
 
 function exportData() {
