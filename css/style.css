@@ -978,11 +978,16 @@ td.notes-cell:empty::after{content:"—";color: var(--text-faint)}
 .branch-bulk-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:12px 0;padding:10px 12px;border:1px solid rgba(20,184,166,.34);border-radius:12px;background:linear-gradient(135deg,rgba(13,148,136,.12),rgba(15,23,42,.08))}
 .branch-bulk-actions.hidden{display:none!important}
 .branch-bulk-actions strong{margin-inline-end:auto;font-size:12px;color:var(--text-primary)}
-.branch-bulk-print,.branch-bulk-edit,.branch-bulk-transfer{min-height:36px;padding:7px 13px;border:0;border-radius:9px;color:#fff;font-size:12px;font-weight:900;cursor:pointer}
+.branch-bulk-print,.branch-bulk-edit,.branch-bulk-transfer,.branch-bulk-delete{min-height:36px;padding:7px 13px;border:0;border-radius:9px;color:#fff;font-size:12px;font-weight:900;cursor:pointer}
 .branch-bulk-print{background:linear-gradient(135deg,#0d9488,#14b8a6);box-shadow:0 4px 12px rgba(13,148,136,.25)}
 .branch-bulk-edit{background:linear-gradient(135deg,#2563eb,#3b82f6);box-shadow:0 4px 12px rgba(37,99,235,.25)}
 .branch-bulk-transfer{background:linear-gradient(135deg,#f59e0b,#fbbf24);box-shadow:0 4px 12px rgba(245,158,11,.28)}
-.branch-bulk-edit.hidden,.branch-bulk-transfer.hidden{display:none!important}
+.branch-bulk-delete{background:linear-gradient(135deg,#dc2626,#ef4444);box-shadow:0 4px 12px rgba(239,68,68,.28)}
+.branch-bulk-edit.hidden,.branch-bulk-transfer.hidden,.branch-bulk-delete.hidden{display:none!important}
+.smart-total-input{width:100%;min-height:42px;padding:9px 11px;border-radius:10px;border:1px solid rgba(20,184,166,.5);background:rgba(13,148,136,.08);color:var(--text-primary);font-size:16px;font-weight:900;text-align:center}
+.smart-total-input:focus{outline:none;border-color:#14b8a6;box-shadow:0 0 0 3px rgba(20,184,166,.14)}
+.smart-discount-message{display:none;margin-top:8px;padding:9px 12px;border-radius:10px;border:1px solid rgba(245,158,11,.48);background:rgba(245,158,11,.12);color:#f59e0b;font-size:13px;font-weight:900}
+.smart-discount-message.visible{display:block}
 .pending-header-btn{position:relative;display:none;align-items:center;justify-content:center;gap:9px;min-height:38px;padding:7px 18px 7px 10px;border:2px solid #ff334f;border-radius:999px;background:linear-gradient(135deg,rgba(74,8,20,.96),rgba(30,4,11,.96));color:#ff4d66;font-family:Inter,Cairo,sans-serif;font-size:12px;font-weight:900;cursor:pointer;box-shadow:0 0 7px rgba(255,51,79,.95),0 0 18px rgba(255,51,79,.45),inset 0 0 10px rgba(255,51,79,.12);text-shadow:0 0 8px rgba(255,51,79,.9);transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
 .pending-header-btn:hover{transform:translateY(-1px) scale(1.02);background:linear-gradient(135deg,rgba(104,10,27,.98),rgba(42,4,14,.98));color:#ff6b80;box-shadow:0 0 10px rgba(255,51,79,1),0 0 26px rgba(255,51,79,.65),inset 0 0 12px rgba(255,51,79,.18)}
 .pending-header-btn:active{transform:translateY(0) scale(.98)}
