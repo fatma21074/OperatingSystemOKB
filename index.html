@@ -491,8 +491,15 @@
 <!-- ===== Top Header ===== -->
 <header class="app-header">
 <div class="app-brand">
+<button class="sidebar-toggle-btn sidebar-toggle-disabled" id="sidebarToggle" type="button" title="القائمة غير مستخدمة" aria-disabled="true">
+<svg fill="none" height="20" id="toggleIcon" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="20">
+<line x1="3" x2="21" y1="6" y2="6"></line>
+<line x1="3" x2="21" y1="12" y2="12"></line>
+<line x1="3" x2="21" y1="18" y2="18"></line>
+</svg>
+</button>
 <div class="brand-badge">OKB</div>
-<!-- <span>elokabypharmacy</span> -->
+<span>elokabypharmacy</span>
 </div>
 <div class="header-right">
 <!-- ✅ زرار إخفاء/إظهار القائمة -->
@@ -537,6 +544,7 @@
 </div>
 <button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
   <span class="pending-header-icon" aria-hidden="true">
+    <span class="pending-header-notification hidden" id="pendingHeaderNotification" aria-label="Pending orders count">0</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M10.3 3.5 2.7 17a2 2 0 0 0 1.75 3h15.1a2 2 0 0 0 1.75-3L13.7 3.5a2 2 0 0 0-3.4 0Z"></path>
       <path d="M12 9v4"></path>
@@ -1103,12 +1111,12 @@
 <div class="report-grid">
 <div class="report-card"><span>📦 Total Orders</span><strong id="reportTotalOrders">0</strong></div>
 <div class="report-card"><span>↩️ Total Returned</span><strong id="reportReturned">0</strong></div>
-<div class="report-card"><span>👨‍⚕️ Fake Doctor</span><strong id="reportFakeDoctor">0</strong></div>
-<div class="report-card"><span>🚚 Fake Delivery Update</span><strong id="reportFakeDelivery">0</strong></div>
-<div class="report-card"><span>Nasr City Branch</span><strong id="reportNasrCity">0</strong></div>
-<div class="report-card"><span>Alexandria Branch</span><strong id="reportAlexandria">0</strong></div>
-<div class="report-card"><span>Mansoura Branch</span><strong id="reportMansoura">0</strong></div>
-<div class="report-card"><span>TanTa Branch</span><strong id="reportTanta">0</strong></div>
+<div class="report-card"><span>🚚 Delivering</span><strong id="reportDelivering">0</strong></div>
+<div class="report-card"><span>❌ Cancel</span><strong id="reportCancel">0</strong></div>
+<div class="report-card" data-report-branch="nasr-city"><span>Nasr City Branch</span><strong id="reportNasrCity">0</strong></div>
+<div class="report-card" data-report-branch="alexandria"><span>Alexandria Branch</span><strong id="reportAlexandria">0</strong></div>
+<div class="report-card" data-report-branch="mansoura"><span>Mansoura Branch</span><strong id="reportMansoura">0</strong></div>
+<div class="report-card" data-report-branch="tanta"><span>TanTa Branch</span><strong id="reportTanta">0</strong></div>
 </div>
 <div class="report-list">
 <div class="report-box">
@@ -1435,7 +1443,7 @@
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>الموظف</th><th>الدكتور</th><th>رقم الاوردر </th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
+<th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>Ticket ID</th><th>الدكتور</th><th>رقم الاوردر </th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
 <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="branchOrdersTableBody"></tbody>

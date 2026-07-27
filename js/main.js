@@ -59,6 +59,7 @@ let activityLogPollingTimer = null;
 let activityLogUnreadCount = 0;
 let activityLogPageNumber = 1;
 const ACTIVITY_LOG_PAGE_SIZE = 25;
+let pendingHeaderPollingTimer = null;
 let onlinePresenceChannel = null;
 let onlinePresenceUsers = new Map();
 const onlinePresenceSessionKey = (() => {
@@ -1011,31 +1012,13 @@ function getDoctorCodeByName(name) {
   const doc = doctorsList.find(d => (d.name || '') === name);
   return doc ? (doc.code || '') : '';
 }
-function extractDoctorInfo(text) {
-    const value = String(text || "").trim();
-
-    const codeMatch = value.match(/\b([A-Za-z]{3})\b/);
-
-    const doctorCode = codeMatch ? codeMatch[1].toUpperCase() : "";
-
-    const doctorName = value
-        .replace(/\b[A-Za-z]{3}\b/g, "")
-        .replace(/[-–—]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    return {
-        doctorName,
-        doctorCode
-    };
-}
-
+// يستخرج كود الدكتور (3 حروف إنجليزي) من نص، ويتجاهل الأرقام
 function extractDoctorCodeFromText(...values) {
-    for (const v of values) {
-        const info = extractDoctorInfo(v);
-        if (info.doctorCode) return info.doctorCode;
-    }
-    return "";
+  for (const v of values) {
+    const m = String(v || '').match(/[A-Za-z]{3}/);
+    if (m) return m[0].toUpperCase();
+  }
+  return '';
 }
 
 function matchesOrderSearch(order, search) {
@@ -1584,11 +1567,15 @@ function parsePreciseServerDate(value) {
 function formatEnglishDateTime(value) {
   const date = parsePreciseServerDate(value);
   if (!date) return value ? String(value) : '—';
-  return new Intl.DateTimeFormat('en-GB', {
+  const datePart = new Intl.DateTimeFormat('en-GB', {
     year:'numeric', month:'2-digit', day:'2-digit',
-    hour:'2-digit', minute:'2-digit', second:'2-digit',
-    hour12:false, timeZone:'Africa/Cairo'
+    timeZone:'Africa/Cairo'
   }).format(date);
+  const timePart = new Intl.DateTimeFormat('en-US', {
+    hour:'2-digit', minute:'2-digit', second:'2-digit',
+    hour12:true, timeZone:'Africa/Cairo'
+  }).format(date).toUpperCase();
+  return `${datePart}, ${timePart}`;
 }
 
 function isInDateRange(order) {
@@ -1736,7 +1723,7 @@ if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShipping
 const settingsHeaderWrap = document.getElementById('headerSettingsWrap');
 const canOpenSettings = isAdmin() || isExecutiveAssistant();
 const canOpenUsers = isAdmin() || isExecutiveAssistant();
-const canOpenDailyReport = isAdmin() || isOperationManager() || isAgent();
+const canOpenDailyReport = true;
 const canOpenDoctorRank = canViewAdminReports();
 document.querySelectorAll('.settings-page-item').forEach(el => el.classList.toggle('hidden', !canOpenSettings));
 document.querySelectorAll('.users-page-item').forEach(el => el.classList.toggle('hidden', !canOpenUsers));
@@ -1752,6 +1739,7 @@ document.querySelectorAll('[data-page="usersPage"]').forEach(el => {
 });
 startActivityLogNotifications();
 startOnlinePresence();
+startPendingHeaderNotifications();
 
   document.querySelectorAll(".settings-menu-btn").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isExecutiveAssistant())));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
@@ -1796,6 +1784,7 @@ startOnlinePresence();
 setTimeout(ensureCashierBranchReportButton, 100);
 
 function resetAppState() {
+  stopPendingHeaderNotifications();
   orders = [];
   users = [];
   branchs = [];
@@ -1957,6 +1946,43 @@ function canSeePendingOrder(order){
   if(isStoreManager() || isCashier() || isAccountSupervisor())return getCurrentUserManagedBranches().includes(branch);
   return false;
 }
+function canViewPendingHeaderCount(){
+  return Boolean(isAdmin()||isStoreManager()||isCashier()||isAccountSupervisor());
+}
+function updatePendingHeaderBadge(count){
+  const badge=document.getElementById('pendingHeaderNotification');
+  if(!badge)return;
+  const value=Math.max(0,Number(count)||0);
+  badge.textContent=value>99?'99+':String(value);
+  badge.classList.toggle('hidden',!canViewPendingHeaderCount()||value<1);
+  badge.setAttribute('aria-label',`${value} pending orders`);
+}
+async function refreshPendingHeaderCount(){
+  if(!canViewPendingHeaderCount()){updatePendingHeaderBadge(0);return;}
+  const {data,error}=await supabaseClient
+    .from('orders')
+    .select('id,branch,created_at,updated_at')
+    .eq('status','Delivering')
+    .limit(2000);
+  if(error){console.warn('Pending header count error:',error.message);return;}
+  const count=(data||[]).filter(order=>
+    pendingOrderBranch(order)&&pendingDays(order)>=3&&canSeePendingOrder(order)
+  ).length;
+  updatePendingHeaderBadge(count);
+}
+function stopPendingHeaderNotifications(){
+  if(pendingHeaderPollingTimer){
+    clearInterval(pendingHeaderPollingTimer);
+    pendingHeaderPollingTimer=null;
+  }
+  updatePendingHeaderBadge(0);
+}
+function startPendingHeaderNotifications(){
+  stopPendingHeaderNotifications();
+  if(!canViewPendingHeaderCount())return;
+  refreshPendingHeaderCount();
+  pendingHeaderPollingTimer=setInterval(refreshPendingHeaderCount,15000);
+}
 function setupPendingBranchFilter(){
   const el=document.getElementById('pendingBranchFilter'); if(!el)return;
   if(isAdmin()){
@@ -1975,6 +2001,7 @@ async function loadPendingOrders(showMessage){
     const {data,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').order('created_at',{ascending:false}).limit(1500);
     if(error)throw error;
     pendingOrders=(data||[]).filter(o=>pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingReferenceTime(a)-pendingReferenceTime(b));
+    updatePendingHeaderBadge(pendingOrders.length);
     setupPendingBranchFilter(); renderPendingOrders();
     if(showMessage)alert(`تم تحديث القائمة — ${pendingOrders.length} عميل متأخر بحالة Delivering`);
   }catch(e){if(list)list.innerHTML=`<div class="pending-empty">تعذر تحميل البيانات: ${escapeHTML(e.message||String(e))}</div>`;}
@@ -2021,7 +2048,14 @@ function showOrdersPage() { hideAllPages(); $("ordersPage").classList.remove("hi
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
 function showShippingRankPage() { if (!canViewShippingRank()) return; branchShippingRankOverride = null; hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
 function showDoctorRankPage() { if (!canViewAdminReports()) return; hideAllPages(); $("doctorRankPage").classList.remove("hidden"); setActiveMenu("doctorRankPage"); setTimeout(() => { renderDoctorRank(); renderDoctorCharts(); }, 150); }
-function showBranchRankPage() { hideAllPages(); $("branchRankPage").classList.remove("hidden"); setActiveMenu("branchRankPage"); if (!$("reportFromDate").value || !$("reportToDate").value) { setReportMode("daily"); } else { updateReportTabs(); renderReport(); } }
+function showBranchRankPage() {
+  hideAllPages();
+  $("branchRankPage").classList.remove("hidden");
+  setActiveMenu("branchRankPage");
+  applyDailyReportBranchCardVisibility();
+  if (!$("reportFromDate").value || !$("reportToDate").value) setReportMode("daily");
+  else { updateReportTabs(); renderReport(); }
+}
 function showUsersPage() {
   if (!isAdmin() && !isExecutiveAssistant()) return;
   hideAllPages(); $("usersPage").classList.remove("hidden"); 
@@ -2089,10 +2123,7 @@ function openHeaderSettingsPage(page) {
   closeHeaderSettingsMenu();
   if (page === 'settings') return showBranchsPage();
   if (page === 'users') return showUsersPage();
-  if (page === 'daily') {
-    if (!(isAdmin() || isOperationManager() || isAgent())) return;
-    return showBranchRankPage();
-  }
+  if (page === 'daily') return showBranchRankPage();
   if (page === 'doctorRank') return showDoctorRankPage();
 }
 
@@ -4645,11 +4676,34 @@ async function refreshCurrentReport(ev) {
   }
 }
 
+function getDailyReportAllowedBranchKeys() {
+  if (isAdmin()) return ['nasr-city', 'alexandria', 'mansoura', 'tanta'];
+  const managed = getCurrentUserManagedBranches();
+  if (!managed.length) return [];
+  return [...new Set(managed.map(branch => normalizeProductReportBranch(getBranchShippingCompanyName(branch))).filter(Boolean))];
+}
+
+function isDailyReportBranchScopedUser() {
+  return !isAdmin() && (isStoreManager() || isCashier() || isAccountSupervisor() || getCurrentUserManagedBranches().length > 0);
+}
+
+function applyDailyReportBranchCardVisibility() {
+  const scoped = isDailyReportBranchScopedUser();
+  const allowed = getDailyReportAllowedBranchKeys();
+  document.querySelectorAll('[data-report-branch]').forEach(card => {
+    const visible = !scoped || allowed.includes(card.dataset.reportBranch);
+    card.style.display = visible ? '' : 'none';
+  });
+}
+
 function getReportOrders() {
   const from = $("reportFromDate").value;
   const to = $("reportToDate").value;
   if (!from || !to) return [];
+  const scoped = isDailyReportBranchScopedUser();
+  const allowedBranches = getDailyReportAllowedBranchKeys();
   return orders.filter(o => {
+    if (scoped && !allowedBranches.includes(getProductReportOrderBranch(o))) return false;
     const raw = o.created_at;
     if (!raw) return false;
     const d = raw.split("T")[0];
@@ -4727,6 +4781,7 @@ function renderReport() {
   if (!from || !to) { setReportMode("daily"); return; }
 
   const list = getReportOrders();
+  applyDailyReportBranchCardVisibility();
   const limit = reportMode === "daily" ? 1 : reportMode === "weekly" ? 5 : 10;
   const title = reportMode === "daily" ? "Daily Report" : reportMode === "weekly" ? "Weekly Report" : "Monthly Report";
 
@@ -4735,8 +4790,8 @@ function renderReport() {
 
   $("reportTotalOrders").textContent = num(list.length);
   $("reportReturned").textContent = num(list.filter(o => o.status === "Returned").length);
-  $("reportFakeDoctor").textContent = num(list.filter(o => isFakeDoctorOrder(o)).length);
-  $("reportFakeDelivery").textContent = num(list.filter(o => isFakeDeliveryUpdateOrder(o)).length);
+  $("reportDelivering").textContent = num(list.filter(o => String(o.status || '').toLowerCase() === "delivering").length);
+  $("reportCancel").textContent = num(list.filter(o => String(o.status || '').toLowerCase() === "cancel").length);
   const branchCounts={ 'nasr-city':0,alexandria:0,mansoura:0,tanta:0 };
   list.forEach(order=>{
     const branch=getProductReportOrderBranch(order);
@@ -4837,8 +4892,8 @@ function exportCurrentReport() {
     ["From", from], ["To", to],
     ["Total Orders", list.length],
     ["Total Returned", list.filter(o => o.status === "Returned").length],
-    ["Total Fake Doctor", list.filter(o => isFakeDoctorOrder(o)).length],
-    ["Total Fake Delivery Update", list.filter(o => isFakeDeliveryUpdateOrder(o)).length],
+    ["Delivering", list.filter(o => String(o.status || '').toLowerCase() === "delivering").length],
+    ["Cancel", list.filter(o => String(o.status || '').toLowerCase() === "cancel").length],
     ["Worst Shipping", worstShipping ? `${worstShipping.name} (${worstShipping.rate.toFixed(1)}%)` : "—"],
     ["", ""],
     ["Top Returned Doctors", ""],
@@ -5058,8 +5113,7 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
   progressDiv.textContent = "جاري تحضير البيانات ومعالجة الأوردرات...";
 
   const ordersToInsert = [];
-  const doctorsMap = new Map();
-
+  
   for (const row of excelDataRows) {
     let pVal = Number(String(row[mapping["price"]] || "").replace(/[^0-9.]/g, '')) || 0; 
     const depositVal = mapping["deposit"] ? (Number(String(row[mapping["deposit"]] || "").replace(/[^0-9.]/g, '')) || 0) : 0;
@@ -5112,20 +5166,11 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
     if (!finalEmployee) finalEmployee = (currentUser ? currentUser.name : "System Import");
 
     let finalShipping = staticValues["shipping_company"] ? staticValues["shipping_company"] : String(row[mapping["shipping_company"]] || "").trim();
-    const doctorInfo = extractDoctorInfo(
-    mapping["doctor_name"]
-        ? row[mapping["doctor_name"]]
-        : ""
-      );
 
-    const doctorCode =
-    mapping["doctor_code"]
-        ? extractDoctorCodeFromText(row[mapping["doctor_code"]])
-        : doctorInfo.doctorCode;
     const orderObj = {
       employee_name: finalEmployee,
-      doctor_name: doctorInfo.doctorName,
-      doctor_code: doctorCode,
+      doctor_name: String(row[mapping["doctor_name"]] || "").trim(),
+      doctor_code: mapping["doctor_code"] ? extractDoctorCodeFromText(row[mapping["doctor_code"]]) : "",
       customer_name: String(row[mapping["customer_name"]] || "").trim(),
       phone: String(row[mapping["phone"]] || "").trim(),
       shipping_company: finalShipping,
@@ -5135,20 +5180,15 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
       payment_image: paymentImageUrl,
       status: finalStatus,
       fake_doctor: finalStatus === "Fake Doctor",
+      fake_delivery_update: finalStatus === "Fake Delivery Update",
       notes: mapping["notes"] ? String(row[mapping["notes"]] || "").trim() : "",
       ...(await reserveNextOrderIdentifiers())
     };
     
     console.log("📦 Final Order Object:", orderObj);
     ordersToInsert.push(orderObj);
-    if (doctorCode) {
-    doctorsMap.set(doctorCode, {
-        name: doctorInfo.doctorName,
-        code: doctorCode,
-        active: true
-    });
-}
   }
+
   const BATCH_SIZE = 50; 
   let successCount = 0;
   let hasError = false;
@@ -5171,45 +5211,6 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
   }
 
   if (!hasError) {
-    try {
-
-    const { data: existingDoctors } = await supabaseClient
-        .from("doctors")
-        .select("code");
-
-    const existingCodes = new Set(
-        (existingDoctors || []).map(d => d.code)
-    );
-
-    const newDoctors = [];
-
-    doctorsMap.forEach(doc => {
-
-        if (!existingCodes.has(doc.code)) {
-            newDoctors.push(doc);
-        }
-
-    });
-
-    if (newDoctors.length > 0) {
-
-        const { error } = await supabaseClient
-            .from("doctors")
-            .insert(newDoctors);
-
-        if (error) {
-            console.error("Doctors Import Error:", error);
-        } else {
-            console.log(`✅ Added ${newDoctors.length} new doctors`);
-        }
-
-    }
-
-} catch (err) {
-
-    console.error(err);
-
-}
     progressDiv.innerHTML = `<span style="color:#86efac;">✅ تم استيراد وإدخال ${successCount} أوردر بنجاح!</span>`;
     alert(`رائع! تم إدخال عدد ${successCount} أوردر بنجاح تام إلى قاعدة البيانات.`);
     closeImportModal();
@@ -5556,7 +5557,7 @@ function renderBranchOrders() {
     html += `<tr>
       <td><input type="checkbox" class="row-check branch-row-check" data-id="${o.id}" ${isSelected?'checked':''} onchange="toggleBranchOrderSelection(this,'${o.id}')"/></td>
       <td>${num(start + i + 1)}</td>
-      <td>${o.employee_name || ''}</td>
+      <td>${escapeHTML(getTicketId(o) || '—')}</td>
       <td>${o.doctor_name || ''}</td>
       <td>${o.order_number || ""}</td>
       <td>${o.customer_name || ''}</td>
