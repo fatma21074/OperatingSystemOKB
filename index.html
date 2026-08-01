@@ -449,14 +449,14 @@
 <!-- ================== Login Page ================== -->
 <section class="login-page-new" id="loginPage">
 <div id="loginStarsLayer" aria-hidden="true"></div>
-<div class="medical-bg-pattern">
+<!-- <div class="medical-bg-pattern">
 <i class="cross-icon cross-1">✚</i>
 <i class="cross-icon cross-2">✚</i>
 <i class="cross-icon cross-3">✚</i>
 <i class="cross-icon cross-4">✚</i>
 <i class="cross-icon cross-5">✚</i>
 <i class="cross-icon cross-6">✚</i>
-</div>
+</div> -->
 <div class="login-card-new">
 <div class="login-header">
 <div class="brand-row">
@@ -562,6 +562,7 @@
     <button class="header-settings-item users-page-item" type="button" onclick="openHeaderSettingsPage('users')">👥 <span>Users</span></button>
     <button class="header-settings-item daily-report-page-item" type="button" onclick="openHeaderSettingsPage('daily')">📋 <span>Daily Report</span></button>
     <button class="header-settings-item doctor-rank-page-item" type="button" onclick="openHeaderSettingsPage('doctorRank')">👨‍⚕️ <span>Doctor Rank</span></button>
+    <button class="header-settings-item permission-page-item hidden" type="button" onclick="openHeaderSettingsPage('permission')">🔐 <span>Permission</span></button>
   </div>
 </div>
 <button class="activity-log-btn" id="activityLogHeaderBtn" type="button" onclick="showActivityLogPage()" title="Activity Log">
@@ -869,6 +870,7 @@
       <button class="product-report-tab active" id="productTabTop" type="button" onclick="setProductReportTab('top')">Top Selling</button>
       <button class="product-report-tab" id="productTabReturned" type="button" onclick="setProductReportTab('returned')">Most Returned</button>
       <button class="product-report-tab" id="productTabDead" type="button" onclick="setProductReportTab('dead')">Dead Stock</button>
+      <button class="product-report-tab" id="productTabTotal" type="button" onclick="setProductReportTab('total')">Total Products Sold</button>
     </div>
 
     <div class="product-report-panel">
@@ -998,7 +1000,7 @@
         <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
           <table style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Cancel</th>
+              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Group Cancel</th>
             </tr></thead>
             <tbody id="branchPerformanceBody"></tbody>
           </table>
@@ -1110,27 +1112,34 @@
 <div class="report-card" data-report-branch="mansoura"><span>Mansoura Branch</span><strong id="reportMansoura">0</strong></div>
 <div class="report-card" data-report-branch="tanta"><span>TanTa Branch</span><strong id="reportTanta">0</strong></div>
 </div>
-<div class="report-list">
-<div class="report-box">
-<h3>🚚 أسوأ شركة شحن</h3>
-<div id="reportWorstShipping">—</div>
-<div id="reportWorst3Shipping" style="display:none;margin-top:14px">
-<h3 style="margin-bottom:10px">🚚 أسوأ 3 شركات شحن خلال الشهر</h3>
-<div id="reportWorst3ShippingList">—</div>
+<div class="daily-performance-layout">
+  <div class="daily-performance-panel daily-ranking-panel">
+    <h3>🎯 ترتيب الفروع حسب نسبة التوصيل</h3>
+    <div class="daily-ranking-head">
+      <span>الترتيب</span><span>الفرع</span><span>الفارق للوصول إلى 90%</span><span>Conversion Rate</span>
+    </div>
+    <div id="dailyBranchRanking"></div>
+  </div>
+  <div class="daily-performance-panel daily-target-panel">
+    <h3>الهدف الشهري</h3>
+    <div class="daily-target-gauge"><div><strong>90%</strong><span>الهدف</span></div></div>
+    <p>هدفنا الوصول إلى 90% من نسبة التوصيل لكل فرع</p>
+    <small>النسبة الحالية: <b id="dailyOverallConversion">0%</b></small>
+  </div>
 </div>
-</div>
-<div class="report-box">
-<h3 id="returnedDoctorsTitle">أكتر دكتور راجع له أوردرات</h3>
-<div id="reportTopReturnedDoctors">—</div>
-</div>
-<div class="report-box">
-<h3 id="fakeDoctorsTitle">أكتر دكتور عامل Fake Doctor</h3>
-<div id="reportTopFakeDoctors">—</div>
-</div>
-<div class="report-box">
-<h3>📌 Decision Summary</h3>
-<div id="reportDecisionSummary">—</div>
-</div>
+<div class="daily-rate-grid">
+  <div class="daily-performance-panel">
+    <h3>📊 نسبة التوصيل الحالية لكل فرع</h3>
+    <div id="dailyConversionRates" class="daily-rate-list"></div>
+  </div>
+  <div class="daily-performance-panel">
+    <h3 class="daily-red-title">↩ معدل المرتجعات (Returned)</h3>
+    <div id="dailyReturnedRates" class="daily-rate-list"></div>
+  </div>
+  <div class="daily-performance-panel">
+    <h3 class="daily-red-title">✖ معدل الإلغاء (Cancel)</h3>
+    <div id="dailyCancelRates" class="daily-rate-list"></div>
+  </div>
 </div>
 </div>
 </section>
@@ -1262,7 +1271,7 @@
 <input id="settingCodeDoctor" placeholder="Code Doctor" />
 <button class="success" id="doctorSettingsSubmitBtn" type="submit">➕ إضافة دكتور</button>
 <div class="doctors-actions-row">
-  <input id="settingDoctorSearch" type="search" placeholder="🔎 بحث باسم الدكتور..." oninput="filterDoctorsSettings()" />
+  <input id="settingDoctorSearch" type="search" placeholder="🔎 بحث باسم الدكتور أو Code Doctor..." oninput="filterDoctorsSettings()" />
   <button class="danger" id="cleanAllDoctorsBtn" type="button" onclick="cleanAllDoctors()">🗑️ مسح كل الدكاترة</button>
   <label style="background:#2563eb;color:#fff;">
     📥 Import Excel
@@ -1303,6 +1312,32 @@
 </table>
 </div>
 </div>
+</section>
+<!-- ===== Role Permissions Page ===== -->
+<section class="hidden" id="permissionPage">
+  <div class="card">
+    <div class="permission-page-head">
+      <div>
+        <h1>🔐 Permission</h1>
+        <p>حدد الأزرار والصفحات التي تظهر لكل Role. الأدمن يحتفظ دائمًا بكامل الصلاحيات.</p>
+      </div>
+      <button class="soft" type="button" onclick="refreshRolePermissions(this)">↻ Refresh</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="permission-role-picker">
+      <label for="permissionRoleSelect">Role</label>
+      <select id="permissionRoleSelect" onchange="renderRolePermissionMatrix()"></select>
+      <span id="permissionSaveStatus"></span>
+    </div>
+    <div class="permission-features-grid" id="permissionFeaturesGrid"></div>
+    <div class="permission-actions">
+      <button class="success" type="button" onclick="saveRolePermissions()">💾 حفظ الصلاحيات</button>
+      <button class="soft" type="button" onclick="selectAllRolePermissions(true)">تحديد الكل</button>
+      <button class="soft" type="button" onclick="selectAllRolePermissions(false)">إلغاء تحديد الكل</button>
+      <button class="danger" type="button" onclick="resetSelectedRolePermissions()">إرجاع الصلاحيات الافتراضية</button>
+    </div>
+  </div>
 </section>
 <!-- ===== Branch Page ===== -->
 <section class="hidden" id="branchPage">
@@ -1393,6 +1428,7 @@
 <div class="stat"><span>Delivering</span><strong id="bDeliveringOrders">0</strong></div>
 <div class="stat"><span>Cancel</span><strong id="bCancelOrders">0</strong></div>
 <div class="stat"><span>Total Deposit</span><strong id="bTotalDeposit">0</strong></div>
+<div class="stat"><span>Total Revenue</span><strong id="bTotalRevenue">0</strong></div>
 </div>
 <div class="toolbar">
 <div class="date-filter-group">
@@ -1429,13 +1465,14 @@
   <button class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
   <button class="branch-bulk-delete hidden" id="branchBulkDeleteBtn" type="button" onclick="deleteSelectedBranchOrders()">🗑️ حذف المحدد</button>
   <button class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
+  <button class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف صورة إثبات الدفع</button>
   <button class="branch-bulk-transfer hidden" id="branchBulkTransferBtn" type="button" onclick="transferSelectedBranchOrders()">🔄 تحويل</button>
   <button class="soft" type="button" onclick="clearBranchOrderSelection()">إلغاء التحديد</button>
 </div>
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>Ticket ID</th><th>الدكتور</th><th>رقم الاوردر </th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
+<th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>Ticket ID</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th><th>رقم الاوردر </th>
 <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="branchOrdersTableBody"></tbody>
@@ -1812,7 +1849,7 @@
 <!-- ===== Transfer Order Modal ===== -->
 <div id="transferModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
 <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;padding:28px;width:360px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-<h3 style="margin:0 0 16px;font-size:16px;">🔄 تحويل الأوردر لشركة شحن</h3>
+<h3 style="margin:0 0 16px;font-size:16px;">🔄 تحويل الأوردر إلى فرع / شركة شحن</h3>
 <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">اختر شركة الشحن اللي هتحول عليها الأوردر — هيظهر في تقرير الشحن بس.</p>
 <select id="transferShippingSelect" style="width:100%;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;color:var(--text-main);font-size:14px;margin-bottom:16px;">
 <option value="">اختر شركة الشحن...</option>
