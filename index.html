@@ -449,14 +449,6 @@
 <!-- ================== Login Page ================== -->
 <section class="login-page-new" id="loginPage">
 <div id="loginStarsLayer" aria-hidden="true"></div>
-<!-- <div class="medical-bg-pattern">
-<i class="cross-icon cross-1">✚</i>
-<i class="cross-icon cross-2">✚</i>
-<i class="cross-icon cross-3">✚</i>
-<i class="cross-icon cross-4">✚</i>
-<i class="cross-icon cross-5">✚</i>
-<i class="cross-icon cross-6">✚</i>
-</div> -->
 <div class="login-card-new">
 <div class="login-header">
 <div class="brand-row">
@@ -555,6 +547,7 @@
   <button class="settings-header-btn" id="settingsHeaderBtn" type="button" onclick="toggleHeaderSettingsMenu(event)" title="Settings">
     <span class="settings-header-icon" aria-hidden="true">⚙️</span>
     <span class="settings-header-label">Settings</span>
+    <span class="chat-settings-unread hidden" id="settingsChatUnreadBadge">0</span>
     <span class="settings-header-arrow">▾</span>
   </button>
   <div class="header-settings-menu" id="headerSettingsMenu">
@@ -563,6 +556,7 @@
     <button class="header-settings-item daily-report-page-item" type="button" onclick="openHeaderSettingsPage('daily')">📋 <span>Daily Report</span></button>
     <button class="header-settings-item doctor-rank-page-item" type="button" onclick="openHeaderSettingsPage('doctorRank')">👨‍⚕️ <span>Doctor Rank</span></button>
     <button class="header-settings-item permission-page-item hidden" type="button" onclick="openHeaderSettingsPage('permission')">🔐 <span>Permission</span></button>
+    <button class="header-settings-item chat-page-item" type="button" onclick="openHeaderSettingsPage('chat')">💬 <span>Chat</span><span class="chat-menu-unread hidden" id="chatUnreadBadge">0</span></button>
   </div>
 </div>
 <button class="activity-log-btn" id="activityLogHeaderBtn" type="button" onclick="showActivityLogPage()" title="Activity Log">
@@ -722,6 +716,8 @@
 <option value="Delivering">Delivering</option>
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
+<option value="Cancel">Cancel</option>
+<option value="PaymentProof">إثبات دفع</option>
 </select>
 <select id="filterEmployee"></select>
 <select id="filterShippingCompany"><option value="الكل">كل شركات الشحن</option></select>
@@ -757,24 +753,26 @@
     <div class="branch-stock-head">
       <div class="branch-stock-title">
         <div class="branch-stock-title-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path></svg></div>
-        <div><h1>Branch Stock</h1><p>جرد الفروع، مقارنة الرصيد الفعلي، تقرير الفروقات والتسوية</p></div>
+        <div><h1>Branch Stock</h1><p>جرد دائم للفروع مرتبط مباشرة بمنتجات OKB Items</p></div>
       </div>
       <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
     </div>
 
-    <div class="stock-take-start">
-      <div><label>Branch — الفرع</label><select id="stockTakeBranch"></select></div>
-      <div><label>Date — التاريخ</label><input id="stockTakeDate" type="date"></div>
-      <div><label>Stock Take Name — اسم الجرد</label><input id="stockTakeName" type="text" placeholder="مثال: جرد شهر 4"></div>
-      <button class="btn-filter" id="newStockTakeBtn" type="button" onclick="startNewStockTake()">＋ New Stock Take</button>
+    <div class="stock-take-start stock-control-bar">
+      <div><label>Branch — الفرع</label><select id="stockTakeBranch" onchange="changeBranchStockBranch()"></select></div>
+      <div><label>Search Product — بحث</label><input id="stockProductSearchTop" type="search" placeholder="ابحث باسم المنتج..." oninput="syncBranchStockSearch(this.value)"></div>
+      <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock(this)">↻ Refresh</button>
+      <button class="stock-action-btn stock-save-btn" id="stockTopSaveBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
     </div>
 
-    <div class="stock-take-workspace hidden" id="stockTakeWorkspace">
+    <div class="stock-access-note" id="stockAccessNote"></div>
+
+    <div class="stock-take-workspace" id="stockTakeWorkspace">
       <div class="stock-take-kpis">
-        <div class="stock-kpi"><span>Stock Take</span><strong id="stockTakeCurrentName">—</strong></div>
-        <div class="stock-kpi"><span>Counted Products</span><strong id="stockCountedProducts">0 / 0</strong></div>
+        <div class="stock-kpi"><span>الفرع الحالي</span><strong id="stockTakeCurrentName">—</strong></div>
+        <div class="stock-kpi"><span>إجمالي المنتجات</span><strong id="stockCountedProducts">0</strong></div>
         <div class="stock-kpi"><span>Total Variance Qty</span><strong id="stockVarianceQty">0</strong></div>
-        <div class="stock-kpi"><span>Variance Value</span><strong id="stockVarianceValue">0</strong></div>
+        <div class="stock-kpi"><span>آخر تحديث</span><strong id="stockLastUpdated">—</strong></div>
       </div>
 
 
@@ -815,17 +813,16 @@
 
       <div class="table-wrap">
         <table class="stock-take-table">
-          <thead><tr><th>#</th><th>اسم المنتج</th><th>الباركود</th><th>Serial / Batch</th><th>التصنيف</th><th>الوحدة</th><th>الموقع</th><th>الصلاحية</th><th>رصيد السيستم</th><th>الكمية الفعلية</th><th>الفرق +/-</th><th>سبب الفرق</th><th>السعر</th><th>قيمة الفرق</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
+          <thead><tr><th>#</th><th>اسم المنتج</th><th>رصيد السيستم</th><th>الكمية الفعلية</th><th>الفرق +/-</th><th>سبب الفرق</th><th>الملاحظات</th><th>آخر تعديل</th></tr></thead>
           <tbody id="stockTakeTableBody"></tbody>
         </table>
       </div>
 
       <div class="stock-take-actions">
-        <button class="stock-action-btn stock-save-btn" id="saveStockDraftBtn" type="button" onclick="saveStockTakeDraft()">💾 حفظ مؤقت</button>
-        <button class="stock-action-btn stock-close-btn" id="closeStockTakeBtn" type="button" onclick="closeCurrentStockTake()">🔒 Close Stock Take</button>
+        <button class="stock-action-btn stock-save-btn" id="saveStockDraftBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
         <button class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
         <button class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
-        <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock()">↻ Refresh</button>
+        <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock(this)">↻ Refresh</button>
       </div>
 
       <div class="stock-variance-panel" id="stockVariancePanel">
@@ -835,7 +832,7 @@
           <div><span>العجز</span><strong id="stockVarianceLoss">0</strong></div>
           <div><span>صافي قيمة الفرق</span><strong id="stockVarianceNet">0</strong></div>
         </div>
-        <div id="stockTakeStatusText" class="product-report-note">الجرد مفتوح ويمكن الحفظ المؤقت والتعديل.</div>
+        <div id="stockTakeStatusText" class="product-report-note">يتم حفظ الجرد على Supabase ويمكن الرجوع إليه من أي جهاز.</div>
       </div>
     </div>
   </div>
@@ -914,7 +911,7 @@
       <div><label>من تاريخ</label><input id="activityLogFrom" type="date"></div>
       <div><label>إلى تاريخ</label><input id="activityLogTo" type="date"></div>
       <div><label>بحث</label><input id="activityLogSearch" type="text" placeholder="اسم المستخدم، Ticket ID، العميل أو تفاصيل الحركة..."></div>
-      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option></select></div>
+      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option><option value="chat_message">رسالة Chat</option><option value="chat_attachment">مرفق Chat</option></select></div>
       <button class="btn-filter" type="button" onclick="loadActivityLogs()">🔍 Filter</button>
       <button class="btn-reset-date" type="button" onclick="resetActivityLogFilters()">✕ Reset</button>
     </div>
@@ -1219,6 +1216,42 @@
     </div>
   </div>
 </div>
+<!-- ===== Chat Page ===== -->
+<section class="page hidden chat-page" id="chatPage">
+  <div class="chat-page-header">
+    <div>
+      <h1>💬 Chat</h1>
+      <p>محادثات مباشرة بين مستخدمي النظام وإرسال صور إثبات الدفع.</p>
+    </div>
+    <button class="soft" type="button" onclick="refreshChatPage(this)">↻ Refresh</button>
+  </div>
+  <div class="chat-shell">
+    <aside class="chat-users-panel">
+      <div class="chat-users-title">المستخدمون</div>
+      <input id="chatUserSearch" type="search" placeholder="🔎 ابحث عن مستخدم..." oninput="renderChatUsers()"/>
+      <div id="chatUsersList" class="chat-users-list"><div class="chat-empty">جاري تحميل المستخدمين...</div></div>
+    </aside>
+    <main class="chat-conversation-panel">
+      <div class="chat-conversation-head" id="chatConversationHead">
+        <div class="chat-avatar">💬</div>
+        <div><strong>اختر مستخدمًا لبدء المحادثة</strong><small>الرسائل الجديدة تظهر لحظيًا</small></div>
+      </div>
+      <div class="chat-messages" id="chatMessages"><div class="chat-empty">اختر مستخدمًا من القائمة</div></div>
+      <form class="chat-compose" id="chatComposeForm" onsubmit="sendChatMessage(event)">
+        <label class="chat-attach-btn" title="إرفاق Screenshot">
+          📎
+          <input id="chatAttachmentInput" type="file" accept="image/*" onchange="previewChatAttachment(this)"/>
+        </label>
+        <div class="chat-compose-main">
+          <textarea id="chatMessageInput" rows="2" placeholder="اكتب رسالة..." disabled></textarea>
+          <div id="chatAttachmentPreview" class="chat-attachment-preview hidden"></div>
+        </div>
+        <button class="chat-send-btn" id="chatSendBtn" type="submit" disabled>إرسال ➤</button>
+      </form>
+    </main>
+  </div>
+</section>
+
 <!-- ===== Settings Page ===== -->
 <section class="hidden" id="branchsPage">
 <div class="card">
@@ -1454,6 +1487,7 @@
 <option value="Delivering">Delivering</option>
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
+<option value="PaymentProof">إثبات دفع</option>
 </select>
 <select id="bFilterEmployee"></select>
 <button class="success" id="bExportBtn" onclick="exportBranchOrders()">⬇ Export</button>
@@ -1541,6 +1575,7 @@
 <option value="Delivering">Delivering</option>
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
+<option value="PaymentProof">إثبات دفع</option>
 </select>
 <button id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
 <button onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
@@ -1720,7 +1755,7 @@
 </div>
 </div>
 <!-- Payment Method -->
-<div style="background:var(--bg-soft);border:1px solid var(--border-color);border-radius:12px;padding:14px;margin-bottom:18px;">
+<div id="collectPaymentMethodSection" style="background:var(--bg-soft);border:1px solid var(--border-color);border-radius:12px;padding:14px;margin-bottom:18px;">
 <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:700;margin-bottom:10px;">💳 طريقة التحصيل</label>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
 <label style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:10px;border:1px solid rgba(99,102,241,0.25);background:var(--bg-card);cursor:pointer;font-size:12px;font-weight:700;color:var(--text-primary);">
@@ -1747,6 +1782,7 @@
 </div>
 </div>
 </div>
+<div id="collectDepositNotice" style="display:none;margin:-7px 0 18px;padding:10px 12px;border-radius:10px;border:1px solid rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#f59e0b;font-size:12px;font-weight:800;text-align:center;"></div>
 <!-- Mini Dashboard -->
 <div style="background:linear-gradient(135deg,var(--bg-soft),var(--bg-card));border:1px solid var(--border-color);border-radius:14px;padding:18px;margin-bottom:18px;">
 <h4 style="margin:0 0 14px;font-size:13px;color:var(--text-muted);text-align:center;font-weight:600;">📊 ملخص التحصيل</h4>

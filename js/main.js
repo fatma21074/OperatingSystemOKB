@@ -36,6 +36,8 @@ let analyticsDateFrom = null;
 let analyticsDateTo = null;
 let shippingDateFrom = null;
 let shippingDateTo = null;
+let shippingDateAutoCurrentMonth = true;
+let shippingAutoMonthKey = '';
 
 // ===== KHAZNA PAGE - المتغيرات العامة =====
 let khaznaOrders = [];
@@ -278,8 +280,8 @@ async function logActivity(actionType, actionTitle, actionDetails = '', extra = 
     return false;
   }
 }
-function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',daily_locked:'🔒',daily_unlocked:'🔓',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎'}; return map[type]||'⚡'; }
-function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع'}; return map[type]||type||'Activity'; }
+function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',daily_locked:'🔒',daily_unlocked:'🔓',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
+function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
 function formatActivityTime(iso){
   const date=parsePreciseServerDate(iso);
   if(!date)return iso||'';
@@ -872,6 +874,172 @@ function exportStockVarianceExcel(){
 }
 function printBranchStock(){window.print();}
 async function refreshBranchStock(){await loadOKBItems();if(currentStockTake?.status!=='closed'){const map=new Map(currentStockTakeRows.map(r=>[String(r.item_id),r]));currentStockTakeRows=buildStockTakeRows().map(r=>{const old=map.get(String(r.item_id));return old?{...r,actual_qty:old.actual_qty,reason:old.reason}:r;});}populateStockTakeFilters();renderStockTakeTable();updateStockTakeSummary();if(currentStockTake)await logActivity('stock_take_refresh','تحديث بيانات الجرد',`${currentStockTake.name} — فرع ${currentStockTake.branch}`,{branch_name:currentStockTake.branch});}
+
+// ===== Branch Stock V2 — Supabase persistent inventory linked to OKB Items =====
+let branchStockDirty = false;
+let branchStockLoading = false;
+
+function canManageBranchStockSystem(){ return isAdmin() || isAccountManager(); }
+function canEditBranchStockCount(){ return canManageBranchStockSystem() || isStoreManager() || isAccountSupervisor() || isCashier(); }
+function getAccessibleStockBranches(){
+  const all=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
+  if(canManageBranchStockSystem())return all;
+  if(isStoreManager()||isCashier()||isAccountSupervisor()){
+    const managed=getCurrentUserManagedBranches();
+    return all.filter(branch=>managed.includes(branch));
+  }
+  return [];
+}
+
+function populateStockTakeFilters(){
+  const select=$('stockTakeBranch'); if(!select)return;
+  const branches=getAccessibleStockBranches(),current=select.value;
+  select.innerHTML=branches.map(branch=>`<option value="${escapeHTML(branch)}">${escapeHTML(branch)}</option>`).join('');
+  if(branches.includes(current))select.value=current;
+  else if(branches.length)select.value=branches[0];
+  select.disabled=branches.length<=1&&!canManageBranchStockSystem();
+}
+
+function branchStockSchemaError(error){
+  console.warn('Branch Stock:',error?.message||error);
+  alert('Branch Stock يحتاج تشغيل ملف branch_stock_setup.sql في Supabase أولاً.');
+}
+
+async function showBranchStockPage(){
+  if(!hasRoleFeature('branch_stock')){alert('غير مسموح لك بفتح Branch Stock');return;}
+  const branches=getAccessibleStockBranches();
+  if(!branches.length){alert('لا يوجد فرع مرتبط بهذا الحساب لعرض الجرد');return;}
+  hideAllPages();$('branchStockPage')?.classList.remove('hidden');setActiveMenu('branchStockPage');
+  populateStockTakeFilters();
+  await loadBranchInventory($('stockTakeBranch')?.value||branches[0]);
+}
+
+async function changeBranchStockBranch(){
+  if(branchStockDirty&&!confirm('يوجد تعديلات لم يتم حفظها. هل تريد الانتقال لفرع آخر بدون حفظ؟')){
+    if(currentStockTake?.branch)$('stockTakeBranch').value=currentStockTake.branch;
+    return;
+  }
+  await loadBranchInventory($('stockTakeBranch')?.value||'');
+}
+
+async function syncOKBItemsToBranchInventory(branch,existingRows){
+  const existingMap=new Map((existingRows||[]).map(row=>[String(row.item_id),row]));
+  const missing=okbItems.filter(item=>!existingMap.has(String(item.id))).map(item=>({
+    branch,item_id:String(item.id),item_name:String(item.item_name||'منتج'),system_qty:0,actual_qty:0,variance_reason:'',notes:'',updated_by:String(currentUser?.name||currentUser?.username||'User')
+  }));
+  if(!missing.length)return true;
+  const {error}=await supabaseClient.from('branch_inventory').upsert(missing,{onConflict:'branch,item_id'});
+  if(error){branchStockSchemaError(error);return false;}
+  return true;
+}
+
+async function loadBranchInventory(branch){
+  if(!branch||branchStockLoading)return;
+  branchStockLoading=true;branchStockDirty=false;
+  const body=$('stockTakeTableBody');if(body)body.innerHTML='<tr><td colspan="8" class="empty">جاري تحميل جرد الفرع...</td></tr>';
+  try{
+    await loadOKBItems();
+    let result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
+    if(result.error){branchStockSchemaError(result.error);return;}
+    const synced=await syncOKBItemsToBranchInventory(branch,result.data||[]);if(!synced)return;
+    result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
+    if(result.error){branchStockSchemaError(result.error);return;}
+    const rowsByItem=new Map((result.data||[]).map(row=>[String(row.item_id),row]));
+    currentStockTake={branch,name:`جرد ${branch}`,status:'open',updated_at:new Date().toISOString()};
+    currentStockTakeRows=okbItems.map((item,index)=>{
+      const saved=rowsByItem.get(String(item.id))||{};
+      const systemQty=Math.max(0,Number(saved.system_qty||0));
+      return {id:saved.id||null,item_id:String(item.id),product_name:String(item.item_name||`منتج ${index+1}`),system_qty:systemQty,_originalSystemQty:systemQty,actual_qty:Math.max(0,Number(saved.actual_qty||0)),reason:String(saved.variance_reason||''),notes:String(saved.notes||''),updated_by:String(saved.updated_by||''),updated_at:saved.updated_at||null,price:Number(item.price||0),_dirty:false};
+    });
+    $('stockTakeWorkspace')?.classList.remove('hidden');
+    if($('stockTakeCurrentName'))$('stockTakeCurrentName').textContent=branch;
+    const note=$('stockAccessNote');if(note){note.textContent=canManageBranchStockSystem()?'صلاحيتك: تعديل رصيد السيستم والكمية الفعلية وسبب الفرق والملاحظات لأي فرع.':'صلاحيتك: تعديل الكمية الفعلية وسبب الفرق والملاحظات لفرعك فقط.';note.className=`stock-access-note ${canManageBranchStockSystem()?'manager':'counter'}`;}
+    updateStockTakePermissions();renderStockTakeTable();updateStockTakeSummary();
+  }finally{branchStockLoading=false;}
+}
+
+function getFilteredStockRows(){
+  const q=String($('stockProductSearchTop')?.value||'').trim().toLowerCase();
+  return currentStockTakeRows.map((row,index)=>({...row,_index:index})).filter(row=>!q||String(row.product_name||'').toLowerCase().includes(q));
+}
+
+function syncBranchStockSearch(value){
+  const old=$('stockProductSearch');if(old)old.value=value;
+  renderStockTakeTable();
+}
+
+function markBranchStockRowDirty(index){
+  const row=currentStockTakeRows[index];if(row)row._dirty=true;
+  branchStockDirty=true;
+}
+
+function updateBranchStockField(index,field,value){
+  if(!canEditBranchStockCount())return;
+  const row=currentStockTakeRows[index];if(!row)return;
+  if(field==='system_qty'&&!canManageBranchStockSystem())return;
+  row[field]=(field==='system_qty'||field==='actual_qty')?Math.max(0,Number(value||0)):String(value||'');
+  markBranchStockRowDirty(index);updateStockTakeSummary();
+  if(field==='system_qty'||field==='actual_qty')renderStockTakeTable();
+}
+
+function renderStockTakeTable(){
+  const body=$('stockTakeTableBody');if(!body)return;
+  const rows=getFilteredStockRows(),canSystem=canManageBranchStockSystem(),canCount=canEditBranchStockCount();
+  if(!rows.length){body.innerHTML='<tr><td colspan="8" class="empty">لا توجد منتجات مطابقة للبحث</td></tr>';return;}
+  body.innerHTML=rows.map((row,i)=>{
+    const system=Math.max(0,Number(row.system_qty||0)),actual=Math.max(0,Number(row.actual_qty||0)),diff=actual-system,diffClass=diff>0?'stock-diff-positive':diff<0?'stock-diff-negative':'stock-diff-zero';
+    return `<tr class="${row._dirty?'stock-row-dirty':''}"><td>${i+1}</td><td><div class="stock-product-name">${escapeHTML(row.product_name)}</div><div class="stock-product-meta">OKB Items</div></td><td>${canSystem?`<input class="stock-table-input stock-qty-input" type="number" min="0" step="1" value="${system}" onchange="updateBranchStockField(${row._index},'system_qty',this.value)">`:`<strong>${num(system)}</strong>`}</td><td><input class="stock-table-input stock-actual-input" type="number" min="0" step="1" value="${actual}" ${canCount?'':'disabled'} onchange="updateBranchStockField(${row._index},'actual_qty',this.value)"></td><td class="${diffClass}">${diff>0?'+':''}${num(diff)}</td><td><input class="stock-table-input stock-reason-input" value="${escapeHTML(row.reason)}" ${canCount?'':'disabled'} placeholder="سبب الفرق..." onchange="updateBranchStockField(${row._index},'reason',this.value)"></td><td><input class="stock-table-input stock-notes-input" value="${escapeHTML(row.notes)}" ${canCount?'':'disabled'} placeholder="ملاحظات..." onchange="updateBranchStockField(${row._index},'notes',this.value)"></td><td><span class="stock-last-update">${row.updated_at?formatActivityTime(row.updated_at):'—'}${row.updated_by?`<small>${escapeHTML(row.updated_by)}</small>`:''}</span></td></tr>`;
+  }).join('');
+}
+
+function updateStockTakeSummary(){
+  const total=currentStockTakeRows.length;
+  const variance=currentStockTakeRows.reduce((sum,row)=>sum+(Number(row.actual_qty||0)-Number(row.system_qty||0)),0);
+  const value=currentStockTakeRows.reduce((sum,row)=>sum+((Number(row.actual_qty||0)-Number(row.system_qty||0))*Number(row.price||0)),0);
+  const gain=currentStockTakeRows.reduce((sum,row)=>{const v=(Number(row.actual_qty||0)-Number(row.system_qty||0))*Number(row.price||0);return sum+(v>0?v:0);},0);
+  const loss=currentStockTakeRows.reduce((sum,row)=>{const v=(Number(row.actual_qty||0)-Number(row.system_qty||0))*Number(row.price||0);return sum+(v<0?Math.abs(v):0);},0);
+  if($('stockCountedProducts'))$('stockCountedProducts').textContent=num(total);
+  if($('stockVarianceQty'))$('stockVarianceQty').textContent=(variance>0?'+':'')+num(variance);
+  if($('stockLastUpdated')){const dates=currentStockTakeRows.map(row=>row.updated_at).filter(Boolean).sort();$('stockLastUpdated').textContent=dates.length?formatActivityTime(dates[dates.length-1]):'لم يتم الحفظ بعد';}
+  if($('stockVarianceGain'))$('stockVarianceGain').textContent=money(gain);
+  if($('stockVarianceLoss'))$('stockVarianceLoss').textContent=money(loss);
+  if($('stockVarianceNet'))$('stockVarianceNet').textContent=(value>0?'+':'')+money(value);
+}
+
+function updateStockTakePermissions(){
+  const editable=canEditBranchStockCount();
+  ['saveStockDraftBtn','stockTopSaveBtn'].forEach(id=>{const btn=$(id);if(btn){btn.disabled=!editable;btn.style.display=editable?'inline-flex':'none';}});
+  const status=$('stockTakeStatusText');if(status)status.textContent=editable?'الجرد مفتوح ويمكن حفظ التعديلات والرجوع إليه من أي جهاز.':'عرض فقط — لا توجد صلاحية تعديل لهذا الحساب.';
+}
+
+async function saveBranchInventory(){
+  if(!currentStockTake?.branch||!canEditBranchStockCount()){alert('غير مسموح لك بحفظ هذا الجرد');return;}
+  const changed=currentStockTakeRows.filter(row=>row._dirty);
+  if(!changed.length){alert('لا توجد تعديلات جديدة للحفظ');return;}
+  const now=new Date().toISOString(),user=String(currentUser?.name||currentUser?.username||'User'),branch=currentStockTake.branch;
+  const payload=changed.map(row=>({branch,item_id:String(row.item_id),item_name:row.product_name,system_qty:canManageBranchStockSystem()?Number(row.system_qty||0):Number(row._originalSystemQty||0),actual_qty:Number(row.actual_qty||0),variance_reason:String(row.reason||''),notes:String(row.notes||''),updated_by:user,updated_at:now}));
+  const {error}=await supabaseClient.from('branch_inventory').upsert(payload,{onConflict:'branch,item_id'});
+  if(error){branchStockSchemaError(error);return;}
+  const logs=changed.map(row=>({branch,item_id:String(row.item_id),item_name:row.product_name,system_qty:Number(canManageBranchStockSystem()?row.system_qty:row._originalSystemQty||0),actual_qty:Number(row.actual_qty||0),variance_qty:Number(row.actual_qty||0)-Number(canManageBranchStockSystem()?row.system_qty:row._originalSystemQty||0),variance_reason:String(row.reason||''),notes:String(row.notes||''),changed_by:user,changed_role:String(currentUser?.role||''),created_at:now}));
+  const logResult=await supabaseClient.from('branch_stock_logs').insert(logs);if(logResult.error)console.warn('Branch stock history:',logResult.error.message);
+  changed.forEach(row=>{row._dirty=false;row._originalSystemQty=Number(row.system_qty||0);row.updated_at=now;row.updated_by=user;});branchStockDirty=false;
+  await logActivity('stock_take_draft','حفظ جرد الفرع',`الفرع: ${branch} | عدد المنتجات المعدلة: ${changed.length}`,{branch_name:branch});
+  renderStockTakeTable();updateStockTakeSummary();alert(`✅ تم حفظ ${changed.length} منتج في جرد ${branch}`);
+}
+
+async function refreshBranchStock(button){
+  if(branchStockDirty&&!confirm('سيتم إلغاء التعديلات غير المحفوظة وإعادة تحميل البيانات. هل تريد المتابعة؟'))return;
+  const old=button?.textContent;if(button){button.disabled=true;button.textContent='جاري التحديث...';}
+  try{await loadBranchInventory($('stockTakeBranch')?.value||currentStockTake?.branch||'');await logActivity('stock_take_refresh','تحديث بيانات الجرد',`فرع ${currentStockTake?.branch||'—'}`,{branch_name:currentStockTake?.branch||''});}
+  finally{if(button){button.disabled=false;button.textContent=old||'↻ Refresh';}}
+}
+
+function exportStockVarianceExcel(){
+  if(!currentStockTakeRows.length){alert('لا توجد بيانات للتصدير');return;}if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة');return;}
+  const data=currentStockTakeRows.map((row,i)=>({'#':i+1,'Product Name':row.product_name,'System Qty':Number(row.system_qty||0),'Actual Qty':Number(row.actual_qty||0),'Variance':Number(row.actual_qty||0)-Number(row.system_qty||0),'Variance Reason':row.reason||'','Notes':row.notes||'','Last Updated':row.updated_at?formatActivityTime(row.updated_at):'','Updated By':row.updated_by||''}));
+  const ws=XLSX.utils.json_to_sheet(data);ws['!cols']=[{wch:6},{wch:34},{wch:13},{wch:13},{wch:12},{wch:30},{wch:34},{wch:24},{wch:20}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Branch Stock');XLSX.writeFile(wb,`branch-stock-${currentStockTake?.branch||'branch'}-${getCairoDateISO()}.xlsx`);
+}
 
 
 function isManager() { return currentUser && getRoleKey(currentUser.role) === "manager"; }
@@ -1975,6 +2143,7 @@ async function login() {
   await loadShippingSystems();
   await loadOrders();
   await refreshPendingHeaderCount();
+  await initChatFeature();
   if (isAdmin() || isExecutiveAssistant()) { await loadUsers(); applyUsersFormRoleLock(); }
   await loadOKBItems();
 
@@ -1985,6 +2154,7 @@ async function logout() {
   await logActivity("logout", "تسجيل خروج", "قام المستخدم بتسجيل الخروج من السيستم");
   stopActivityLogNotifications();
   stopRolePermissionsSync();
+  stopChatRealtime();
   await stopOnlinePresence();
   sessionStorage.removeItem("okb_current_user");
   sessionStorage.clear();
@@ -2011,6 +2181,7 @@ async function checkLogin() {
     await loadShippingSystems();
     await loadOrders();
     await refreshPendingHeaderCount();
+    await initChatFeature();
     if (isAdmin() || isExecutiveAssistant()) { await loadUsers(); applyUsersFormRoleLock(); }
     await loadOKBItems();
     await showInitialPermittedPage();
@@ -2057,7 +2228,8 @@ document.querySelectorAll('.users-page-item').forEach(el => el.classList.toggle(
 document.querySelectorAll('.daily-report-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDailyReport));
 document.querySelectorAll('.doctor-rank-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDoctorRank));
 document.querySelectorAll('.permission-page-item').forEach(el => el.classList.toggle('hidden', !isAdmin()));
-if (settingsHeaderWrap) settingsHeaderWrap.style.display = (isAdmin() || (hasRoleFeature('settings_root') && (canOpenSettings || canOpenUsers || canOpenDailyReport || canOpenDoctorRank))) ? 'inline-flex' : 'none';
+document.querySelectorAll('.chat-page-item').forEach(el => el.classList.remove('hidden'));
+if (settingsHeaderWrap) settingsHeaderWrap.style.display = currentUser ? 'inline-flex' : 'none';
 const cleanAllDoctorsBtn = document.getElementById('cleanAllDoctorsBtn');
 if (cleanAllDoctorsBtn) cleanAllDoctorsBtn.style.display = isAdmin() ? '' : 'none';
 const activityBtn = document.getElementById("activityLogHeaderBtn");
@@ -2133,6 +2305,8 @@ function resetAppState() {
   analyticsDateTo = null;
   shippingDateFrom = null;
   shippingDateTo = null;
+  shippingDateAutoCurrentMonth = true;
+  shippingAutoMonthKey = '';
 
   Object.keys(pageState).forEach(k => pageState[k] = 1);
 
@@ -2369,7 +2543,7 @@ function renderPendingOrders(){
 async function openPendingOrder(orderId){const o=pendingOrders.find(x=>String(x.id)===String(orderId));if(!o)return;const branch=pendingOrderBranch(o);if(!branch)return;const ticketId=getTicketId(o);await openBranchPage(branch);setTimeout(()=>{const search=document.getElementById('bSearchInput');if(search){search.value=ticketId;search.dispatchEvent(new Event('input',{bubbles:true}));search.focus();}},250);}
 
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "activityLogPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
@@ -2377,7 +2551,7 @@ function hideAllPages() {
 
 function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-function showShippingRankPage() { if (!canViewShippingRank()) return; branchShippingRankOverride = null; hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
+function showShippingRankPage() { if (!canViewShippingRank()) return; branchShippingRankOverride = null; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
 function showDoctorRankPage() { if (!hasRoleFeature('doctor_rank')) return; hideAllPages(); $("doctorRankPage").classList.remove("hidden"); setActiveMenu("doctorRankPage"); setTimeout(() => { renderDoctorRank(); renderDoctorCharts(); }, 150); }
 function showBranchRankPage() {
   if(!hasRoleFeature('daily_report')) return;
@@ -2458,6 +2632,7 @@ function openHeaderSettingsPage(page) {
   if (page === 'daily') return showBranchRankPage();
   if (page === 'doctorRank') return showDoctorRankPage();
   if (page === 'permission') return showPermissionPage();
+  if (page === 'chat') return showChatPage();
 }
 
 async function showInitialPermittedPage() {
@@ -4120,6 +4295,7 @@ function renderGlobalShippingSections() {
 }
 
 function renderShippingRank() {
+  setShippingCurrentMonthRange(false);
   updateShippingMiniDashboard();
   renderGlobalShippingSections();
   const pagination = document.getElementById("shippingRankPagination");
@@ -4202,7 +4378,30 @@ function applyShippingDateFilter() {
   onShippingFilterChange();
 }
 
+function getCurrentShippingMonthRange(){
+  const today=getCairoDateISO();
+  const [year,month]=today.split('-').map(Number);
+  const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
+  const mm=String(month).padStart(2,'0');
+  return {key:`${year}-${mm}`,from:`${year}-${mm}-01`,to:`${year}-${mm}-${String(lastDay).padStart(2,'0')}`};
+}
+
+function setShippingCurrentMonthRange(force=false){
+  const range=getCurrentShippingMonthRange();
+  if(!force&&(!shippingDateAutoCurrentMonth||shippingAutoMonthKey===range.key))return;
+  shippingDateAutoCurrentMonth=true;
+  shippingAutoMonthKey=range.key;
+  shippingDateFrom=range.from;
+  shippingDateTo=range.to;
+  if($("shippingFromDate"))$("shippingFromDate").value=range.from;
+  if($("shippingToDate"))$("shippingToDate").value=range.to;
+  const badge=$("shippingDateBadge");
+  if(badge){badge.textContent=`📅 الشهر الحالي: ${range.from} → ${range.to}`;badge.classList.add('visible');}
+}
+
 function onShippingFilterChange() {
+  shippingDateAutoCurrentMonth = false;
+  shippingAutoMonthKey = '';
   shippingDateFrom = $("shippingFromDate")?.value || null;
   shippingDateTo = $("shippingToDate")?.value || null;
   const badge = $("shippingDateBadge");
@@ -4220,10 +4419,7 @@ function onShippingFilterChange() {
 }
 
 function resetShippingDateFilter() {
-  shippingDateFrom = null; shippingDateTo = null;
-  if ($("shippingFromDate")) $("shippingFromDate").value = "";
-  if ($("shippingToDate")) $("shippingToDate").value = "";
-  if ($("shippingDateBadge")) $("shippingDateBadge").classList.remove("visible");
+  setShippingCurrentMonthRange(true);
   renderShippingRank(); renderShippingCharts();
 }
 
@@ -5975,6 +6171,7 @@ function getOrderDisplayStatus(order) {
 
 function matchesOrderStatusFilter(order, filterValue) {
   if (!filterValue || filterValue === 'الكل') return true;
+  if (filterValue === 'PaymentProof') return Boolean(String(order?.payment_image || '').trim());
   if (filterValue === 'Returned14') return isReturnWithin14Days(order);
   if (filterValue === 'Returned') return order?.status === 'Returned' && !isReturnWithin14Days(order);
   return order?.status === filterValue;
@@ -6015,6 +6212,7 @@ function openBranchShippingRankFromBranch() {
   if (!(isAdmin() || isOperationManager())) { alert('زر Shipping Rank من صفحة الفرع متاح للأدمن و Operation Manager فقط'); return; }
   if (!currentBranchName) { alert('افتح صفحة فرع أولاً'); return; }
   branchShippingRankOverride = currentBranchName;
+  setShippingCurrentMonthRange(true);
   hideAllPages();
   const page = document.getElementById('shippingRankPage');
   if (page) page.classList.remove('hidden');
@@ -6992,7 +7190,6 @@ async function loadKhaznaData() {
       .from('orders')
       .select('*')
       .eq('branch', currentBranchName)
-      .in('status', ['Signed', 'Returned'])
       .order('created_at', { ascending: false })
       .range(rangeFrom, rangeTo);
 
@@ -7003,7 +7200,7 @@ async function loadKhaznaData() {
   }
 
   khaznaOrders = allData
-    .filter(o => (o.status === 'Signed' || isReturnWithin14Days(o)) && isOrderInAccountingDateRange(o, from || null, to || null))
+    .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
     .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
 
   khaznaSelectedIds = new Set();
@@ -7647,6 +7844,7 @@ let _collectOrderId   = null;
 let _collectOrderSrc  = null;
 let _collectPaymentMethod = 'COD';
 let _collectExistingProof = '';
+let _collectIsFullyPrepaid = false;
 
 function selectCollectPaymentMethod(method) {
   _collectPaymentMethod = method || 'COD';
@@ -7656,11 +7854,10 @@ function selectCollectPaymentMethod(method) {
   });
   const proofWrap = document.getElementById('collectProofWrap');
   const proofHint = document.getElementById('collectProofHint');
-  if (proofWrap) proofWrap.style.display = (_collectPaymentMethod === 'COD') ? 'none' : 'block';
+  const needsProof = _collectPaymentMethod === 'Instapay' || _collectPaymentMethod === 'Wallet';
+  if (proofWrap) proofWrap.style.display = needsProof ? 'block' : 'none';
   if (proofHint) {
-    proofHint.textContent = _collectPaymentMethod === 'COD'
-      ? ''
-      : '⚠️ يجب إرفاق إثبات الدفع قبل تأكيد التحصيل.';
+    proofHint.textContent = needsProof ? '⚠️ يجب إرفاق إثبات الدفع قبل تأكيد التحصيل.' : '';
   }
 }
 
@@ -7728,6 +7925,31 @@ function openCollectModal(orderId, customerName, price, deposit, src) {
   document.getElementById('collectSalesInput').value = salesValue;
   document.getElementById('collectShippingInput').value = last ? Number(last.shipping || 0) : '';
 
+  const paidAmount = Math.max(Number(deposit || 0), 0);
+  _collectIsFullyPrepaid = calculationPrice > 0 && paidAmount >= calculationPrice;
+  const isPartiallyPaid = paidAmount > 0 && paidAmount < calculationPrice;
+  const paymentSection = document.getElementById('collectPaymentMethodSection');
+  const depositNotice = document.getElementById('collectDepositNotice');
+  if (paymentSection) paymentSection.style.display = _collectIsFullyPrepaid ? 'none' : 'block';
+  if (depositNotice) {
+    if (_collectIsFullyPrepaid) {
+      depositNotice.style.display = 'block';
+      depositNotice.style.color = '#10b981';
+      depositNotice.style.borderColor = 'rgba(16,185,129,.45)';
+      depositNotice.style.background = 'rgba(16,185,129,.10)';
+      depositNotice.textContent = `✅ العميل دفع قيمة الأوردر بالكامل مسبقًا: ${paidAmount.toLocaleString('ar-EG')} ج.م — لا يلزم اختيار طريقة دفع.`;
+    } else if (isPartiallyPaid) {
+      depositNotice.style.display = 'block';
+      depositNotice.style.color = '#f59e0b';
+      depositNotice.style.borderColor = 'rgba(245,158,11,.45)';
+      depositNotice.style.background = 'rgba(245,158,11,.10)';
+      depositNotice.textContent = `⚠️ العميل دافع جزء: ${paidAmount.toLocaleString('ar-EG')} من ${calculationPrice.toLocaleString('ar-EG')} ج.م — المتبقي ${normalRemaining.toLocaleString('ar-EG')} ج.م.`;
+    } else {
+      depositNotice.style.display = 'none';
+      depositNotice.textContent = '';
+    }
+  }
+
   _collectExistingProof = order && order.payment_image ? String(order.payment_image) : '';
   const proofInput = document.getElementById('collectProofInput');
   if (proofInput) proofInput.value = '';
@@ -7739,7 +7961,7 @@ function openCollectModal(orderId, customerName, price, deposit, src) {
   } else if (proofPreview) {
     proofPreview.style.display = 'none';
   }
-  selectCollectPaymentMethod(last && last.payment_method ? last.payment_method : 'COD');
+  selectCollectPaymentMethod(_collectIsFullyPrepaid ? 'Prepaid' : (last && last.payment_method ? last.payment_method : 'COD'));
   calcCollect();
 }
 
@@ -7749,6 +7971,11 @@ function closeCollectModal() {
   _collectOrderSrc = null;
   _collectPaymentMethod = 'COD';
   _collectExistingProof = '';
+  _collectIsFullyPrepaid = false;
+  const paymentSection = document.getElementById('collectPaymentMethodSection');
+  const depositNotice = document.getElementById('collectDepositNotice');
+  if (paymentSection) paymentSection.style.display = 'block';
+  if (depositNotice) { depositNotice.style.display = 'none'; depositNotice.textContent = ''; }
   clearCollectProof();
 }
 
@@ -7807,11 +8034,11 @@ async function confirmCollectOrder() {
   const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
   const net      = sales - shipping;
   const customerLabel = document.getElementById('collectCustomerLabel').textContent;
-  const paymentMethod = _collectPaymentMethod || 'COD';
+  const paymentMethod = _collectIsFullyPrepaid ? 'Prepaid' : (_collectPaymentMethod || 'COD');
   const proofInput = document.getElementById('collectProofInput');
   const proofFile = proofInput && proofInput.files && proofInput.files.length ? proofInput.files[0] : null;
 
-  if (paymentMethod !== 'COD' && !proofFile && !_collectExistingProof) {
+  if ((paymentMethod === 'Instapay' || paymentMethod === 'Wallet') && !proofFile && !_collectExistingProof) {
     alert('⚠️ لازم ترفق إثبات الدفع الأول لو طريقة الدفع Instapay أو Wallet.');
     if (proofInput) proofInput.focus();
     return;
@@ -8039,6 +8266,211 @@ function printReconciliationReport() {
 }
 
 // ============================================================
+// ===== CHAT - REALTIME USER MESSAGING =====
+let chatUsers = [];
+let chatSelectedUser = null;
+let chatMessages = [];
+let chatRealtimeChannel = null;
+let chatPollingTimer = null;
+let chatAttachmentFile = null;
+let chatSchemaWarningShown = false;
+
+function chatCurrentUsername(){ return String(currentUser?.username || currentUser?.id || '').trim(); }
+function chatUserKey(user){ return String(user?.username || user?.id || '').trim(); }
+function chatJs(value){ return String(value ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n]/g,' '); }
+
+function updateChatUnreadBadge(count){
+  const value = Math.max(0, Number(count || 0));
+  ['chatUnreadBadge','settingsChatUnreadBadge'].forEach(id=>{
+    const badge=document.getElementById(id);if(!badge)return;
+    badge.textContent=value>99?'99+':String(value);
+    badge.classList.toggle('hidden',value<1);
+  });
+}
+
+function handleChatSchemaError(error){
+  console.warn('Chat:', error?.message || error);
+  if (chatSchemaWarningShown) return;
+  chatSchemaWarningShown = true;
+  alert('ميزة Chat تحتاج تشغيل ملف chat_setup.sql في Supabase أولاً.');
+}
+
+async function refreshChatUnreadCount(){
+  if (!currentUser) return updateChatUnreadBadge(0);
+  const me = chatCurrentUsername();
+  const { data, error } = await supabaseClient.from('chat_messages').select('id,sender_username').eq('receiver_username', me).eq('is_read', false);
+  if (error) { handleChatSchemaError(error); return; }
+  updateChatUnreadBadge((data || []).length);
+  const counts = {};
+  (data || []).forEach(row => { const key=String(row.sender_username||''); counts[key]=(counts[key]||0)+1; });
+  chatUsers.forEach(user => { user._unread = counts[chatUserKey(user)] || 0; });
+  if (!document.getElementById('chatPage')?.classList.contains('hidden')) renderChatUsers();
+}
+
+function stopChatRealtime(){
+  if (chatRealtimeChannel) { try { supabaseClient.removeChannel(chatRealtimeChannel); } catch(e){} }
+  chatRealtimeChannel = null;
+  if (chatPollingTimer) clearInterval(chatPollingTimer);
+  chatPollingTimer = null;
+  updateChatUnreadBadge(0);
+}
+
+function startChatRealtime(){
+  stopChatRealtime();
+  if (!currentUser) return;
+  const me = chatCurrentUsername();
+  chatRealtimeChannel = supabaseClient.channel(`okb-chat-${me}-${Date.now()}`)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},async payload=>{
+      const row=payload?.new||{};
+      const isForMe=String(row.receiver_username||'')===me;
+      const isMine=String(row.sender_username||'')===me;
+      if (!isForMe && !isMine) return;
+      const selectedKey=chatUserKey(chatSelectedUser);
+      const pageOpen=!document.getElementById('chatPage')?.classList.contains('hidden');
+      const belongsToOpenChat=selectedKey && (String(row.sender_username||'')===selectedKey || String(row.receiver_username||'')===selectedKey);
+      if (pageOpen && belongsToOpenChat) {
+        await loadChatMessages();
+        if (isForMe) await markChatConversationRead(selectedKey);
+      }
+      await refreshChatUnreadCount();
+    })
+    .subscribe();
+  chatPollingTimer=setInterval(refreshChatUnreadCount,15000);
+}
+
+async function initChatFeature(){
+  if (!currentUser) return;
+  startChatRealtime();
+  await refreshChatUnreadCount();
+}
+
+async function showChatPage(){
+  if (!currentUser) return;
+  hideAllPages();
+  document.getElementById('chatPage')?.classList.remove('hidden');
+  setActiveMenu('chatPage');
+  await loadChatUsers();
+  await refreshChatUnreadCount();
+  if (chatSelectedUser) await loadChatMessages();
+}
+
+async function refreshChatPage(button){
+  const old=button?.textContent;
+  if(button){button.disabled=true;button.textContent='جاري التحديث...';}
+  try{ await loadChatUsers(); await refreshChatUnreadCount(); if(chatSelectedUser)await loadChatMessages(); }
+  finally{if(button){button.disabled=false;button.textContent=old||'↻ Refresh';}}
+}
+
+async function loadChatUsers(){
+  const {data,error}=await supabaseClient.from('user').select('id,name,username,role,active').order('name',{ascending:true});
+  if(error){console.error('Chat users:',error);return;}
+  const me=chatCurrentUsername();
+  chatUsers=(data||[]).filter(user=>user.active!==false&&chatUserKey(user)!==me);
+  renderChatUsers();
+}
+
+function renderChatUsers(){
+  const list=document.getElementById('chatUsersList'); if(!list)return;
+  const q=String(document.getElementById('chatUserSearch')?.value||'').trim().toLowerCase();
+  const filtered=chatUsers.filter(user=>!q||[user.name,user.username,getRoleDisplayName(user.role)].some(v=>String(v||'').toLowerCase().includes(q)));
+  if(!filtered.length){list.innerHTML='<div class="chat-empty">لا يوجد مستخدمون مطابقون</div>';return;}
+  list.innerHTML=filtered.map(user=>{
+    const key=chatUserKey(user), active=chatUserKey(chatSelectedUser)===key;
+    return `<button class="chat-user-row ${active?'active':''}" type="button" onclick="selectChatUser('${chatJs(key)}')"><span class="chat-user-avatar">${escapeHTML(String(user.name||user.username||'U').trim().charAt(0).toUpperCase())}</span><span class="chat-user-meta"><strong>${escapeHTML(user.name||user.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(user.role))}</small></span>${Number(user._unread||0)>0?`<span class="chat-user-unread">${Number(user._unread)>99?'99+':Number(user._unread)}</span>`:''}</button>`;
+  }).join('');
+}
+
+async function selectChatUser(key){
+  chatSelectedUser=chatUsers.find(user=>chatUserKey(user)===String(key))||null;
+  if(!chatSelectedUser)return;
+  renderChatUsers();
+  const head=document.getElementById('chatConversationHead');
+  if(head)head.innerHTML=`<div class="chat-avatar">${escapeHTML(String(chatSelectedUser.name||chatSelectedUser.username||'U').trim().charAt(0).toUpperCase())}</div><div><strong>${escapeHTML(chatSelectedUser.name||chatSelectedUser.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(chatSelectedUser.role))}</small></div>`;
+  const input=document.getElementById('chatMessageInput'),send=document.getElementById('chatSendBtn'),file=document.getElementById('chatAttachmentInput');
+  if(input){input.disabled=false;input.focus();} if(send)send.disabled=false; if(file)file.disabled=false;
+  await loadChatMessages();
+  await markChatConversationRead(chatUserKey(chatSelectedUser));
+}
+
+async function fetchChatDirection(sender,receiver){
+  return supabaseClient.from('chat_messages').select('*').eq('sender_username',sender).eq('receiver_username',receiver).order('created_at',{ascending:true}).limit(500);
+}
+
+async function loadChatMessages(){
+  const box=document.getElementById('chatMessages'); if(!box||!chatSelectedUser)return;
+  const me=chatCurrentUsername(),other=chatUserKey(chatSelectedUser);
+  const [a,b]=await Promise.all([fetchChatDirection(me,other),fetchChatDirection(other,me)]);
+  if(a.error||b.error){handleChatSchemaError(a.error||b.error);return;}
+  chatMessages=[...(a.data||[]),...(b.data||[])].sort((x,y)=>new Date(x.created_at)-new Date(y.created_at));
+  if(!chatMessages.length){box.innerHTML='<div class="chat-empty">ابدأ أول رسالة في المحادثة</div>';return;}
+  box.innerHTML=chatMessages.map(row=>{
+    const mine=String(row.sender_username||'')===me;
+    const attachment=row.attachment_url?`<img src="${escapeHTML(row.attachment_url)}" alt="Chat attachment" onclick="openChatAttachment('${encodeURIComponent(row.attachment_url)}')"/>`:'';
+    return `<div class="chat-message ${mine?'mine':''}">${row.message?`<div class="chat-message-text">${escapeHTML(row.message)}</div>`:''}${attachment}<div class="chat-message-time">${formatActivityTime(row.created_at)}</div></div>`;
+  }).join('');
+  requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
+}
+
+function openChatAttachment(encodedUrl){ const url=decodeURIComponent(encodedUrl||''); if(url)window.open(url,'_blank','noopener'); }
+
+async function markChatConversationRead(senderUsername){
+  const me=chatCurrentUsername(); if(!me||!senderUsername)return;
+  const {error}=await supabaseClient.from('chat_messages').update({is_read:true,read_at:new Date().toISOString()}).eq('receiver_username',me).eq('sender_username',senderUsername).eq('is_read',false);
+  if(error){console.warn('Chat read:',error.message);return;}
+  const user=chatUsers.find(x=>chatUserKey(x)===senderUsername); if(user)user._unread=0;
+  await refreshChatUnreadCount();
+}
+
+function previewChatAttachment(input){
+  const file=input?.files?.[0]||null;
+  if(file&&!validateImageFile(file)){input.value='';return;}
+  chatAttachmentFile=file;
+  const preview=document.getElementById('chatAttachmentPreview'); if(!preview)return;
+  if(!file){preview.classList.add('hidden');preview.innerHTML='';return;}
+  const url=URL.createObjectURL(file);
+  preview.classList.remove('hidden');
+  preview.innerHTML=`<img src="${url}" alt="Preview"><span>${escapeHTML(file.name)}</span><button type="button" onclick="clearChatAttachment()">✕</button>`;
+}
+
+function clearChatAttachment(){
+  chatAttachmentFile=null;
+  const input=document.getElementById('chatAttachmentInput');if(input)input.value='';
+  const preview=document.getElementById('chatAttachmentPreview');if(preview){preview.classList.add('hidden');preview.innerHTML='';}
+}
+
+async function uploadChatAttachment(file){
+  const safeName=String(file.name||'image.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=`${chatCurrentUsername()}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+  const {error}=await supabaseClient.storage.from('chat-attachments').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
+  if(error)throw error;
+  return supabaseClient.storage.from('chat-attachments').getPublicUrl(path).data?.publicUrl||'';
+}
+
+async function sendChatMessage(event){
+  event?.preventDefault();
+  if(!chatSelectedUser)return;
+  const input=document.getElementById('chatMessageInput'),button=document.getElementById('chatSendBtn');
+  const message=String(input?.value||'').trim(),file=chatAttachmentFile;
+  if(!message&&!file)return;
+  const old=button?.textContent;if(button){button.disabled=true;button.textContent='جاري الإرسال...';}
+  try{
+    let attachmentUrl='';
+    if(file)attachmentUrl=await uploadChatAttachment(file);
+    const payload={
+      sender_id:String(currentUser?.id||''),sender_username:chatCurrentUsername(),sender_name:String(currentUser?.name||currentUser?.username||'User'),
+      receiver_id:String(chatSelectedUser.id||''),receiver_username:chatUserKey(chatSelectedUser),receiver_name:String(chatSelectedUser.name||chatSelectedUser.username||'User'),
+      message:message||null,attachment_url:attachmentUrl||null,is_read:false
+    };
+    const {error}=await supabaseClient.from('chat_messages').insert([payload]);
+    if(error)throw error;
+    if(input)input.value='';clearChatAttachment();
+    const activityType=attachmentUrl?'chat_attachment':'chat_message';
+    await logActivity(activityType,attachmentUrl?'تم إرسال رسالة ومرفق في Chat':'تم إرسال رسالة في Chat',`من: ${currentUser?.name||currentUser?.username||'User'} | إلى: ${chatSelectedUser.name||chatSelectedUser.username||'User'}${message?` | نص مختصر: ${message.slice(0,80)}`:''}` ,{branch_name:'Chat'});
+    await loadChatMessages();
+  }catch(error){handleChatSchemaError(error);alert('تعذر إرسال الرسالة: '+(error?.message||error));}
+  finally{if(button){button.disabled=false;button.textContent=old||'إرسال ➤';}input?.focus();}
+}
+
 // ===== BARCODE SCANNER - GLOBAL =====
 // ============================================================
 
@@ -8428,7 +8860,8 @@ function getKhaznaFilteredOrders() {
   const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
 
   return khaznaOrders.filter(o => {
-    if (o.status !== 'Signed' && !isReturnWithin14Days(o)) return false;
+    const isPaymentProofFilter = statusFilter === 'PaymentProof';
+    if (!isPaymentProofFilter && o.status !== 'Signed' && !isReturnWithin14Days(o)) return false;
     
     // ✅ استخدام matchesOrderSearch بدلاً من البحث اليدوي
     const matchSearch = !search || matchesOrderSearch(o, search);
