@@ -280,8 +280,8 @@ async function logActivity(actionType, actionTitle, actionDetails = '', extra = 
     return false;
   }
 }
-function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',daily_locked:'🔒',daily_unlocked:'🔓',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
-function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
+function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
+function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
 function formatActivityTime(iso){
   const date=parsePreciseServerDate(iso);
   if(!date)return iso||'';
@@ -478,7 +478,7 @@ function getProductReportDoctor(order){
 }
 function getProductReportFilters(){ return {from:$('productReportFrom')?.value||null,to:$('productReportTo')?.value||null,branch:$('productReportBranch')?.value||'all',doctor:$('productReportDoctor')?.value||'all',search:String($('productReportSearch')?.value||'').trim().toLowerCase()}; }
 function productOrderMatchesFilters(order,filters){
-  const d=String(order?.created_at||'').split('T')[0];
+  const d=getLocalDateISO(order?.created_at);
   if(filters.from && d<filters.from) return false; if(filters.to && d>filters.to) return false;
   const branch=getProductReportOrderBranch(order);
   const allowedBranches=['nasr-city','alexandria','mansoura','tanta'];
@@ -1632,6 +1632,31 @@ function getCollectMeta(order) {
   }
 }
 
+function toLocalDateTimeInputValue(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const pad = number => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function applyAdminOrderDateChange(orderData, existingOrder, inputId) {
+  if (!isAdmin() || !existingOrder) return null;
+  const inputValue = String(document.getElementById(inputId)?.value || '').trim();
+  if (!inputValue) return null;
+  const selectedDate = new Date(inputValue);
+  if (Number.isNaN(selectedDate.getTime())) return null;
+  const selectedISO = selectedDate.toISOString();
+  orderData.created_at = selectedISO;
+
+  const collectMeta = getCollectMeta(existingOrder);
+  if (Array.isArray(collectMeta.history) && collectMeta.history.length) {
+    const history = collectMeta.history.map(entry => ({ ...entry }));
+    history[history.length - 1].at = selectedISO;
+    orderData.notes = buildNotesWithCollectMeta(orderData.notes, { ...collectMeta, history });
+  }
+  return selectedISO;
+}
+
 // Returns the real order total and repairs the legacy collection bug logically.
 // Older affected rows have price == collected remaining while deposit is still
 // stored, e.g. price 812 + deposit 700 although the original total was 1512.
@@ -2098,7 +2123,7 @@ function isInDateRange(order) {
   if (!activeDateFrom && !activeDateTo) return true;
   const raw = order.created_at;
   if (!raw) return true;
-  const orderDate = raw.split("T")[0];
+  const orderDate = getLocalDateISO(raw);
   if (activeDateFrom && activeDateTo) return orderDate >= activeDateFrom && orderDate <= activeDateTo;
   if (activeDateFrom) return orderDate >= activeDateFrom;
   return orderDate <= activeDateTo;
@@ -2688,6 +2713,10 @@ function resetForm() {
   orderForm.reset(); 
   editId = null; 
   submitBtn.textContent = "إضافة الأوردر"; 
+  const adminDateWrap = document.getElementById('adminOrderDateWrap');
+  const adminDateInput = document.getElementById('adminOrderDate');
+  if (adminDateWrap) adminDateWrap.style.display = 'none';
+  if (adminDateInput) adminDateInput.value = '';
   if (!isAdmin()) { 
     employeeName.value = currentUser.name; 
     employeeName.readOnly = true; 
@@ -3602,7 +3631,7 @@ function renderOrders() {
         <td>${o.employee_name || ""}</td>
         <td>${o.doctor_name || ""}</td>
         <td>${o.order_number || ""}</td>  
-        <td>${o.customer_name || ""}</td>
+        <td><button class="customer-profile-link" type="button" onclick="openCustomerProfile('${o.id}','dashboard')">${escapeHTML(o.customer_name || '')}</button></td>
         <td>${o.phone || ""}</td>
         <td>${o.phone2 || ""}</td> 
         <td>${o.shipping_company || ""}</td>
@@ -3715,6 +3744,7 @@ orderForm.addEventListener("submit", async (e) => {
     product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts),
     branch:           isAdmin() ? (selectedAdminBranch || dashboardEditingOrder?.branch || null) : (dashboardEditingOrder?.branch || null)
   };
+  const changedOrderDate = applyAdminOrderDateChange(orderData, dashboardEditingOrder, 'adminOrderDate');
 
   const hasValidDashboardPrice = Number.isFinite(Number(orderData.price)) && Number(orderData.price) >= 0;
   if (!orderData.employee_name || !orderData.doctor_name || !orderData.customer_name 
@@ -3783,7 +3813,7 @@ orderForm.addEventListener("submit", async (e) => {
     }
     
     const savedOrder = (result && result.data && result.data[0]) ? result.data[0] : { id: orderId, ...orderData };
-    await logActivity(wasEditingOrder ? 'order_updated' : 'order_created', wasEditingOrder ? 'تم تعديل أوردر' : 'تم إضافة أوردر جديد', `العميل: ${orderData.customer_name} | الحالة: ${orderData.status} | الإجمالي: ${money(orderData.price)}`, getActivityOrderInfo(savedOrder));
+    await logActivity(wasEditingOrder ? 'order_updated' : 'order_created', wasEditingOrder ? 'تم تعديل أوردر' : 'تم إضافة أوردر جديد', `العميل: ${orderData.customer_name} | الحالة: ${orderData.status} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`, getActivityOrderInfo(savedOrder));
     const appliedDiscount = Number(document.getElementById('dashDiscountInput')?.value || getOrderMeta(savedOrder).discount || 0);
     if(appliedDiscount>0) await logActivity('order_discount','تم تطبيق خصم على أوردر',`العميل: ${orderData.customer_name} | قيمة الخصم: ${money(appliedDiscount)} | الإجمالي بعد الخصم: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder));
     resetForm();
@@ -3857,6 +3887,10 @@ window.editOrder = function (id) {
   document.getElementById('phone2').value = o.phone2 || ""; 
   shippingCompany.value = o.shipping_company || "";
   area.value = o.area || "";
+  const adminDateWrap = document.getElementById('adminOrderDateWrap');
+  const adminDateInput = document.getElementById('adminOrderDate');
+  if (adminDateWrap) adminDateWrap.style.display = isAdmin() ? 'block' : 'none';
+  if (adminDateInput) adminDateInput.value = isAdmin() ? toLocalDateTimeInputValue(o.created_at) : '';
 
   setProductCartFromOrder('dash', o);
 
@@ -4010,7 +4044,7 @@ function getAnalyticsOrders() {
   if (!analyticsDateFrom && !analyticsDateTo) return orders;
   return orders.filter(o => {
     const raw = o.created_at; if (!raw) return true;
-    const d = raw.split("T")[0];
+    const d = getLocalDateISO(raw);
     if (analyticsDateFrom && analyticsDateTo) return d >= analyticsDateFrom && d <= analyticsDateTo;
     if (analyticsDateFrom) return d >= analyticsDateFrom;
     return d <= analyticsDateTo;
@@ -4463,7 +4497,7 @@ function getShippingFilteredOrders() {
 
   return src.filter(o => {
     const raw = o.created_at; if (!raw) return true;
-    const d = raw.split("T")[0];
+    const d = getLocalDateISO(raw);
     if (shippingDateFrom && shippingDateTo) return d >= shippingDateFrom && d <= shippingDateTo;
     if (shippingDateFrom) return d >= shippingDateFrom;
     return d <= shippingDateTo;
@@ -6135,7 +6169,7 @@ function getBranchFilteredOrders() {
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
     const matchDate = (() => {
       if (!branchActiveDateFrom && !branchActiveDateTo) return true;
-      const d = (o.created_at || '').split('T')[0];
+      const d = getLocalDateISO(o.created_at);
       if (branchActiveDateFrom && branchActiveDateTo) return d >= branchActiveDateFrom && d <= branchActiveDateTo;
       if (branchActiveDateFrom) return d >= branchActiveDateFrom;
       return d <= branchActiveDateTo;
@@ -6318,7 +6352,7 @@ function renderBranchOrders() {
       <td><input type="checkbox" class="row-check branch-row-check" data-id="${o.id}" ${isSelected?'checked':''} onchange="toggleBranchOrderSelection(this,'${o.id}')"/></td>
       <td>${num(start + i + 1)}</td>
       <td>${escapeHTML(getTicketId(o) || '—')}</td>
-      <td>${o.customer_name || ''}</td>
+      <td><button class="customer-profile-link" type="button" onclick="openCustomerProfile('${o.id}','branch')">${escapeHTML(o.customer_name || '')}</button></td>
       <td>${o.phone || ''}</td>
       <td>${o.phone2 || ""}</td>
       <td>${o.order_number || ""}</td>
@@ -6559,6 +6593,10 @@ function editBranchOrder(id) {
   setValue('bPhone2',o.phone2||'');
   setValue('bShippingCompany',o.shipping_company||getBranchShippingCompanyName(currentBranchName));
   setValue('bArea',o.area||'');
+  const adminBranchDateWrap = document.getElementById('adminBranchOrderDateWrap');
+  const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
+  if (adminBranchDateWrap) adminBranchDateWrap.style.display = isAdmin() ? 'block' : 'none';
+  if (adminBranchDateInput) adminBranchDateInput.value = isAdmin() ? toLocalDateTimeInputValue(o.created_at) : '';
   setValue('bStatus',o.status||'Delivering');
   const branchStatusSelect = document.getElementById('bStatus');
   if (branchStatusSelect) {
@@ -6670,6 +6708,7 @@ document.addEventListener('DOMContentLoaded', function() {
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
     };
+    const changedOrderDate = applyAdminOrderDateChange(orderData, editingOrder, 'adminBranchOrderDate');
 
     const branchPaymentInput = document.getElementById('bPaymentImage');
     const branchPaymentFile = branchPaymentInput?.files?.[0];
@@ -6717,13 +6756,17 @@ document.addEventListener('DOMContentLoaded', function() {
           savedOrder.payment_image=imgUrl;
         }
       }
-      await logActivity(wasEditing?'order_updated':'order_created',wasEditing?'تم تعديل أوردر من صفحة الفرع':'تم إضافة أوردر جديد من الفرع',`العميل: ${orderData.customer_name} | الفرع: ${currentBranchName} | الإجمالي: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
+      await logActivity(wasEditing?'order_updated':'order_created',wasEditing?'تم تعديل أوردر من صفحة الفرع':'تم إضافة أوردر جديد من الفرع',`العميل: ${orderData.customer_name} | الفرع: ${currentBranchName} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
       const branchDiscount = Number(document.getElementById('branchDiscountInput')?.value || 0);
       if(branchDiscount>0) await logActivity('order_discount','تم تطبيق خصم على أوردر',`العميل: ${orderData.customer_name} | قيمة الخصم: ${money(branchDiscount)} | الإجمالي بعد الخصم: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
       if(payImgInput?.files[0]) await logActivity('payment_proof_attached','تم إرفاق إثبات دفع للأوردر',`العميل: ${orderData.customer_name} | تم رفع صورة إثبات الدفع أثناء ${wasEditing?'تعديل':'إضافة'} الأوردر`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
       branchEditId=null;
       branchEditExistingPaymentImage='';
       branchForm.reset();
+      const adminBranchDateWrap = document.getElementById('adminBranchOrderDateWrap');
+      const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
+      if (adminBranchDateWrap) adminBranchDateWrap.style.display = 'none';
+      if (adminBranchDateInput) adminBranchDateInput.value = '';
       clearProductCart('branch');
       clearBranchPaymentImage();
       setBranchShippingSelectToCurrentBranch();
@@ -6915,7 +6958,7 @@ function getOrderAccountingDateISO(order) {
 }
 
 function getOrderAccountingDateKey(order) {
-  return String(getOrderAccountingDateISO(order) || '').split('T')[0] || '';
+  return getLocalDateISO(getOrderAccountingDateISO(order));
 }
 
 function isOrderInAccountingDateRange(order, from, to) {
@@ -7909,6 +7952,18 @@ let _collectPaymentMethod = 'COD';
 let _collectExistingProof = '';
 let _collectIsFullyPrepaid = false;
 
+function buildCollectionTimestamp(dateKey) {
+  const selected = String(dateKey || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(selected)) return new Date().toISOString();
+  const [year, month, day] = selected.split('-').map(Number);
+  const now = new Date();
+  const timestamp = new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.getFullYear() !== year || timestamp.getMonth() !== month - 1 || timestamp.getDate() !== day) {
+    return new Date().toISOString();
+  }
+  return timestamp.toISOString();
+}
+
 function selectCollectPaymentMethod(method) {
   _collectPaymentMethod = method || 'COD';
   ['COD','Instapay','Wallet'].forEach(m => {
@@ -7975,6 +8030,14 @@ function openCollectModal(orderId, customerName, price, deposit, src) {
   const history = Array.isArray(meta.history) ? meta.history : [];
   const last = history.length ? history[history.length - 1] : null;
 
+  const collectDateWrap = document.getElementById('collectDateAdminWrap');
+  const collectDateInput = document.getElementById('collectDateInput');
+  if (collectDateWrap) collectDateWrap.style.display = isAdmin() ? 'flex' : 'none';
+  if (collectDateInput) {
+    collectDateInput.disabled = !isAdmin();
+    collectDateInput.value = isAdmin() ? getLocalDateISO(last?.at || new Date()) : '';
+  }
+
   // لو آخر تحصيل اتسجل بصفر، نرجّع في نافذة التعديل الحسبة الأصلية تلقائيًا
   // حتى يقدر الأدمن يصحح الأوردر بسهولة لو الصفر اتكتب بالغلط.
   const previousNormalSales = [...history].reverse().find(x => Number(x?.sales || 0) > 0);
@@ -8039,6 +8102,10 @@ function closeCollectModal() {
   _collectPaymentMethod = 'COD';
   _collectExistingProof = '';
   _collectIsFullyPrepaid = false;
+  const collectDateWrap = document.getElementById('collectDateAdminWrap');
+  const collectDateInput = document.getElementById('collectDateInput');
+  if (collectDateWrap) collectDateWrap.style.display = 'none';
+  if (collectDateInput) { collectDateInput.value = ''; collectDateInput.disabled = true; }
   const paymentSection = document.getElementById('collectPaymentMethodSection');
   const depositNotice = document.getElementById('collectDepositNotice');
   if (paymentSection) paymentSection.style.display = 'block';
@@ -8123,6 +8190,27 @@ async function confirmCollectOrder() {
       return;
     }
 
+    const collectDateInput = document.getElementById('collectDateInput');
+    const selectedCollectDate = isAdmin() ? String(collectDateInput?.value || '').trim() : getLocalDateISO();
+    if (isAdmin() && !selectedCollectDate) {
+      alert('اختر تاريخ التحصيل أولاً.');
+      if (collectDateInput) collectDateInput.focus();
+      return;
+    }
+    if (isAdmin() && selectedCollectDate > getLocalDateISO()) {
+      alert('لا يمكن اختيار تاريخ تحصيل في المستقبل.');
+      if (collectDateInput) collectDateInput.focus();
+      return;
+    }
+    const collectionTimestamp = isAdmin() ? buildCollectionTimestamp(selectedCollectDate) : new Date().toISOString();
+    if (isAdmin() && currentOrder?.branch) {
+      const selectedDayLock = await fetchDailyLock(currentOrder.branch, selectedCollectDate);
+      if (selectedDayLock) {
+        alert(`يومية ${selectedCollectDate} لفرع ${currentOrder.branch} مقفولة. افتح اليومية أولاً قبل تسجيل التحصيل عليها.`);
+        return;
+      }
+    }
+
     const oldNotes = currentOrder ? String(currentOrder.notes || '') : '';
     const meta = currentOrder ? getCollectMeta(currentOrder) : { count: 0, history: [] };
     const newCount = Number(meta.count || 0) + 1;
@@ -8132,7 +8220,7 @@ async function confirmCollectOrder() {
       history: [
         ...(Array.isArray(meta.history) ? meta.history : []),
         {
-          at: new Date().toISOString(),
+          at: collectionTimestamp,
           by: currentUser ? (currentUser.name || currentUser.username || 'User') : 'User',
           role: currentUser ? (currentUser.role || '') : '',
           sales,
@@ -8180,7 +8268,7 @@ async function confirmCollectOrder() {
         arr[idx].status = 'Signed';
         arr[idx].notes = updatedNotes;
         arr[idx].payment_image = proofUrl || arr[idx].payment_image || null;
-        if (isAdmin()) arr[idx].price = sales;
+        arr[idx].price = preservedOriginalPrice;
       }
     });
 
@@ -8190,7 +8278,7 @@ async function confirmCollectOrder() {
     if (typeof renderOrders       === 'function') renderOrders();
     if (typeof renderAnalytics    === 'function') renderAnalytics();
 
-    await logActivity('order_collected','تم تحصيل أوردر',`إجمالي المبيعات: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي: ${money(net)} | الطريقة: ${paymentMethod} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
+    await logActivity('order_collected','تم تحصيل أوردر',`إجمالي المبيعات: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي: ${money(net)} | الطريقة: ${paymentMethod} | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
     if (proofFile && proofUrl) {
       await logActivity('payment_proof_attached','تم إرفاق إثبات دفع أثناء التحصيل',`العميل: ${currentOrder?.customer_name || '—'} | طريقة الدفع: ${paymentMethod} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
     }
@@ -8331,6 +8419,298 @@ function printReconciliationReport() {
   win.document.write(html);
   win.document.close();
   win.onload = () => { win.focus(); win.print(); };
+}
+
+// ============================================================
+// ===== CUSTOMER PROFILE CRM =====
+let customerProfileCustomer = null;
+let customerProfileOrders = [];
+let customerProfileActivities = [];
+let customerProfileSource = 'dashboard';
+
+function normalizeCustomerPhoneClient(value) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('0020')) digits = '0' + digits.slice(4);
+  else if (digits.startsWith('20') && digits.length === 12) digits = '0' + digits.slice(2);
+  else if (digits.startsWith('1') && digits.length === 10) digits = '0' + digits;
+  return digits;
+}
+
+function ensureCustomerProfileModal() {
+  let modal = document.getElementById('customerProfileModal');
+  if (modal) return modal;
+  modal = document.createElement('div');
+  modal.id = 'customerProfileModal';
+  modal.className = 'customer-profile-overlay';
+  modal.onclick = event => { if (event.target === modal) closeCustomerProfile(); };
+  modal.innerHTML = `
+    <section class="customer-profile-glass" dir="rtl">
+      <div id="customerProfileContent" class="customer-profile-content">
+        <div class="customer-profile-loading">جاري تحميل ملف العميل...</div>
+      </div>
+    </section>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function closeCustomerProfile() {
+  const modal = document.getElementById('customerProfileModal');
+  if (modal) modal.classList.remove('open');
+  document.body.classList.remove('customer-profile-open');
+}
+
+function canViewCustomerOrder(order) {
+  if (!currentUser) return false;
+  const role = getRoleKey(currentUser.role);
+  if (isAdmin() || isOperationManager() || role === 'account_manager' || role === 'executive_assistant' || role === 'secretary' || role === 'receptionist') return true;
+  const managed = getCurrentUserManagedBranches();
+  if (managed.length) return isOrderInManagedBranches(order, managed);
+  return String(order?.employee_name || '') === String(currentUser?.name || '');
+}
+
+function customerProfilePaid(order) {
+  const total = getEffectiveOrderPrice(order);
+  const deposit = Math.max(0, Number(order?.deposit || 0));
+  const collected = Math.max(0, Number(getLatestCollectEntry(order)?.sales || 0));
+  return Math.min(total, deposit + collected);
+}
+
+function customerProfileStatusClass(status) {
+  const value = String(status || '').toLowerCase();
+  if (value === 'signed') return 'is-signed';
+  if (value === 'returned') return 'is-returned';
+  if (value === 'cancel') return 'is-cancel';
+  if (value === 'delivering') return 'is-delivering';
+  return 'is-other';
+}
+
+async function openCustomerProfile(orderId, source = 'dashboard') {
+  customerProfileSource = source;
+  const modal = ensureCustomerProfileModal();
+  const content = document.getElementById('customerProfileContent');
+  modal.classList.add('open');
+  document.body.classList.add('customer-profile-open');
+  content.innerHTML = '<div class="customer-profile-loading">جاري تحميل ملف العميل وجميع أوردراته...</div>';
+
+  try {
+    let seedOrder = getOrderByIdAny(orderId);
+    if (!seedOrder || !seedOrder.customer_id) {
+      const result = await supabaseClient.from('orders').select('*').eq('id', orderId).single();
+      if (result.error) throw result.error;
+      seedOrder = result.data;
+    }
+
+    let customer = null;
+    if (seedOrder?.customer_id) {
+      const result = await supabaseClient.from('customers').select('*').eq('id', seedOrder.customer_id).single();
+      if (!result.error) customer = result.data;
+    }
+    if (!customer) {
+      const normalized = normalizeCustomerPhoneClient(seedOrder?.phone);
+      const result = await supabaseClient.from('customers').select('*').eq('phone_normalized', normalized).single();
+      if (result.error) throw result.error;
+      customer = result.data;
+    }
+
+    const ordersResult = await supabaseClient
+      .from('orders')
+      .select('*')
+      .eq('customer_id', customer.id)
+      .order('created_at', { ascending: false });
+    if (ordersResult.error) throw ordersResult.error;
+
+    customerProfileCustomer = customer;
+    customerProfileOrders = (ordersResult.data || []).filter(canViewCustomerOrder);
+    const ticketIds = [...new Set(customerProfileOrders.map(getTicketId).filter(Boolean))];
+    customerProfileActivities = [];
+    if (ticketIds.length) {
+      const activityResult = await supabaseClient
+        .from('activity_logs')
+        .select('*')
+        .in('ticket_id', ticketIds)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (!activityResult.error) customerProfileActivities = activityResult.data || [];
+    }
+    renderCustomerProfile();
+  } catch (error) {
+    content.innerHTML = `<div class="customer-profile-error"><strong>تعذر فتح ملف العميل</strong><span>${escapeHTML(error.message || String(error))}</span><button type="button" onclick="closeCustomerProfile()">إغلاق</button></div>`;
+  }
+}
+
+function renderCustomerProfile() {
+  const content = document.getElementById('customerProfileContent');
+  const customer = customerProfileCustomer;
+  if (!content || !customer) return;
+  const list = customerProfileOrders;
+  const totalValue = list.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
+  const totalPaid = list.reduce((sum, order) => sum + customerProfilePaid(order), 0);
+  const totalOutstanding = list.reduce((sum, order) => sum + getOrderOutstandingBalance(order), 0);
+  const countStatus = status => list.filter(order => String(order.status || '') === status).length;
+  const latest = list[0] || null;
+  const adminEdit = isAdmin() ? '<button class="customer-profile-soft-btn" type="button" onclick="toggleCustomerProfileEdit(true)">✏️ تعديل بيانات العميل</button>' : '';
+
+  content.innerHTML = `
+    <header class="customer-profile-header">
+      <div>
+        <span class="customer-profile-kicker">CUSTOMER PROFILE</span>
+        <h2>${escapeHTML(customer.customer_name || 'عميل')}</h2>
+        <p>${escapeHTML(customer.phone || '')}${customer.phone2 ? ` • ${escapeHTML(customer.phone2)}` : ''}</p>
+      </div>
+      <div class="customer-profile-header-actions">
+        ${adminEdit}
+        <button class="customer-profile-new-btn" type="button" onclick="startNewOrderForCustomer()">＋ أوردر جديد لنفس العميل</button>
+        <button class="customer-profile-close" type="button" onclick="closeCustomerProfile()">✕</button>
+      </div>
+    </header>
+
+    <div class="customer-profile-stats">
+      <div><span>إجمالي الأوردرات</span><strong>${num(list.length)}</strong></div>
+      <div><span>إجمالي المشتريات</span><strong>${money(totalValue)}</strong></div>
+      <div><span>إجمالي المدفوع</span><strong>${money(totalPaid)}</strong></div>
+      <div><span>إجمالي المتبقي</span><strong>${money(totalOutstanding)}</strong></div>
+      <div><span>Signed</span><strong class="green">${num(countStatus('Signed'))}</strong></div>
+      <div><span>Delivering</span><strong class="cyan">${num(countStatus('Delivering'))}</strong></div>
+      <div><span>Returned</span><strong class="red">${num(countStatus('Returned'))}</strong></div>
+      <div><span>Cancel</span><strong class="red">${num(countStatus('Cancel'))}</strong></div>
+    </div>
+
+    <section class="customer-profile-info">
+      <div><span>المنطقة</span><strong>${escapeHTML(customer.area || latest?.area || '—')}</strong></div>
+      <div><span>الدكتور الحالي</span><strong>${escapeHTML(customer.doctor_name || latest?.doctor_name || '—')}</strong></div>
+      <div><span>آخر فرع</span><strong>${escapeHTML(customer.last_branch || latest?.branch || '—')}</strong></div>
+      <div><span>أول تعامل</span><strong>${formatEnglishDateTime(customer.created_at)}</strong></div>
+      <div><span>آخر تعامل</span><strong>${latest ? formatEnglishDateTime(latest.created_at) : '—'}</strong></div>
+    </section>
+
+    <section id="customerProfileEditPanel" class="customer-profile-edit hidden">
+      <div><label>اسم العميل</label><input id="customerProfileEditName" value="${escapeHTML(customer.customer_name || '')}"></div>
+      <div><label>الموبايل</label><input id="customerProfileEditPhone" value="${escapeHTML(customer.phone || '')}"></div>
+      <div><label>الموبايل 2</label><input id="customerProfileEditPhone2" value="${escapeHTML(customer.phone2 || '')}"></div>
+      <div><label>المنطقة</label><input id="customerProfileEditArea" value="${escapeHTML(customer.area || '')}"></div>
+      <div><label>الدكتور</label><input id="customerProfileEditDoctor" value="${escapeHTML(customer.doctor_name || '')}"></div>
+      <div class="wide"><label>ملاحظات دائمة للعميل</label><textarea id="customerProfileEditNotes" rows="2">${escapeHTML(customer.notes || '')}</textarea></div>
+      <div class="wide customer-profile-edit-actions"><button type="button" onclick="saveCustomerProfileEdit()">حفظ بيانات العميل</button><button type="button" class="cancel" onclick="toggleCustomerProfileEdit(false)">إلغاء</button></div>
+    </section>
+
+    <section class="customer-profile-history-section">
+      <div class="customer-profile-section-title"><div><h3>Order History</h3><p>كل أوردر يحتفظ ببياناته الأصلية وقت البيع</p></div><span>${num(list.length)} أوردر</span></div>
+      <div class="customer-profile-orders">
+        ${list.length ? list.map(renderCustomerProfileOrderRow).join('') : '<div class="customer-profile-empty">لا توجد أوردرات متاحة لهذا العميل ضمن صلاحيات حسابك</div>'}
+      </div>
+    </section>
+    <section id="customerOrderTimeline" class="customer-order-timeline"><div class="customer-profile-empty">اضغط «التفاصيل» أمام أي أوردر لعرض الـTimeline بالكامل.</div></section>`;
+}
+
+function renderCustomerProfileOrderRow(order) {
+  const total = getEffectiveOrderPrice(order);
+  const paid = customerProfilePaid(order);
+  const remaining = getOrderOutstandingBalance(order);
+  const products = cleanVisibleOrderNotes(order.product_names || '') || order.product_names || '—';
+  return `<article class="customer-order-row">
+    <div class="customer-order-ticket"><span>Ticket ID</span><strong>${escapeHTML(getTicketId(order) || '—')}</strong><small>Order: ${escapeHTML(order.order_number || '—')}</small></div>
+    <div class="customer-order-main"><strong>${escapeHTML(order.doctor_name || 'بدون دكتور')}</strong><span>${escapeHTML(products)}</span><small>${escapeHTML(order.branch || order.shipping_company || '—')} • ${formatEnglishDateTime(order.created_at)}</small></div>
+    <div class="customer-order-money"><span>الإجمالي <b>${money(total)}</b></span><span>المدفوع <b>${money(paid)}</b></span><span>المتبقي <b>${money(remaining)}</b></span></div>
+    <span class="customer-order-status ${customerProfileStatusClass(order.status)}">${escapeHTML(getOrderDisplayStatus(order) || order.status || '—')}</span>
+    <div class="customer-order-actions"><button type="button" onclick="showCustomerOrderTimeline('${order.id}')">التفاصيل</button><button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button><button type="button" onclick="printCustomerProfileOrder('${order.id}')">طباعة</button></div>
+  </article>`;
+}
+
+function showCustomerOrderTimeline(orderId) {
+  const order = customerProfileOrders.find(item => String(item.id) === String(orderId));
+  const target = document.getElementById('customerOrderTimeline');
+  if (!order || !target) return;
+  const ticket = getTicketId(order);
+  const events = [{ at: order.created_at, title: 'تم إنشاء الأوردر', details: `الحالة: ${order.status || '—'} | الإجمالي: ${money(getEffectiveOrderPrice(order))}`, icon: '＋' }];
+  customerProfileActivities.filter(item => String(item.ticket_id || '') === String(ticket || '')).forEach(item => events.push({ at: item.created_at, title: item.action_title || activityTypeLabel(item.action_type), details: `${item.action_details || ''}${item.user_name ? ` | بواسطة: ${item.user_name}` : ''}`, icon: activityIcon(item.action_type) }));
+  const collectHistory = getCollectMeta(order).history || [];
+  collectHistory.forEach((entry, index) => events.push({ at: entry.at, title: `تحصيل الأوردر — المرة ${index + 1}`, details: `الطريقة: ${entry.payment_method || '—'} | التحصيل: ${money(entry.sales)} | الشحن: ${money(entry.shipping)} | الصافي: ${money(entry.net)}`, icon: '💰' }));
+  events.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+  target.innerHTML = `<div class="customer-profile-section-title"><div><h3>Timeline — Ticket ${escapeHTML(ticket || '—')}</h3><p>${escapeHTML(order.customer_name || '')}</p></div><button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button></div><div class="customer-timeline-list">${events.map(event => `<div class="customer-timeline-event"><i>${event.icon}</i><div><strong>${escapeHTML(event.title || 'Activity')}</strong><span>${escapeHTML(event.details || '—')}</span></div><time>${formatEnglishDateTime(event.at)}</time></div>`).join('')}</div>`;
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleCustomerProfileEdit(show) {
+  if (!isAdmin()) return;
+  document.getElementById('customerProfileEditPanel')?.classList.toggle('hidden', !show);
+}
+
+async function saveCustomerProfileEdit() {
+  if (!isAdmin() || !customerProfileCustomer) return;
+  const payload = {
+    customer_name: String(document.getElementById('customerProfileEditName')?.value || '').trim(),
+    phone: String(document.getElementById('customerProfileEditPhone')?.value || '').trim(),
+    phone2: String(document.getElementById('customerProfileEditPhone2')?.value || '').trim() || null,
+    area: String(document.getElementById('customerProfileEditArea')?.value || '').trim() || null,
+    doctor_name: String(document.getElementById('customerProfileEditDoctor')?.value || '').trim() || null,
+    notes: String(document.getElementById('customerProfileEditNotes')?.value || '').trim() || null
+  };
+  if (!payload.customer_name || !normalizeCustomerPhoneClient(payload.phone)) { alert('اكتب اسم العميل ورقم موبايل صحيح'); return; }
+  const result = await supabaseClient.from('customers').update(payload).eq('id', customerProfileCustomer.id).select().single();
+  if (result.error) { alert('تعذر تعديل بيانات العميل: ' + result.error.message); return; }
+  customerProfileCustomer = result.data;
+  await logActivity('customer_updated', 'تم تعديل ملف العميل', `العميل: ${payload.customer_name} | الموبايل: ${payload.phone}`, { customer_name: payload.customer_name, branch_name: customerProfileCustomer.last_branch || null });
+  renderCustomerProfile();
+  alert('✅ تم تحديث بيانات العميل. الأوردرات القديمة احتفظت ببياناتها الأصلية.');
+}
+
+async function openCustomerOrderFromProfile(orderId) {
+  const order = customerProfileOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+  closeCustomerProfile();
+  const branch = String(order.branch || '').trim();
+  if (branch && canAccessBranch(branch)) {
+    await openBranchPage(branch);
+    setTimeout(() => {
+      const search = document.getElementById('bSearchInput');
+      if (search) { search.value = getTicketId(order); search.dispatchEvent(new Event('input', { bubbles: true })); search.focus(); }
+    }, 250);
+  } else {
+    showOrdersPage();
+    const search = document.getElementById('searchInput');
+    if (search) { search.value = getTicketId(order); search.dispatchEvent(new Event('input', { bubbles: true })); search.focus(); }
+  }
+}
+
+async function printCustomerProfileOrder(orderId) {
+  let order = customerProfileOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+  order = await ensureOrderIdentifiers(order);
+  const win = window.open('', '_blank', 'width=400,height=700');
+  if (!win) { alert('المتصفح منع نافذة الطباعة'); return; }
+  win.document.write(generateReceiptHTML(order, order.branch || order.shipping_company || ''));
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+}
+
+async function startNewOrderForCustomer() {
+  const customer = customerProfileCustomer;
+  const latest = customerProfileOrders[0] || {};
+  if (!customer) return;
+  closeCustomerProfile();
+  const preferredBranch = customer.last_branch || latest.branch || '';
+  const managedBranches = getCurrentUserManagedBranches();
+  const targetBranch = preferredBranch && canAccessBranch(preferredBranch) ? preferredBranch : (managedBranches[0] || '');
+
+  if (!isAdmin() && targetBranch) {
+    await openBranchPage(targetBranch);
+    branchEditId = null;
+    branchEditExistingPaymentImage = '';
+    document.getElementById('branchOrderForm')?.reset();
+    clearProductCart('branch');
+    setBranchShippingSelectToCurrentBranch();
+    setBranchStatusToDelivering();
+    const values = { bCustomerName: customer.customer_name, bPhone: customer.phone, bPhone2: customer.phone2 || '', bArea: customer.area || '', bDoctorName: customer.doctor_name || latest.doctor_name || '' };
+    Object.entries(values).forEach(([id, value]) => { const el = document.getElementById(id); if (el) el.value = value || ''; });
+    document.getElementById('branchOrderForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  showOrdersPage();
+  resetForm();
+  const values = { customerName: customer.customer_name, phone: customer.phone, phone2: customer.phone2 || '', area: customer.area || '', doctorName: customer.doctor_name || latest.doctor_name || '', shippingCompany: preferredBranch ? getBranchShippingCompanyName(preferredBranch) : (latest.shipping_company || '') };
+  Object.entries(values).forEach(([id, value]) => { const el = document.getElementById(id); if (el) el.value = value || ''; });
+  document.getElementById('orderForm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ============================================================

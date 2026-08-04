@@ -615,6 +615,10 @@
 <option value="">اختر شركة الشحن</option>
 </select>
 <input id="area" placeholder="المنطقة" required=""/>
+<div id="adminOrderDateWrap" style="display:none;">
+<label for="adminOrderDate" style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:5px;">تاريخ ووقت الأوردر — للأدمن فقط</label>
+<input id="adminOrderDate" type="datetime-local" style="width:100%;"/>
+</div>
 <input id="price" type="hidden"/>
 <input id="deposit" type="hidden"/>
 <input id="unitPrice" type="hidden"/>
@@ -1395,6 +1399,10 @@
 <input id="bPhone2" inputmode="numeric" maxlength="11" minlength="11" oninput="validatePhoneInput(this)" pattern="01[0125][0-9]{8}" placeholder="رقم الموبايل 2 (اختياري)" title="أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010, 011, 012, أو 015" type="tel"/>
 <select id="bShippingCompany" required=""><option value="">اختر شركة الشحن</option></select>
 <input id="bArea" placeholder="المنطقة" required=""/>
+<div id="adminBranchOrderDateWrap" style="display:none;">
+<label for="adminBranchOrderDate" style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:5px;">تاريخ ووقت الأوردر — للأدمن فقط</label>
+<input id="adminBranchOrderDate" type="datetime-local" style="width:100%;"/>
+</div>
 <input id="bPrice" type="hidden"/>
 <input id="bDeposit" type="hidden"/>
 <input id="bUnitPrice" type="hidden"/>
@@ -1804,7 +1812,11 @@
 </div>
 </div>
 <!-- Actions -->
-<div style="display:flex;gap:10px;justify-content:flex-end;">
+<div style="display:flex;gap:10px;justify-content:flex-end;align-items:flex-end;flex-wrap:wrap;">
+<div id="collectDateAdminWrap" style="display:none;flex-direction:column;gap:5px;margin-left:auto;min-width:160px;">
+<label for="collectDateInput" style="font-size:11px;color:var(--text-muted);font-weight:800;">📅 تاريخ التحصيل — للأدمن فقط</label>
+<input id="collectDateInput" type="date" style="height:38px;padding:7px 10px;border-radius:10px;border:1px solid rgba(99,102,241,.42);background:var(--bg-soft);color:var(--text-primary);font-size:12px;font-weight:800;outline:none;color-scheme:dark;"/>
+</div>
 <button onclick="closeCollectModal()" style="padding:10px 18px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إلغاء</button>
 <button onclick="confirmCollectOrder()" style="padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.22));backdrop-filter:blur(12px);color:#fff;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 14px rgba(100,210,240,0.2);text-shadow:0 1px 2px rgba(0,0,0,0.2);">✅ تحصيل الأوردر</button>
 </div>
