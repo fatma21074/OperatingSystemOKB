@@ -1632,6 +1632,34 @@ function getCollectMeta(order) {
   }
 }
 
+// Returns the real order total and repairs the legacy collection bug logically.
+// Older affected rows have price == collected remaining while deposit is still
+// stored, e.g. price 812 + deposit 700 although the original total was 1512.
+function getEffectiveOrderPrice(order) {
+  const storedPrice = Math.max(0, Number(order?.price || 0));
+  const deposit = Math.max(0, Number(order?.deposit || 0));
+  const history = getCollectMeta(order).history;
+  const savedOriginals = history
+    .map(entry => Number(entry?.original_price || 0))
+    .filter(value => value > 0);
+  const bestSavedOriginal = savedOriginals.length ? Math.max(...savedOriginals) : 0;
+  if (bestSavedOriginal > storedPrice) return bestSavedOriginal;
+
+  const latest = history.length ? history[history.length - 1] : null;
+  const collected = Math.max(0, Number(latest?.sales || 0));
+  const isLegacyCorruptedPrice = deposit > 0 && collected > 0 && Math.abs(storedPrice - collected) < 0.01;
+  return isLegacyCorruptedPrice ? storedPrice + deposit : storedPrice;
+}
+
+function getOrderOutstandingBalance(order) {
+  const total = getEffectiveOrderPrice(order);
+  const deposit = Math.max(0, Number(order?.deposit || 0));
+  const history = getCollectMeta(order).history;
+  const latestCollection = history.length ? history[history.length - 1] : null;
+  const collectedAtDelivery = Math.max(0, Number(latestCollection?.sales || 0));
+  return Math.max(0, total - deposit - collectedAtDelivery);
+}
+
 function stripCollectMeta(notes) {
   return stripOrderMeta(String(notes || "").replace(COLLECT_META_REGEX, "").trim());
 }
@@ -1681,9 +1709,9 @@ function getCollectButtonHtml(order, src) {
 function handleEnter(e) { if (e.key === "Enter") login(); }
 
 function calcRevenueBreakdown(list) {
-  const total = list.reduce((s, o) => s + Number(o.price || 0), 0);
+  const total = list.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
   const totalDeposit = list.reduce((s, o) => s + Number(o.deposit || 0), 0);
-  const sum = arr => arr.reduce((s, o) => s + Number(o.price || 0), 0);
+  const sum = arr => arr.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
   return {
     total,
     totalDeposit,
@@ -3081,18 +3109,12 @@ async function printBranchKhaznaReportForCashier() {
       return;
     }
 
-    const totalSales = reportOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+    const totalSales = reportOrders.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
     const shippingTotal = reportOrders.reduce((sum, order) => {
       const last = getLatestCollectEntry(order);
       return sum + Number(last?.shipping || 0);
     }, 0);
-    const transfersTotal = reportOrders.reduce((sum, order) => {
-      const last = getLatestCollectEntry(order);
-      const method = String(last?.payment_method || '').toLowerCase();
-      return (method === 'instapay' || method === 'wallet')
-        ? sum + Number(last?.sales || order.price || 0)
-        : sum;
-    }, 0);
+    const transfersTotal = reportOrders.reduce((sum, order) => sum + getOrderProofPaymentTotal(order), 0);
     const net = totalSales - shippingTotal - transfersTotal;
     const printDate = new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
 
@@ -3116,7 +3138,7 @@ async function printBranchKhaznaReportForCashier() {
       'الدكتور': o.doctor_name || '',
       'Ticket ID': getTicketId(o) || '',
       'المنتجات': o.product_names || '',
-      'السعر': Number(o.price || 0),
+      'السعر': getEffectiveOrderPrice(o),
       'المدفوع': Number(o.deposit || 0),
       'الحالة': o.status || ''
     }));
@@ -3325,19 +3347,13 @@ async function printBranchSummaryReportForCashier() {
 
     const signedReportOrders = reportOrders.filter(o => o.status === 'Signed');
     const return14Orders = reportOrders.filter(isReturnWithin14Days);
-    const totalSales = signedReportOrders.reduce((sum, order) => sum + Number(order.price || 0), 0);
-    const totalReturn14 = return14Orders.reduce((sum, order) => sum + Number(order.price || 0), 0);
+    const totalSales = signedReportOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
+    const totalReturn14 = return14Orders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
     const totalExpenses = signedReportOrders.reduce((sum, order) => {
       const last = getLatestCollectEntry(order);
       return sum + Number(last?.shipping || 0);
     }, 0);
-    const totalTransfers = signedReportOrders.reduce((sum, order) => {
-      const last = getLatestCollectEntry(order);
-      const method = String(last?.payment_method || '').toLowerCase();
-      return (method === 'instapay' || method === 'wallet')
-        ? sum + Number(last?.sales || order.price || 0)
-        : sum;
-    }, 0);
+    const totalTransfers = signedReportOrders.reduce((sum, order) => sum + getOrderProofPaymentTotal(order), 0);
     const netDaily = totalSales - totalReturn14 - totalExpenses - totalTransfers;
     const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
 
@@ -3435,7 +3451,7 @@ function exportBranchOrders() {
   const rows = filtered.map((o, i) => {
       const qty      = Number(o.quantity || 1);
       const delivFee = Number(o.delivery_fee || 0);
-      const price    = Number(o.price || 0);
+      const price    = getEffectiveOrderPrice(o);
       const deposit  = Number(o.deposit || 0);
       const unitP    = qty > 0 ? (price - delivFee) / qty : price;
       return [
@@ -3456,7 +3472,7 @@ function exportBranchOrders() {
         getOrderMeta(o).discount || 0,
         price,
         deposit,
-        Math.max(0, price - deposit),
+        getOrderOutstandingBalance(o),
         o.status || '',
         compactText(cleanVisibleOrderNotes(o.notes || '')),
         o.created_at || ''
@@ -3574,8 +3590,8 @@ function renderOrders() {
     const safeNotes = displayNotes.replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const isChecked = selectedOrderIds.has(String(o.id));
     const deposit = Number(o.deposit || 0);
-    const price = Number(o.price || 0);
-    const remaining = price - deposit;
+    const price = getEffectiveOrderPrice(o);
+    const remaining = getOrderOutstandingBalance(o);
     const paymentImage = o.payment_image ? `<button class="view-payment-btn" onclick="viewPaymentImage('${o.payment_image}')" style="background:#0D9488;padding:4px 8px;border-radius:6px;font-size:11px">📷 عرض</button>` : '<span class="chip chip-cancelled" style="font-size:10px">لا يوجد</span>';
     const adminCheckbox = isAdmin() ? `<td><input type="checkbox" class="row-check" data-id="${o.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectOrder(this, '${o.id}')" /></td>` : '';
     
@@ -3940,7 +3956,7 @@ function getDoctorsAnalysisRows(sourceOrders) {
     const transit = countStatus(list, "Transit");
     const returned = countStatus(list, "Returned");
     const fakeDoctor = getFakeDoctorCount(list);
-    const revenue = list.reduce((s, o) => s + Number(o.price || 0), 0);
+    const revenue = list.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
     
     return { 
       doctor: doc, 
@@ -4573,7 +4589,7 @@ function exportData() {
       getOrderMeta(o).discount || 0,
       o.price,
       o.deposit || 0,
-      Math.max(0, Number(o.price || 0) - Number(o.deposit || 0)),
+      getOrderOutstandingBalance(o),
       o.status,
       stripCollectMeta(o.notes || ""),
       o.created_at
@@ -6292,9 +6308,9 @@ function renderBranchOrders() {
     else if (o.status === 'Cancel') statusClass = 'cancel-chip';
     else if (o.status === 'Signed') statusClass = 'chip-signed';
     else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = 'chip-fake';
-    const price = Number(o.price || 0);
+    const price = getEffectiveOrderPrice(o);
     const deposit = Number(o.deposit || 0);
-    const remaining = price - deposit;
+    const remaining = getOrderOutstandingBalance(o);
     const paymentBtn = o.payment_image
       ? `<button onclick="viewPaymentImage('${o.payment_image}')" style="background:#0D9488;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;border:none;cursor:pointer;">📷 عرض</button>`
       : `<label style="cursor:pointer;background:#6366f1;padding:4px 8px;border-radius:6px;font-size:11px;color:#fff;border-radius:6px;">📎 إرفاق<input type="file" accept="image/*" style="display:none;" onchange="attachBranchPayment(this,'${o.id}')"/></label>`;
@@ -6544,6 +6560,14 @@ function editBranchOrder(id) {
   setValue('bShippingCompany',o.shipping_company||getBranchShippingCompanyName(currentBranchName));
   setValue('bArea',o.area||'');
   setValue('bStatus',o.status||'Delivering');
+  const branchStatusSelect = document.getElementById('bStatus');
+  if (branchStatusSelect) {
+    branchStatusSelect.disabled = !isAdmin();
+    branchStatusSelect.style.opacity = isAdmin() ? '1' : '0.85';
+    branchStatusSelect.title = isAdmin()
+      ? 'الأدمن يستطيع تعديل حالة الأوردر'
+      : 'حالة الأوردر متاحة للتعديل بواسطة الأدمن فقط';
+  }
   setValue('bOrderNotes',cleanVisibleOrderNotes(o.notes||''));
   setProductCartFromOrder('branch',o);
   const fileInput=document.getElementById('bPaymentImage');
@@ -7241,15 +7265,48 @@ function getKhaznaShippingTotal() {
   return autoShipping + Number(khaznaShippingCost || 0);
 }
 
+// إجمالي إثبات الدفع يعتمد حصراً على قيمة مبيعات التوصيل التي تم تحصيلها
+// باختيار Instapay أو Wallet. المدفوع المسبق لا يُضاف مرة ثانية لهذا الكارت.
+// تحصيل COD لا يدخل ضمن إثبات الدفع ويظل ضمن صافي الكاش.
+function getOrderUpfrontTransferTotal(order) {
+  const deposit = Math.max(0, Number(order?.deposit || 0));
+  const hasProof = Boolean(String(order?.payment_image || '').trim());
+  return deposit > 0 && hasProof ? deposit : 0;
+}
+
+function getOrderCollectionTransferTotal(order) {
+  const last = getLatestCollectEntry(order);
+  const method = String(last?.payment_method || '').trim().toLowerCase();
+  return (method === 'instapay' || method === 'wallet')
+    ? Math.max(0, Number(last?.sales || 0))
+    : 0;
+}
+
+function getOrderProofPaymentTotal(order) {
+  return getOrderUpfrontTransferTotal(order) + getOrderCollectionTransferTotal(order);
+}
+
+function getOrderCodCashTotal(order) {
+  const last = getLatestCollectEntry(order);
+  if (!last) return 0;
+  const method = String(last?.payment_method || '').trim().toLowerCase();
+  return method === 'cod' ? Math.max(0, Number(last?.sales || 0)) : 0;
+}
+
+function getKhaznaUpfrontTransfersTotal() {
+  return khaznaOrders.reduce((sum, order) => sum + getOrderUpfrontTransferTotal(order), 0);
+}
+
+function getKhaznaCollectionTransfersTotal() {
+  return khaznaOrders.reduce((sum, order) => sum + getOrderCollectionTransferTotal(order), 0);
+}
+
 function getKhaznaTransfersTotal() {
-  return khaznaOrders.reduce((sum, order) => {
-    const last = getLatestCollectEntry(order);
-    const method = last && last.payment_method ? String(last.payment_method).toLowerCase() : '';
-    if (method === 'instapay' || method === 'wallet') {
-      return sum + Number(last.sales || order.price || 0);
-    }
-    return sum;
-  }, 0);
+  return khaznaOrders.reduce((sum, order) => sum + getOrderProofPaymentTotal(order), 0);
+}
+
+function getKhaznaCodCashTotal() {
+  return khaznaOrders.reduce((sum, order) => sum + getOrderCodCashTotal(order), 0);
 }
 
 
@@ -7273,15 +7330,18 @@ function renderKhaznaStats() {
   const signedOrders = visibleKhaznaOrders.filter(o => o.status === 'Signed');
   const return14Total = visibleKhaznaOrders
     .filter(isReturnWithin14Days)
-    .reduce((s, o) => s + Number(o.price || 0), 0);
-  const totalSales = signedOrders.reduce((s, o) => s + Number(o.price || 0), 0);
+    .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
+  const totalSales = signedOrders.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
   
   const originalKhaznaOrdersForCalc = khaznaOrders;
   khaznaOrders = visibleKhaznaOrders;
   const shippingTotal = getKhaznaShippingTotal();
+  const upfrontTransfersTotal = getKhaznaUpfrontTransfersTotal();
+  const collectionTransfersTotal = getKhaznaCollectionTransfersTotal();
   const transfersTotal = getKhaznaTransfersTotal();
+  const codCashTotal = getKhaznaCodCashTotal();
   khaznaOrders = originalKhaznaOrdersForCalc;
-  const net = totalSales - return14Total - shippingTotal - transfersTotal;
+  const net = codCashTotal - return14Total - shippingTotal;
 
   const fmt = v => enMoney(v);
   const setEl = (id, v) => { 
@@ -7292,10 +7352,13 @@ function renderKhaznaStats() {
   setEl('kTotalSales', fmt(totalSales));
   setEl('kReturn14Total', fmt(return14Total));
   setEl('kShippingCost', fmt(shippingTotal));
+  setEl('kUpfrontTransfers', fmt(upfrontTransfersTotal));
+  setEl('kCollectionTransfers', fmt(collectionTransfersTotal));
   setEl('kTransfers', fmt(transfersTotal));
+  setEl('kCodCash', fmt(codCashTotal));
   setEl('kNetAmount', fmt(net));
   setEl('kOrderCount', visibleKhaznaOrders.length);
-  setEl('kMatchSales', fmt(totalSales));
+  setEl('kMatchSales', fmt(codCashTotal));
   setEl('kMatchShipping', fmt(shippingTotal));
   setEl('kMatchTransfers', fmt(transfersTotal));
   setEl('kMatchNet', fmt(net));
@@ -7353,9 +7416,9 @@ function renderKhaznaOrders() {
   
   let rows = '';
   visibleKhaznaOrders.forEach((o, i) => {
-    const price = Number(o.price || 0);
+    const price = getEffectiveOrderPrice(o);
     const deposit = Number(o.deposit || 0);
-    const remaining = price - deposit;
+    const remaining = getOrderOutstandingBalance(o);
     const latestCollect = getLatestCollectEntry(o);
     const shippingExpense = Number(latestCollect?.shipping || 0);
     
@@ -7483,10 +7546,10 @@ function printKhaznaReport() {
   khaznaOrders = reportOrders;
   const totalSales = reportOrders
     .filter(o => o.status === 'Signed')
-    .reduce((s, o) => s + Number(o.price || 0), 0);
+    .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
   const return14Total = reportOrders
     .filter(isReturnWithin14Days)
-    .reduce((s, o) => s + Number(o.price || 0), 0);
+    .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
   const shippingTotal = getKhaznaShippingTotal();
   const transfersTotal = getKhaznaTransfersTotal();
   const net = totalSales - return14Total - shippingTotal - transfersTotal;
@@ -7515,7 +7578,7 @@ function printKhaznaReport() {
     'الدكتور': o.doctor_name || '',
     'رقم الأوردر': o.order_number || '',
     'المنتجات': o.product_names || '',
-    'السعر': Number(o.price || 0),
+    'السعر': getEffectiveOrderPrice(o),
     'المدفوع': Number(o.deposit || 0),
     'الحالة': getOrderDisplayStatus(o)
   }));
@@ -7915,8 +7978,12 @@ function openCollectModal(orderId, customerName, price, deposit, src) {
   // لو آخر تحصيل اتسجل بصفر، نرجّع في نافذة التعديل الحسبة الأصلية تلقائيًا
   // حتى يقدر الأدمن يصحح الأوردر بسهولة لو الصفر اتكتب بالغلط.
   const previousNormalSales = [...history].reverse().find(x => Number(x?.sales || 0) > 0);
-  const savedOriginalPrice = Number(last?.original_price || previousNormalSales?.original_price || previousNormalSales?.sales || 0);
-  const calculationPrice = savedOriginalPrice > 0 ? savedOriginalPrice : Number(price || 0);
+  // The first saved original price is the stable order total. Later collection edits
+  // must never replace it with the remaining amount collected from the courier.
+  const firstSavedOriginalPrice = history.find(x => Number(x?.original_price || 0) > 0);
+  const savedOriginalPrice = Number(firstSavedOriginalPrice?.original_price || previousNormalSales?.original_price || previousNormalSales?.sales || 0);
+  const effectiveOrderPrice = order ? getEffectiveOrderPrice(order) : Number(price || 0);
+  const calculationPrice = Math.max(savedOriginalPrice, effectiveOrderPrice, Number(price || 0));
   const normalRemaining = Math.max(calculationPrice - Number(deposit || 0), 0);
   const salesValue = last
     ? (Number(last.sales || 0) === 0 ? normalRemaining : Number(last.sales || 0))
@@ -8059,6 +8126,7 @@ async function confirmCollectOrder() {
     const oldNotes = currentOrder ? String(currentOrder.notes || '') : '';
     const meta = currentOrder ? getCollectMeta(currentOrder) : { count: 0, history: [] };
     const newCount = Number(meta.count || 0) + 1;
+    const preservedOriginalPrice = currentOrder ? getEffectiveOrderPrice(currentOrder) : 0;
     const updatedMeta = {
       count: newCount,
       history: [
@@ -8071,12 +8139,7 @@ async function confirmCollectOrder() {
           shipping,
           net,
           // نحفظ السعر الطبيعي قبل أي تحويل للصفر حتى يمكن استعادته عند إعادة التعديل.
-          original_price: Number(
-            currentOrder?.price ||
-            [...(Array.isArray(meta.history) ? meta.history : [])].reverse().find(x => Number(x?.original_price || 0) > 0)?.original_price ||
-            [...(Array.isArray(meta.history) ? meta.history : [])].reverse().find(x => Number(x?.sales || 0) > 0)?.sales ||
-            0
-          ),
+          original_price: preservedOriginalPrice,
           payment_method: paymentMethod,
           proof_url: _collectExistingProof || ''
         }
@@ -8093,10 +8156,15 @@ async function confirmCollectOrder() {
 
     const updatedNotes = buildNotesWithCollectMeta(oldNotes, updatedMeta);
 
-    const collectUpdateData = { status: 'Signed', notes: updatedNotes, payment_image: proofUrl || null };
-    // للأدمن فقط: عمود السعر يأخذ نفس قيمة إجمالي مبيعات التوصيل.
-    // الصفر يُحفظ كأوردر هدية، ولو أعيد فتح التحصيل تظهر الحسبة الأصلية للتصحيح.
-    if (isAdmin()) collectUpdateData.price = sales;
+    // Collection records the collected amount in the collection history only.
+    // The order price remains the original order total for every role. This also
+    // repairs orders whose price was previously replaced by the remaining amount.
+    const collectUpdateData = {
+      status: 'Signed',
+      notes: updatedNotes,
+      payment_image: proofUrl || null,
+      price: preservedOriginalPrice
+    };
 
     const { error } = await supabaseClient
       .from('orders')
@@ -8143,7 +8211,7 @@ function openDailyReconciliationModal() {
   const modal = document.getElementById('dailyReconciliationModal');
   modal.style.display = 'flex';
 
-  const salesEl  = document.getElementById('kTotalSales');
+  const salesEl  = document.getElementById('kCodCash');
   const shipEl   = document.getElementById('kShippingCost');
   const countEl  = document.getElementById('kOrderCount');
 
@@ -8242,12 +8310,12 @@ function printReconciliationReport() {
   <h1>⚖️ مطابقة اليومية — ${branchName}</h1>
   <div class="meta">الفترة: ${fromVal} → ${toVal} &nbsp;|&nbsp; طُبع في: ${printDate}</div>
   <div class="grid">
-    <div class="box"><div class="lbl">💰 إجمالي مبيعات التوصيل</div><div class="val" style="color:#6366f1;">${sales.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div></div>
+    <div class="box"><div class="lbl">💰 إجمالي الكاش COD</div><div class="val" style="color:#6366f1;">${sales.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div></div>
     <div class="box"><div class="lbl">🚚 إجمالي مصروفات الشحنات</div><div class="val" style="color:#ef4444;">${shipping.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div></div>
   </div>
-  <div class="formula">إجمالي المبيعات (${sales.toLocaleString('ar-EG')}) − مصاريف الشحن (${shipping.toLocaleString('ar-EG')}) = صافي الخزنة</div>
+  <div class="formula">كاش COD (${sales.toLocaleString('ar-EG')}) − مصاريف الشحن (${shipping.toLocaleString('ar-EG')}) = صافي الكاش</div>
   <div class="net-box">
-    <div style="font-size:12px;color:#555;margin-bottom:8px;">💵 صافي الخزنة (المبلغ المحصّل من المندوب)</div>
+    <div style="font-size:12px;color:#555;margin-bottom:8px;">💵 صافي الكاش المستلم من المندوب</div>
     <div style="font-size:36px;font-weight:bold;color:${netColor};">${net.toLocaleString('ar-EG',{minimumFractionDigits:2})} ج.م</div>
     <div style="margin-top:8px;font-size:13px;font-weight:bold;color:${netColor};">${statusText}</div>
   </div>
@@ -8274,6 +8342,7 @@ let chatRealtimeChannel = null;
 let chatPollingTimer = null;
 let chatAttachmentFile = null;
 let chatSchemaWarningShown = false;
+let chatUnreadOnly = false;
 
 function chatCurrentUsername(){ return String(currentUser?.username || currentUser?.id || '').trim(); }
 function chatUserKey(user){ return String(user?.username || user?.id || '').trim(); }
@@ -8286,6 +8355,47 @@ function updateChatUnreadBadge(count){
     badge.textContent=value>99?'99+':String(value);
     badge.classList.toggle('hidden',value<1);
   });
+  const filterCount=document.getElementById('chatUnreadFilterCount');
+  if(filterCount)filterCount.textContent=value>99?'99+':String(value);
+}
+
+function toggleChatUnreadFilter(){
+  chatUnreadOnly=!chatUnreadOnly;
+  document.getElementById('chatUnreadFilterBtn')?.classList.toggle('active',chatUnreadOnly);
+  renderChatUsers();
+}
+
+function applyChatConversationMetadata(rows){
+  const me=chatCurrentUsername(),byUser=new Map();
+  (rows||[]).forEach(row=>{
+    const sender=String(row.sender_username||''),receiver=String(row.receiver_username||'');
+    const other=sender===me?receiver:sender;
+    if(!other)return;
+    const current=byUser.get(other);
+    if(!current||new Date(row.created_at||0)>new Date(current.created_at||0))byUser.set(other,row);
+  });
+  chatUsers.forEach(user=>{
+    const last=byUser.get(chatUserKey(user));
+    user._lastMessageAt=last?.created_at||'';
+    user._lastMessagePreview=last?.message||((last?.attachment_url)?'📎 مرفق':'');
+  });
+}
+
+async function loadChatConversationMetadata(){
+  const me=chatCurrentUsername();if(!me)return;
+  const columns='id,sender_username,receiver_username,message,attachment_url,is_read,created_at';
+  const [sent,received]=await Promise.all([
+    supabaseClient.from('chat_messages').select(columns).eq('sender_username',me).order('created_at',{ascending:false}).limit(5000),
+    supabaseClient.from('chat_messages').select(columns).eq('receiver_username',me).order('created_at',{ascending:false}).limit(5000)
+  ]);
+  if(sent.error||received.error){handleChatSchemaError(sent.error||received.error);return;}
+  const rows=[...(sent.data||[]),...(received.data||[])];
+  applyChatConversationMetadata(rows);
+  const unreadRows=(received.data||[]).filter(row=>row.is_read===false);
+  const counts={};
+  unreadRows.forEach(row=>{const key=String(row.sender_username||'');counts[key]=(counts[key]||0)+1;});
+  chatUsers.forEach(user=>{user._unread=counts[chatUserKey(user)]||0;});
+  updateChatUnreadBadge(unreadRows.length);
 }
 
 function handleChatSchemaError(error){
@@ -8298,11 +8408,15 @@ function handleChatSchemaError(error){
 async function refreshChatUnreadCount(){
   if (!currentUser) return updateChatUnreadBadge(0);
   const me = chatCurrentUsername();
-  const { data, error } = await supabaseClient.from('chat_messages').select('id,sender_username').eq('receiver_username', me).eq('is_read', false);
+  const { data, error } = await supabaseClient.from('chat_messages').select('id,sender_username,receiver_username,message,attachment_url,created_at').eq('receiver_username', me).eq('is_read', false);
   if (error) { handleChatSchemaError(error); return; }
   updateChatUnreadBadge((data || []).length);
   const counts = {};
-  (data || []).forEach(row => { const key=String(row.sender_username||''); counts[key]=(counts[key]||0)+1; });
+  (data || []).forEach(row => {
+    const key=String(row.sender_username||'');counts[key]=(counts[key]||0)+1;
+    const user=chatUsers.find(item=>chatUserKey(item)===key);
+    if(user&&(!user._lastMessageAt||new Date(row.created_at||0)>new Date(user._lastMessageAt||0))){user._lastMessageAt=row.created_at||'';user._lastMessagePreview=row.message||((row.attachment_url)?'📎 مرفق':'');}
+  });
   chatUsers.forEach(user => { user._unread = counts[chatUserKey(user)] || 0; });
   if (!document.getElementById('chatPage')?.classList.contains('hidden')) renderChatUsers();
 }
@@ -8332,6 +8446,9 @@ function startChatRealtime(){
         await loadChatMessages();
         if (isForMe) await markChatConversationRead(selectedKey);
       }
+      const otherKey=isMine?String(row.receiver_username||''):String(row.sender_username||'');
+      const otherUser=chatUsers.find(user=>chatUserKey(user)===otherKey);
+      if(otherUser){otherUser._lastMessageAt=row.created_at||new Date().toISOString();otherUser._lastMessagePreview=row.message||((row.attachment_url)?'📎 مرفق':'');}
       await refreshChatUnreadCount();
     })
     .subscribe();
@@ -8366,17 +8483,25 @@ async function loadChatUsers(){
   if(error){console.error('Chat users:',error);return;}
   const me=chatCurrentUsername();
   chatUsers=(data||[]).filter(user=>user.active!==false&&chatUserKey(user)!==me);
+  await loadChatConversationMetadata();
   renderChatUsers();
 }
 
 function renderChatUsers(){
   const list=document.getElementById('chatUsersList'); if(!list)return;
   const q=String(document.getElementById('chatUserSearch')?.value||'').trim().toLowerCase();
-  const filtered=chatUsers.filter(user=>!q||[user.name,user.username,getRoleDisplayName(user.role)].some(v=>String(v||'').toLowerCase().includes(q)));
+  const filtered=chatUsers.filter(user=>(!chatUnreadOnly||Number(user._unread||0)>0)&&(!q||[user.name,user.username,getRoleDisplayName(user.role)].some(v=>String(v||'').toLowerCase().includes(q)))).sort((a,b)=>{
+    const aTime=a._lastMessageAt?new Date(a._lastMessageAt).getTime():0;
+    const bTime=b._lastMessageAt?new Date(b._lastMessageAt).getTime():0;
+    if(aTime!==bTime)return bTime-aTime;
+    return String(a.name||a.username||'').localeCompare(String(b.name||b.username||''),'ar');
+  });
   if(!filtered.length){list.innerHTML='<div class="chat-empty">لا يوجد مستخدمون مطابقون</div>';return;}
   list.innerHTML=filtered.map(user=>{
     const key=chatUserKey(user), active=chatUserKey(chatSelectedUser)===key;
-    return `<button class="chat-user-row ${active?'active':''}" type="button" onclick="selectChatUser('${chatJs(key)}')"><span class="chat-user-avatar">${escapeHTML(String(user.name||user.username||'U').trim().charAt(0).toUpperCase())}</span><span class="chat-user-meta"><strong>${escapeHTML(user.name||user.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(user.role))}</small></span>${Number(user._unread||0)>0?`<span class="chat-user-unread">${Number(user._unread)>99?'99+':Number(user._unread)}</span>`:''}</button>`;
+    const lastTime=user._lastMessageAt?formatActivityTime(user._lastMessageAt):'';
+    const subline=user._lastMessagePreview||getRoleDisplayName(user.role);
+    return `<button class="chat-user-row ${active?'active':''}" type="button" onclick="selectChatUser('${chatJs(key)}')"><span class="chat-user-avatar">${escapeHTML(String(user.name||user.username||'U').trim().charAt(0).toUpperCase())}</span><span class="chat-user-meta"><strong>${escapeHTML(user.name||user.username||'User')}</strong><small>${escapeHTML(subline)}</small>${lastTime?`<small class="chat-user-last-time">${escapeHTML(lastTime)}</small>`:''}</span>${Number(user._unread||0)>0?`<span class="chat-user-unread">${Number(user._unread)>99?'99+':Number(user._unread)}</span>`:''}</button>`;
   }).join('');
 }
 
@@ -8464,11 +8589,20 @@ async function sendChatMessage(event){
     const {error}=await supabaseClient.from('chat_messages').insert([payload]);
     if(error)throw error;
     if(input)input.value='';clearChatAttachment();
+    const selected=chatUsers.find(user=>chatUserKey(user)===chatUserKey(chatSelectedUser));
+    if(selected){selected._lastMessageAt=new Date().toISOString();selected._lastMessagePreview=message||'📎 مرفق';}
     const activityType=attachmentUrl?'chat_attachment':'chat_message';
     await logActivity(activityType,attachmentUrl?'تم إرسال رسالة ومرفق في Chat':'تم إرسال رسالة في Chat',`من: ${currentUser?.name||currentUser?.username||'User'} | إلى: ${chatSelectedUser.name||chatSelectedUser.username||'User'}${message?` | نص مختصر: ${message.slice(0,80)}`:''}` ,{branch_name:'Chat'});
     await loadChatMessages();
+    renderChatUsers();
   }catch(error){handleChatSchemaError(error);alert('تعذر إرسال الرسالة: '+(error?.message||error));}
   finally{if(button){button.disabled=false;button.textContent=old||'إرسال ➤';}input?.focus();}
+}
+
+function handleChatMessageKeydown(event){
+  if(event?.key!=='Enter'||event.shiftKey||event.isComposing)return;
+  event.preventDefault();
+  if(!document.getElementById('chatSendBtn')?.disabled)sendChatMessage(event);
 }
 
 // ===== BARCODE SCANNER - GLOBAL =====
@@ -8540,7 +8674,7 @@ function openCollectionFromScan(value, sourceHint) {
   openCollectModal(
     order.id,
     order.customer_name || '',
-    Number(order.price || 0),
+    getEffectiveOrderPrice(order),
     Number(order.deposit || 0),
     source
   );
@@ -8665,10 +8799,10 @@ function generateCode128BarcodeSVG(value) {
 function generateReceiptHTML(order, branchName) {
   const qty       = Number(order.quantity || 1);
   const delivFee  = Number(order.delivery_fee || 0);
-  const price     = Number(order.price || 0);
+  const price     = getEffectiveOrderPrice(order);
   const unitPrice = qty > 0 ? (price - delivFee) / qty : price;
   const deposit   = Number(order.deposit || 0);
-  const remaining = price - deposit;
+  const remaining = getOrderOutstandingBalance(order);
   const discount  = Number(getOrderMeta(order).discount || 0);
   const products  = parseReceiptProducts(order.product_names || '');
   const productsTotal = products.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0) || Math.max(0, price - delivFee + discount);

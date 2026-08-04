@@ -625,6 +625,7 @@
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1229,6 +1230,11 @@
     <aside class="chat-users-panel">
       <div class="chat-users-title">المستخدمون</div>
       <input id="chatUserSearch" type="search" placeholder="🔎 ابحث عن مستخدم..." oninput="renderChatUsers()"/>
+      <div class="chat-user-filters">
+        <button id="chatUnreadFilterBtn" class="chat-unread-filter" type="button" onclick="toggleChatUnreadFilter()">
+          <span>Unread</span><span id="chatUnreadFilterCount" class="chat-unread-filter-count">0</span>
+        </button>
+      </div>
       <div id="chatUsersList" class="chat-users-list"><div class="chat-empty">جاري تحميل المستخدمين...</div></div>
     </aside>
     <main class="chat-conversation-panel">
@@ -1243,7 +1249,7 @@
           <input id="chatAttachmentInput" type="file" accept="image/*" onchange="previewChatAttachment(this)"/>
         </label>
         <div class="chat-compose-main">
-          <textarea id="chatMessageInput" rows="2" placeholder="اكتب رسالة..." disabled></textarea>
+          <textarea id="chatMessageInput" rows="2" placeholder="اكتب رسالة..." onkeydown="handleChatMessageKeydown(event)" disabled></textarea>
           <div id="chatAttachmentPreview" class="chat-attachment-preview hidden"></div>
         </div>
         <button class="chat-send-btn" id="chatSendBtn" type="submit" disabled>إرسال ➤</button>
@@ -1399,6 +1405,7 @@
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -1611,14 +1618,18 @@
 <p style="margin:4px 0 0;font-size:11px;color:#dc2626;">يُخصم من إجمالي المبيعات</p>
 </div>
 <div class="card" style="text-align:center;border:1px solid rgba(168,85,247,0.3);">
-<p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">التحويلات</p>
+<p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">إجمالي إثبات الدفع</p>
 <strong id="kTransfers" style="font-size:24px;color:#a855f7;">0</strong>
-<p style="margin:4px 0 0;font-size:11px;color:var(--text-muted);">محفظة / إنستا باي</p>
+<div style="margin-top:8px;display:grid;gap:4px;font-size:10px;color:var(--text-muted);">
+<span>تحويلات السكرتارية: <b id="kUpfrontTransfers" style="color:#c084fc;">0</b></span>
+<span style="font-size:12px;font-weight:700;">تحويلات التحصيل من المندوب: <b id="kCollectionTransfers" style="color:#c084fc;font-size:13px;">0</b></span>
 </div>
+</div>
+<strong id="kCodCash" hidden>0</strong>
 <div class="card" style="text-align:center;border:1px solid rgba(16,185,129,0.3);">
-<p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">صافي الخزنة</p>
+<p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">صافي الكاش</p>
 <strong id="kNetAmount" style="font-size:24px;color:#10b981;">0</strong>
-<p style="margin:4px 0 0;font-size:11px;color:var(--text-muted);">مبيعات − مرتجع 14 يوم − مصروفات − تحويلات</p>
+<p style="margin:4px 0 0;font-size:11px;color:var(--text-muted);">COD − مرتجع 14 يوم − مصروفات الشحن</p>
 </div>
 <div class="card" style="text-align:center;border:1px solid rgba(245,158,11,0.3);">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">عدد الأوردرات</p>
@@ -1817,12 +1828,12 @@
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
 <!-- إجمالي مبيعات التوصيل -->
 <div style="background:var(--bg-soft);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:16px;">
-<label style="display:block;font-size:12px;color:#6366f1;font-weight:700;margin-bottom:8px;">💰 إجمالي مبيعات التوصيل</label>
+<label style="display:block;font-size:12px;color:#6366f1;font-weight:700;margin-bottom:8px;">💰 إجمالي الكاش COD</label>
 <div style="position:relative;">
 <input id="reconcileSales" oninput="calcReconcile()" placeholder="0.00" style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.4);background:var(--bg-card);color:var(--text-primary);font-size:16px;font-weight:700;text-align:center;outline:none;" type="number">
 <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-muted);">ج.م</span>
 </input></div>
-<p style="margin:6px 0 0;font-size:11px;color:var(--text-muted);text-align:center;">المبلغ الإجمالي للأوردرات</p>
+<p style="margin:6px 0 0;font-size:11px;color:var(--text-muted);text-align:center;">المبلغ المحصل كاش فقط</p>
 </div>
 <!-- إجمالي مصروف الشحنات -->
 <div style="background:var(--bg-soft);border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:16px;">
@@ -1839,7 +1850,7 @@
 <h4 style="margin:0 0 16px;font-size:14px;color:var(--text-muted);text-align:center;font-weight:600;">📊 ملخص المطابقة</h4>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
 <div style="text-align:center;padding:12px;background:var(--bg-card);border-radius:12px;border:1px solid rgba(99,102,241,0.2);">
-<p style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">إجمالي المبيعات</p>
+<p style="margin:0 0 4px;font-size:11px;color:var(--text-muted);">إجمالي الكاش COD</p>
 <strong id="rSales" style="font-size:20px;color:#6366f1;">0.00 ج.م</strong>
 </div>
 <div style="text-align:center;padding:12px;background:var(--bg-card);border-radius:12px;border:1px solid rgba(239,68,68,0.2);">
@@ -1850,7 +1861,7 @@
 <!-- Divider with formula -->
 <div style="display:flex;align-items:center;gap:8px;margin:12px 0;color:var(--text-muted);font-size:12px;">
 <div style="flex:1;height:1px;background:var(--border-color);"></div>
-<span>المبيعات − المصاريف = صافي الخزنة</span>
+<span>كاش COD − المصاريف = صافي الكاش</span>
 <div style="flex:1;height:1px;background:var(--border-color);"></div>
 </div>
 <!-- Net Result -->
