@@ -524,6 +524,8 @@
     <button class="okb-branch-btn" data-branch="اسكندرية" onclick="openBranchPage('اسكندرية')">فرع اسكندرية</button>
     <button class="okb-branch-btn" data-branch="طنطا" onclick="openBranchPage('طنطا')">فرع طنطا</button>
     <button class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
+    <button class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Stores Report</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
+    <button class="okb-stores-report-btn doctor-rank-page-item hidden" id="doctorRankStoresMenuBtn" type="button" onclick="showDoctorRankPage()"><span>👨‍⚕️ Doctor Rank</span></button>
   </div>
 </div>
 <button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
@@ -554,7 +556,6 @@
     <button class="header-settings-item settings-page-item" type="button" onclick="openHeaderSettingsPage('settings')">⚙️ <span>Settings</span></button>
     <button class="header-settings-item users-page-item" type="button" onclick="openHeaderSettingsPage('users')">👥 <span>Users</span></button>
     <button class="header-settings-item daily-report-page-item" type="button" onclick="openHeaderSettingsPage('daily')">📋 <span>Daily Report</span></button>
-    <button class="header-settings-item doctor-rank-page-item" type="button" onclick="openHeaderSettingsPage('doctorRank')">👨‍⚕️ <span>Doctor Rank</span></button>
     <button class="header-settings-item permission-page-item hidden" type="button" onclick="openHeaderSettingsPage('permission')">🔐 <span>Permission</span></button>
     <button class="header-settings-item chat-page-item" type="button" onclick="openHeaderSettingsPage('chat')">💬 <span>Chat</span><span class="chat-menu-unread hidden" id="chatUnreadBadge">0</span></button>
   </div>
@@ -666,7 +667,7 @@
   ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
 </div>
 <div style="margin-top:10px;">
-<label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات الدفع (اختياري)</label>
+<label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات السكرتارية (اختياري)</label>
 <input accept="image/*" id="paymentImage" onchange="previewPaymentImage(this)" style="padding:8px;background:var(--bg-input);" type="file"/>
 <div id="paymentImagePreview" style="margin-top:8px;display:none;">
 <img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)"/>
@@ -740,7 +741,7 @@
 <tr>
 <th class="admin-only"><input class="row-check" id="selectPageOrders" onchange="toggleSelectCurrentPage(this)" title="اختيار كل العملاء في الصفحة" type="checkbox"/></th>
 <th>#</th><th>الموظف</th><th>الدكتور</th><th>رقم الأوردر</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
-<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
+<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr>
 </thead>
 <tbody id="ordersTableBody"></tbody>
@@ -1052,26 +1053,63 @@
 </section>
 <!-- ===== Doctor Rank Page ===== -->
 <section class="hidden" id="doctorRankPage">
-<div class="card">
-<h1>👨‍⚕️ Doctor Performance Dashboard</h1>
-<p>تحليل يساعدك تعرف مين الدكتور اللي بيجيب مبيعات ومين محتاج مراجعة بسبب الفيك أو الراجع.</p>
-</div>
-<div class="insight-grid">
-<div class="insight"><span>Best Doctor</span><strong id="bestDoctorInsight">-</strong></div>
-<div class="insight"><span>Highest Revenue</span><strong id="topRevenueDoctorInsight">-</strong></div>
-<div class="insight"><span>Highest Fake Rate</span><strong id="worstFakeDoctorInsight">-</strong></div>
-<div class="insight"><span>Highest Return Rate</span><strong id="worstReturnDoctorInsight">-</strong></div>
-</div>
-<div class="charts-grid">
-<div class="card"><h2>Revenue by Doctor</h2><canvas id="doctorRevenueChart"></canvas></div>
-<div class="card"><h2>Fake Rate / Return Rate</h2><canvas id="doctorRiskChart"></canvas></div>
-</div>
-<div class="card">
-<div class="section-head"><h2>Doctor Ranking</h2><input class="rank-search" id="doctorRankSearch" placeholder="Search doctor..."/><button class="success" onclick="exportDoctorRank()">Export Doctor Rank</button></div>
-<div class="table-wrap"><table><thead><tr>
-<th>Rank</th><th>Doctor</th><th>Total Orders</th><th>Signed</th><th>Returned</th><th>Fake</th><th>Total Revenue</th><th>Fake Rate</th><th>Return Rate</th><th>Score</th>
-</tr></thead><tbody id="doctorRankBody"></tbody></table></div>
-<div class="pagination" id="doctorRankPagination"></div>
+<div class="doctor-rank-shell">
+  <div class="card doctor-rank-head">
+    <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p></div>
+    <button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button>
+  </div>
+  <div class="card doctor-rank-toolbar">
+    <label>من <input id="doctorRankFromDate" type="date"></label>
+    <label>إلى <input id="doctorRankToDate" type="date"></label>
+    <label>الفرع <select id="doctorRankBranchFilter"><option value="all">كل الفروع</option><option value="nasr-city">مدينة نصر</option><option value="alexandria">اسكندرية</option><option value="tanta">طنطا</option><option value="mansoura">المنصورة</option></select></label>
+    <input class="rank-search" id="doctorRankSearch" placeholder="بحث باسم الدكتور أو الكود...">
+    <button class="success" type="button" onclick="applyDoctorRankFilters()">Filter 🔍</button>
+    <button class="soft" type="button" onclick="resetDoctorRankFilters()">Reset ✕</button>
+    <button class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
+    <button class="doctor-weekly-btn" type="button" onclick="toggleDoctorWeeklyComparison(true)">📊 Weekly Comparison</button>
+    <button class="success" type="button" onclick="exportDoctorRank()">⬇ Smart Export</button>
+  </div>
+  <section class="doctor-weekly-panel hidden" id="doctorWeeklyPanel">
+    <div class="doctor-weekly-head">
+      <div><h2>📊 Weekly Doctor Comparison</h2><p>مقارنة أداء الدكتور بين أسبوعين باستخدام بيانات الأوردرات الفعلية.</p></div>
+      <button class="soft" type="button" onclick="toggleDoctorWeeklyComparison(false)">✕ إغلاق</button>
+    </div>
+    <div class="doctor-weekly-controls">
+      <div class="doctor-weekly-selected-box"><span>الدكاترة المحددون</span><strong id="doctorWeeklySelectedDoctors">لم يتم تحديد دكاترة</strong></div>
+      <label>نوع المقارنة<select id="doctorWeeklyPreset" onchange="setDoctorWeeklyPreset(this.value)"><option value="this-last">هذا الأسبوع مقابل الأسبوع السابق</option><option value="previous-two">آخر أسبوعين مكتملين</option><option value="custom">تاريخ مخصص</option></select></label>
+      <label>الأسبوع الأول من<input id="doctorWeek1From" type="date"></label>
+      <label>الأسبوع الأول إلى<input id="doctorWeek1To" type="date"></label>
+      <label>الأسبوع الثاني من<input id="doctorWeek2From" type="date"></label>
+      <label>الأسبوع الثاني إلى<input id="doctorWeek2To" type="date"></label>
+      <button class="success" type="button" onclick="compareDoctorWeeks()">Compare 🔍</button>
+      <button class="soft" type="button" onclick="resetDoctorWeeklyComparison()">Reset ✕</button>
+      <button class="soft" id="doctorWeeklyExportBtn" type="button" onclick="exportDoctorWeeklyComparison()" disabled>⬇ Export Comparison</button>
+    </div>
+    <div class="doctor-weekly-empty" id="doctorWeeklyEmpty">اختر الدكتور ثم اضغط Compare لعرض المقارنة الأسبوعية.</div>
+    <div class="doctor-weekly-results hidden" id="doctorWeeklyResults">
+      <div class="doctor-weekly-result-head"><strong id="doctorWeeklyResultDoctor">—</strong><span id="doctorWeeklyResultScope">—</span></div>
+      <div class="table-wrap"><table class="doctor-weekly-table"><thead><tr id="doctorWeeklyTableHead"><th>المؤشر</th><th id="doctorWeek1Label">الأسبوع الأول</th><th id="doctorWeek2Label">الأسبوع الثاني</th><th>التغيير</th></tr></thead><tbody id="doctorWeeklyBody"></tbody></table></div>
+      <div class="doctor-weekly-summary" id="doctorWeeklySummary"></div>
+    </div>
+  </section>
+  <div class="doctor-rank-kpis">
+    <div class="doctor-rank-kpi"><span>إجمالي الدكاترة</span><strong id="doctorRankDoctorsCount">0</strong><small>كل الدكاترة المثبتين</small></div>
+    <div class="doctor-rank-kpi"><span>دكاترة لديهم أوردرات</span><strong id="doctorRankActiveDoctors">0</strong><small>داخل الفلتر الحالي</small></div>
+    <div class="doctor-rank-kpi"><span>إجمالي الأوردرات</span><strong id="doctorRankTotalOrders">0</strong><small>حسب التاريخ والفرع</small></div>
+    <div class="doctor-rank-kpi"><span>Signed</span><strong class="green" id="doctorRankSignedCount">0</strong><small>أوردر مؤكد</small></div>
+    <div class="doctor-rank-kpi"><span>Returned</span><strong class="red" id="doctorRankReturnedCount">0</strong><small>أوردر مرتجع</small></div>
+    <div class="doctor-rank-kpi"><span>Cancel Group</span><strong class="red" id="doctorRankCancelCount">0</strong><small>إلغاء من الجروب</small></div>
+    <div class="doctor-rank-kpi"><span>Conversion Rate</span><strong class="cyan" id="doctorRankConversionRate">0%</strong><small>Signed ÷ Total</small></div>
+    <div class="doctor-rank-kpi"><span>Cancel Group Rate</span><strong class="red" id="doctorRankCancelRate">0%</strong><small>Cancel ÷ Total</small></div>
+  </div>
+  <div class="card doctor-rank-table-card">
+    <div class="section-head"><h2>Doctor Performance</h2><span id="doctorRankScopeLabel">كل الفروع</span></div>
+    <div class="doctor-rank-bulk hidden" id="doctorRankBulkActions"><strong id="doctorRankSelectedCount">0 دكتور محدد</strong><button class="doctor-weekly-btn" type="button" onclick="openSelectedDoctorsWeeklyComparison()">📊 مقارنة أسبوعية</button><button class="soft" type="button" onclick="clearDoctorRankSelection()">إلغاء التحديد</button></div>
+    <div class="table-wrap"><table class="doctor-rank-table"><thead><tr>
+      <th><span class="doctor-rank-select-head"><input id="doctorRankSelectAll" type="checkbox" onchange="toggleAllVisibleDoctorRanks(this.checked)"> Ticket ID</span></th><th>Doctor</th><th>Code</th><th>Total Orders</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Fake Doctor</th><th>Cancel Group</th><th>Conversion Rate</th><th>Return Rate</th><th>Cancel Group Rate</th>
+    </tr></thead><tbody id="doctorRankBody"></tbody></table></div>
+    <div class="pagination" id="doctorRankPagination"></div>
+  </div>
 </div>
 </section>
 <!-- ===== Reports / Daily Report Page ===== -->
@@ -1164,6 +1202,7 @@
 <option value="secretary">Secretary</option>
 <option value="cashier">Cashier</option>
 <option value="store_manager">Store Manager</option>
+<option value="doctor">Doctor</option>
 </select>
 </div>
 <div id="newUserBranchesWrap" class="hidden" style="margin-top:12px;padding:12px;background:var(--bg-soft);border:1px solid var(--border-color);border-radius:10px;">
@@ -1201,6 +1240,7 @@
       <option value="admin">admin</option>
       <option value="account_manager">Account Manager</option>
       <option value="account_supervisor">Account Supervisor</option>
+      <option value="doctor">Doctor</option>
       <option value="executive_assistant">Executive Assistant</option>
       <option value="secretary">Secretary</option>
 <option value="cashier">Cashier</option>
@@ -1456,7 +1496,7 @@
   ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
 </div>
 <div style="margin-top:12px;padding:10px;background:var(--bg-soft);border:1px solid var(--border-color);border-radius:10px;">
-<label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات الدفع <span style="color:#DC2626;">(إجباري لو فيه مدفوع)</span></label>
+<label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات السكرتارية <span style="color:#DC2626;">(إجباري لو فيه مدفوع)</span></label>
 <input accept="image/*" id="bPaymentImage" onchange="previewBranchPaymentImage(this);checkBranchDepositImageRequirement();" style="padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;width:100%;font-size:13px;" type="file"/>
 <div id="bPaymentImagePreview" style="margin-top:8px;display:none;align-items:center;gap:10px;">
 <img id="bPaymentPreviewImg" style="max-width:80px;max-height:80px;border-radius:8px;border:1px solid var(--border-color);"/>
@@ -1505,7 +1545,7 @@
 <option value="PaymentProof">إثبات دفع</option>
 </select>
 <select id="bFilterEmployee"></select>
-<button class="success" id="bExportBtn" onclick="exportBranchOrders()">⬇ Export</button>
+<button class="success" id="bExportBtn" onclick="openOrdersExportMenu('branch', event)">⬇ Export</button>
 <button class="okb-stores-btn accounting-only" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
 <button class="okb-stores-btn branch-shipping-rank-only hidden" onclick="openBranchShippingRankFromBranch()" style="width:auto;padding:8px 16px;font-size:13px;">🚚 Shipping Rank</button>
 </div>
@@ -1514,7 +1554,7 @@
   <button class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
   <button class="branch-bulk-delete hidden" id="branchBulkDeleteBtn" type="button" onclick="deleteSelectedBranchOrders()">🗑️ حذف المحدد</button>
   <button class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
-  <button class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف صورة إثبات الدفع</button>
+  <button class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف إثبات السكرتارية</button>
   <button class="branch-bulk-transfer hidden" id="branchBulkTransferBtn" type="button" onclick="transferSelectedBranchOrders()">🔄 تحويل</button>
   <button class="soft" type="button" onclick="clearBranchOrderSelection()">إلغاء التحديد</button>
 </div>
@@ -1522,7 +1562,7 @@
 <table>
 <thead><tr>
 <th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>Ticket ID</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th><th>رقم الاوردر </th>
-<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
+<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="branchOrdersTableBody"></tbody>
 </table>
@@ -1530,12 +1570,38 @@
 <div class="pagination" id="branchOrdersPagination"></div>
 </div>
 </section>
+
+<!-- ===== OKB Stores Returned / Cancel Report ===== -->
+<section class="hidden" id="okbStoresReportPage">
+  <div class="pending-shell stores-report-shell">
+    <div class="pending-head">
+      <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Stores Report</h1><p>تقرير مختصر ومحترف لكل أوردرات Returned وCancel في فروع OKB</p></div></div>
+      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(false)">↻ تحديث</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button></div>
+    </div>
+    <div class="pending-summary pending-summary-compact">
+      <div class="pending-summary-card pending-summary-main"><span>إجمالي المرتجعات</span><strong id="storesReportTotalCount">0</strong></div>
+      <div class="pending-summary-card pending-summary-main"><span>Returned</span><strong id="storesReportReturnedCount">0</strong></div>
+      <div class="pending-summary-card pending-summary-main"><span>Group Cancel</span><strong id="storesReportCancelCount">0</strong></div>
+      <div class="pending-summary-card pending-summary-main"><span>إجمالي القيمة</span><strong id="storesReportTotalValue">0</strong></div>
+      <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="مدينة نصر"><span>مدينة نصر</span><strong id="storesReportNasrCount">0</strong></div>
+      <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="اسكندرية"><span>اسكندرية</span><strong id="storesReportAlexCount">0</strong></div>
+      <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="طنطا"><span>طنطا</span><strong id="storesReportTantaCount">0</strong></div>
+      <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="المنصورة"><span>المنصورة</span><strong id="storesReportMansouraCount">0</strong></div>
+    </div>
+    <div class="pending-toolbar">
+      <input id="storesReportSearch" type="text" placeholder="ابحث بالعميل، الدكتور، الهاتف، Ticket ID أو رقم الأوردر..." oninput="renderOKBStoresReport()">
+      <select id="storesReportStatus" onchange="renderOKBStoresReport()"><option value="all">كل الحالات</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option></select>
+      <select id="storesReportBranch" onchange="renderOKBStoresReport()"><option value="all">كل الفروع</option></select>
+    </div>
+    <div id="storesReportOrdersList" class="pending-list"><div class="pending-loading">جاري تحميل المرتجعات...</div></div>
+  </div>
+</section>
 <!-- ===== Pending Orders Page ===== -->
 <section class="hidden" id="pendingPage">
   <div class="pending-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>عملاء الفروع بحالة Delivering الذين مرّ عليهم 3 أيام أو أكثر بدون تحديث</p></div></div>
-      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(true)">↻ تحديث</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
+      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">↻ تحديث</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المتأخر</span><strong id="pendingTotalCount">0</strong></div>
@@ -1649,13 +1715,19 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
 <h3 style="margin:0;font-size:15px;">📋 أوردرات الفترة المحددة</h3>
+<div class="hidden" id="khaznaBulkActions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;border:1px solid rgba(99,102,241,.28);border-radius:11px;background:rgba(99,102,241,.07);">
+  <span id="khaznaSelectedCount" style="font-size:11px;font-weight:900;color:var(--text-primary);">0 محدد</span>
+  <button type="button" onclick="printSelectedOrders()" style="padding:7px 12px;border:0;border-radius:8px;background:#0D9488;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🖨️ طباعة الكل</button>
+  <button class="hidden" id="khaznaBulkDeleteBtn" type="button" onclick="deleteSelectedKhaznaOrders()" style="padding:7px 12px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🗑️ حذف المحدد</button>
+  <button class="hidden" id="khaznaDeleteCollectionProofBtn" type="button" onclick="deleteSelectedKhaznaCollectionProof()" style="padding:7px 12px;border:0;border-radius:8px;background:#7c3aed;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🖼️ حذف إثبات التحصيل</button>
+</div>
 </div>
 <div id="khaznaLockBadge" class="daily-lock-badge"></div>
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th>
-<th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثبات الدفع</th><th>مصروف الشحنة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
+<th><input id="khaznaSelectAll" type="checkbox" onchange="toggleAllKhaznaOrders(this)" title="تحديد الكل"/></th><th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th>
+<th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثباتات الدفع</th><th>مصروف الشحنة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="khaznaOrdersBody"></tbody>
 </table>
@@ -1773,6 +1845,7 @@
 <input id="collectShippingInput" oninput="calcCollect()" placeholder="0.00" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid rgba(239,68,68,0.35);background:var(--bg-card);color:var(--text-primary);font-size:15px;font-weight:700;text-align:center;outline:none;" type="number"/>
 </div>
 </div>
+<div id="collectUpfrontProofInfo" style="display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-5px 0 18px;padding:10px 12px;border-radius:10px;border:1px solid rgba(99,102,241,.30);background:rgba(99,102,241,.07);font-size:11px;font-weight:800;color:var(--text-primary);"></div>
 <!-- Payment Method -->
 <div id="collectPaymentMethodSection" style="background:var(--bg-soft);border:1px solid var(--border-color);border-radius:12px;padding:14px;margin-bottom:18px;">
 <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:700;margin-bottom:10px;">💳 طريقة التحصيل</label>
@@ -1968,6 +2041,7 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

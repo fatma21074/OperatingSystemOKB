@@ -1,0 +1,129 @@
+OKB Customer Profile CRM Update
+================================
+
+Database migration:
+  supabase/001_customers_crm.sql
+
+Included behavior:
+- Click any customer name from Dashboard or Branch pages to open the customer profile.
+- Glass-style customer profile with summary, order history and timelines.
+- Open or print any historical order.
+- Create a new order using the same customer data and a new Ticket ID.
+- Admin-only customer data editing.
+- Existing orders keep their original sales data.
+
+Admin collection date update:
+- Admin-only collection date field in the branch collection window.
+- The selected date is saved in the collection history without changing the order creation date.
+- Khazna and accounting reports use the selected collection date.
+- Future dates and locked daily accounts are rejected.
+
+Smart Export update:
+- Dashboard and Branch Export buttons now offer Details and Smart Summary.
+- Details preserves the original export behavior.
+- Smart Summary exports an Overview sheet, one sheet per visible status,
+  Doctor Performance, Employee Performance and Notes Review.
+- All exported figures use the active page filters and date range.
+
+Supabase verification supplied by the owner:
+- Customers: 1658
+- Linked orders: 1908
+- Unlinked orders: 0
+- Invalid normalized phones: 0
+Smart Summary + Returned Collection Guard (2026-08-06)
+======================================================
+- Doctor Performance and Employee Performance now create one column for every status present in the active filtered data.
+- Custom/action statuses such as Transit and Fake Delivery update are counted per doctor and employee.
+- Returned and Cancel orders no longer show the collection button for any role, including Admin.
+- Barcode collection is blocked for Returned/Cancel orders and reports the action date and actor from Activity Log.
+- Admin must change the order status before collection becomes available again.
+Smart Summary Overview KPIs (2026-08-06)
+=========================================
+- Renamed the first Smart Summary sheet to Overview.
+- Operational KPIs now lists every status found in the active filters with its order count.
+- Added Total Revenue and Total Deposits to the same KPI summary.
+Overview Revenue by Status (2026-08-06)
+=======================================
+- Operational KPIs now uses columns: Status, Value (order count), Total Revenue.
+- Every filtered status shows its own order count and revenue.
+- Added a final Total row for all orders and all revenue.
+- Total Deposits remains available at the end of the KPI section.
+Secretary / Collection Payment Proof Split (2026-08-06)
+=======================================================
+- Kept orders.payment_image exclusively for the secretary/upfront payment proof.
+- Collection proof is stored and read from COLLECT_META history proof_url.
+- Collection no longer overwrites the secretary proof URL.
+- Dashboard, Branch and Khazna show both proofs and their separate amounts.
+- Khazna now shows Paid on Order Save and Collected from Courier as separate columns.
+- Payment Proof filters match either secretary or collection proof.
+- Instapay/Wallet collection requires its own collection proof; secretary proof cannot satisfy it.
+- Existing collection permissions, barcode flow, two-step correction, daily locks and financial cards remain unchanged.
+Khazna Table Simplification (2026-08-06)
+=========================================
+- Removed the separate Collected from Courier column from the branch Khazna orders table.
+- Collection transfer totals, proof links, cards and collection modal calculations remain unchanged.
+Khazna Paid Column Label (2026-08-06)
+=====================================
+- Renamed the Khazna table column from Paid on Order Save to Paid.
+- Values and financial calculations were not changed.
+Paid Label Unified (2026-08-07)
+================================
+- Unified the Paid column and form label across Dashboard, Branch pages and Khazna to: المدفوع.
+- No payment values or calculations were changed.
+Customer Profile Icy Glass Theme (2026-08-07)
+==============================================
+- Upgraded Customer Profile to a transparent icy glass style.
+- Added stronger blur, frosted cyan borders, subtle highlights and glass cards.
+- Customer data, history, permissions and actions were not changed.
+Customer Profile Readability + Neon Actions (2026-08-07)
+========================================================
+- Increased Customer Profile typography slightly for better readability.
+- Added a rotating pink/cyan neon border effect to Edit Customer and New Order buttons.
+- Verified that Delete Secretary Proof clears only orders.payment_image and its Storage file.
+- Collection proof_url in COLLECT_META remains untouched.
+Khazna Smart Selection + Customer Reactivation (2026-08-07)
+===========================================================
+- Added Khazna smart selection with Print All for selected orders.
+- Added Admin-only Delete Selected orders.
+- Added Delete Collection Proof for one selected order with a collection proof.
+- Collection proof deletion preserves the secretary proof.
+- Customer Profile activities are restricted to currently existing orders and exclude deleted-order activities.
+- Unified customer info cards and profile action buttons with the same icy card background.
+- Added duplicate customer phone detection on Dashboard and Branch order forms.
+- Existing customers can be opened directly in Customer Profile or used to prepare a new order with prefilled customer data.
+Duplicate Customer Control Update (2026-08-07)
+================================================
+- Duplicate detection now works from Mobile and Mobile 2 on Dashboard and Branch pages.
+- The warning shows the registered branch and doctor.
+- The warning can only be resolved by opening Customer Profile or starting a new order for the same customer.
+- Removed outside-click dismissal and the Close button.
+
+OKB Stores Report + Doctor Role (2026-08-07)
+================================================
+- OKB Stores menu now closes when clicking anywhere outside it.
+- Added OKB Stores Report for Returned and Cancel orders with live badge, branch/status/search filters, branch cards, order opening and multi-sheet Excel export.
+- Added compact Overview, full details, Returned, Cancel and Doctor Performance Excel sheets.
+- Added Doctor role to Users and Permission with read-only access to all four branches by default.
+- Users without Dashboard permission now open their first permitted branch automatically.
+
+Stores Report Date + Excel Layout Update (2026-08-07)
+======================================================
+- Added From/To date filters to OKB Stores Report; cards, rows and export use the same range.
+- Pending and OKB Stores Report Refresh buttons now update silently without success alerts.
+- OKB Stores Report Excel cells are horizontally centered and vertically middle-aligned.
+
+Stores Monthly Range + Admin Smart Export (2026-08-08)
+=======================================================
+- OKB Stores Report defaults automatically to the first and last day of the current Cairo month.
+- Added explicit Filter and Reset controls; Reset restores the current full month.
+- Smart Summary export is Admin-only at both the menu action and export-function levels.
+- Details export remains available to permitted non-Admin users.
+
+Professional Mobile CRM Layout (2026-08-09)
+============================================
+- Added a responsive mobile layout at 768px and below without changing desktop or receipt printing.
+- Dashboard and report cards use a clear two-column mobile grid.
+- Order forms, filters and action controls stack at full mobile width.
+- Data tables automatically become detailed order cards with their original column labels.
+- Pending, Stores Report, Customer Profile and collection/cancel dialogs fit mobile screens.
+- Verified at a 390x844 viewport: two-column stats, one-column forms and no horizontal body overflow.
