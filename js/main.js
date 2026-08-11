@@ -3974,7 +3974,7 @@ orderForm.addEventListener("submit", async (e) => {
     const appliedDiscount = Number(document.getElementById('dashDiscountInput')?.value || getOrderMeta(savedOrder).discount || 0);
     if(appliedDiscount>0) await logActivity('order_discount','تم تطبيق خصم على أوردر',`العميل: ${orderData.customer_name} | قيمة الخصم: ${money(appliedDiscount)} | الإجمالي بعد الخصم: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder));
     resetForm();
-    duplicateCustomerAcknowledgedPhone.dashboard = '';
+    duplicateCustomerAcknowledgedPhone.dashboard = [];
     await loadOrders();
     alert(wasEditingOrder ? "تم تعديل الاوردر بنجاح" : "تم الإضافة بنجاح");
     
@@ -7638,7 +7638,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if(payImgInput?.files[0]) await logActivity('payment_proof_attached','تم إرفاق إثبات دفع للأوردر',`العميل: ${orderData.customer_name} | تم رفع صورة إثبات الدفع أثناء ${wasEditing?'تعديل':'إضافة'} الأوردر`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
       branchEditId=null;
       branchEditExistingPaymentImage='';
-      duplicateCustomerAcknowledgedPhone.branch = '';
+      duplicateCustomerAcknowledgedPhone.branch = [];
       branchForm.reset();
       const adminBranchDateWrap = document.getElementById('adminBranchOrderDateWrap');
       const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
@@ -9465,7 +9465,8 @@ function normalizeCustomerPhoneClient(value) {
 let duplicateCustomerRecord = null;
 let duplicateCustomerLatestOrder = null;
 let duplicateCustomerSource = 'dashboard';
-const duplicateCustomerAcknowledgedPhone = { dashboard: '', branch: '' };
+let duplicateCustomerMatchedPhone = '';
+const duplicateCustomerAcknowledgedPhone = { dashboard: [], branch: [] };
 
 function ensureDuplicateCustomerModal() {
   let modal = document.getElementById('duplicateCustomerModal');
@@ -9517,11 +9518,12 @@ async function checkExistingCustomerPhone(source = 'dashboard', showModal = true
   const inputIds = source === 'branch' ? { primary: 'bPhone', secondary: 'bPhone2' } : { primary: 'phone', secondary: 'phone2' };
   const input = document.getElementById(inputIds[inputKey] || inputIds.primary);
   const normalized = normalizeCustomerPhoneClient(input?.value);
-  if (normalized.length !== 11 || duplicateCustomerAcknowledgedPhone[source] === normalized) return false;
+  if (normalized.length !== 11 || duplicateCustomerAcknowledgedPhone[source].includes(normalized)) return false;
   const customer = await findExistingCustomerByPhone(normalized);
   if (!customer) return false;
   duplicateCustomerRecord = customer;
   duplicateCustomerSource = source;
+  duplicateCustomerMatchedPhone = normalized;
   duplicateCustomerLatestOrder = null;
   try {
     let latestResult = await supabaseClient.from('orders').select('id,branch,shipping_company,doctor_name,created_at').eq('customer_id', customer.id).limit(1);
@@ -9586,9 +9588,20 @@ async function startDuplicateCustomerNewOrder() {
     customerProfileCustomer = customer;
     customerProfileOrders = availableOrders;
     customerProfileActivities = [];
-    const normalized = normalizeCustomerPhoneClient(customer.phone);
-    duplicateCustomerAcknowledgedPhone.dashboard = normalized;
-    duplicateCustomerAcknowledgedPhone.branch = normalized;
+    // Approve every phone that belongs to this customer for this one new-order
+    // flow. Otherwise the submit check can approve the primary phone and then
+    // show the same duplicate warning again for Mobile 2.
+    const approvedPhones = [...new Set([
+      normalizeCustomerPhoneClient(customer.phone),
+      normalizeCustomerPhoneClient(customer.phone2),
+      normalizeCustomerPhoneClient(duplicateCustomerMatchedPhone)
+    ].filter(phone => phone.length === 11))];
+    duplicateCustomerAcknowledgedPhone.dashboard = [...approvedPhones];
+    duplicateCustomerAcknowledgedPhone.branch = [...approvedPhones];
+    // Keep the page that raised the duplicate warning as the destination for
+    // the new order. In particular, a customer registered in another branch
+    // must still be orderable from the branch that is currently open.
+    customerProfileSource = duplicateCustomerSource;
     closeDuplicateCustomerModal(true);
     await startNewOrderForCustomer();
   } catch (error) {
@@ -9862,9 +9875,16 @@ async function startNewOrderForCustomer() {
   closeCustomerProfile();
   const preferredBranch = customer.last_branch || latest.branch || '';
   const managedBranches = getCurrentUserManagedBranches();
-  const targetBranch = preferredBranch && canAccessBranch(preferredBranch) ? preferredBranch : (managedBranches[0] || '');
+  // When this action starts from a branch page, the open branch is the
+  // intended destination. Do not send the user back to the customer's old
+  // branch just because it contains the first/most recent order.
+  const requestedBranch = customerProfileSource === 'branch' && currentBranchName
+    ? currentBranchName
+    : '';
+  const targetBranch = requestedBranch
+    || (preferredBranch && canAccessBranch(preferredBranch) ? preferredBranch : (managedBranches[0] || ''));
 
-  if (!isAdmin() && targetBranch) {
+  if (targetBranch && (customerProfileSource === 'branch' || !isAdmin())) {
     await openBranchPage(targetBranch);
     branchEditId = null;
     branchEditExistingPaymentImage = '';
