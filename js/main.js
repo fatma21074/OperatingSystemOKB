@@ -1614,6 +1614,24 @@ function buildNotesWithOrderMeta(notes, meta) {
   return `${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
 }
 
+function getOrderFlagMeta(order) {
+  const meta = getOrderMeta(order);
+  const collectMeta = typeof getCollectMeta === 'function' ? getCollectMeta(order) : {};
+  return {
+    urgent: meta.urgent === true || collectMeta.urgent === true,
+    replacement: meta.replacement === true || collectMeta.replacement === true
+  };
+}
+
+function getOrderFlagLabels(order) {
+  const flags = getOrderFlagMeta(order);
+  return [flags.urgent ? 'استعجال' : '', flags.replacement ? 'استبدال' : ''].filter(Boolean);
+}
+
+function isPriorityOrder(order) {
+  return getOrderFlagLabels(order).length > 0;
+}
+
 function getOrderByIdAny(orderId) {
   const pools = [branchOrders, khaznaOrders, orders];
   for (const arr of pools) {
@@ -1632,7 +1650,9 @@ function getCollectMeta(order) {
     const parsed = JSON.parse(match[1]);
     return {
       count: Number(parsed.count || 0),
-      history: Array.isArray(parsed.history) ? parsed.history : []
+      history: Array.isArray(parsed.history) ? parsed.history : [],
+      urgent: parsed.urgent === true,
+      replacement: parsed.replacement === true
     };
   } catch (e) {
     return { count: 0, history: [] };
@@ -1697,10 +1717,17 @@ function stripCollectMeta(notes) {
 }
 
 function buildNotesWithCollectMeta(notes, meta) {
+  const orderMeta = (() => {
+    const match = String(notes || '').match(ORDER_META_REGEX);
+    if (!match) return {};
+    try { return JSON.parse(match[1]) || {}; } catch (e) { return {}; }
+  })();
   const cleanNotes = stripCollectMeta(notes);
   const safeMeta = {
     count: Number(meta?.count || 0),
-    history: Array.isArray(meta?.history) ? meta.history : []
+    history: Array.isArray(meta?.history) ? meta.history : [],
+    urgent: meta?.urgent === true || orderMeta.urgent === true,
+    replacement: meta?.replacement === true || orderMeta.replacement === true
   };
   return `${cleanNotes}${cleanNotes ? "\n" : ""}${COLLECT_META_PREFIX}${JSON.stringify(safeMeta)}]`;
 }
@@ -2889,6 +2916,10 @@ function resetForm() {
   if (discountEl) discountEl.value = "";
   const priceEl = document.getElementById("price");
   if (priceEl) priceEl.value = "";
+  const urgentEl = document.getElementById('dashUrgentOrder');
+  const replacementEl = document.getElementById('dashReplacementOrder');
+  if (urgentEl) urgentEl.checked = false;
+  if (replacementEl) replacementEl.checked = false;
 
   clearProductCart('dash');
   clearPaymentImage();
@@ -3536,7 +3567,9 @@ async function printBranchSummaryReportForCashier() {
       const last = getLatestCollectEntry(order);
       return sum + Number(last?.shipping || 0);
     }, 0);
-    const totalTransfers = signedReportOrders.reduce((sum, order) => sum + getOrderProofPaymentTotal(order), 0);
+    const secretaryTransfers = signedReportOrders.reduce((sum, order) => sum + getOrderUpfrontTransferTotal(order), 0);
+    const collectionTransfers = signedReportOrders.reduce((sum, order) => sum + getOrderCollectionTransferTotal(order), 0);
+    const totalTransfers = secretaryTransfers + collectionTransfers;
     const netDaily = totalSales - totalReturn14 - totalExpenses - totalTransfers;
     const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
 
@@ -3596,6 +3629,8 @@ async function printBranchSummaryReportForCashier() {
   <div class="row return-row"><span>مرتجع خلال 14 يوم</span><span class="value">- ${enMoney(totalReturn14)} EGP</span></div>
   <div class="row"><span>إجمالي المصروفات</span><span class="value">${enMoney(totalExpenses)} EGP</span></div>
   <div class="row"><span>إجمالي التحويلات</span><span class="value">${enMoney(totalTransfers)} EGP</span></div>
+  <div class="row" style="padding:3px 10px 3px 0;font-size:10px;font-weight:700;"><span>(تحويلات السكرتارية)</span><span class="value" style="font-size:10px;">${enMoney(secretaryTransfers)} EGP</span></div>
+  <div class="row" style="padding:3px 10px 3px 0;font-size:10px;font-weight:700;"><span>(تحويلات التحصيل من المندوب)</span><span class="value" style="font-size:10px;">${enMoney(collectionTransfers)} EGP</span></div>
 
   <div class="divider-solid"></div>
 
@@ -3779,7 +3814,7 @@ function renderOrders() {
     const adminCheckbox = isAdmin() ? `<td><input type="checkbox" class="row-check" data-id="${o.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectOrder(this, '${o.id}')" /></td>` : '';
     
     html += `
-      <tr>
+      <tr class="${isPriorityOrder(o) ? 'order-priority-row' : ''}">
         ${adminCheckbox}
         <td>${num(page.start + i + 1)}</td>
         <td>${o.employee_name || ""}</td>
@@ -3897,7 +3932,7 @@ orderForm.addEventListener("submit", async (e) => {
     delivery_fee:     delivFee,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: !editId }),
+    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: !editId, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked) }),
     product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts),
     branch:           isAdmin() ? (selectedAdminBranch || dashboardEditingOrder?.branch || null) : (dashboardEditingOrder?.branch || null)
   };
@@ -4055,6 +4090,11 @@ window.editOrder = function (id) {
 
   if($("deposit")) $("deposit").value = o.deposit || 0;
   status.value = o.status || "";
+  const orderFlags = getOrderFlagMeta(o);
+  const urgentEl = document.getElementById('dashUrgentOrder');
+  const replacementEl = document.getElementById('dashReplacementOrder');
+  if (urgentEl) urgentEl.checked = orderFlags.urgent;
+  if (replacementEl) replacementEl.checked = orderFlags.replacement;
   $('orderNotes').value = cleanVisibleOrderNotes(o.notes || '');
   const existingImage = o.payment_image || "";
   const existingImageField = document.getElementById("existingPaymentImage");
@@ -7220,7 +7260,7 @@ function renderBranchOrders() {
     const deposit = Number(o.deposit || 0);
     const remaining = getOrderOutstandingBalance(o);
     const paymentProofs = getPaymentProofsCellHtml(o, { allowAttachUpfront: true });
-    html += `<tr>
+    html += `<tr class="${isPriorityOrder(o) ? 'order-priority-row' : ''}">
       <td><input type="checkbox" class="row-check branch-row-check" data-id="${o.id}" ${isSelected?'checked':''} onchange="toggleBranchOrderSelection(this,'${o.id}')"/></td>
       <td>${num(start + i + 1)}</td>
       <td>${escapeHTML(getTicketId(o) || '—')}</td>
@@ -7471,6 +7511,11 @@ function editBranchOrder(id) {
   if (adminBranchDateWrap) adminBranchDateWrap.style.display = isAdmin() ? 'block' : 'none';
   if (adminBranchDateInput) adminBranchDateInput.value = isAdmin() ? toLocalDateTimeInputValue(o.created_at) : '';
   setValue('bStatus',o.status||'Delivering');
+  const orderFlags = getOrderFlagMeta(o);
+  const urgentEl = document.getElementById('branchUrgentOrder');
+  const replacementEl = document.getElementById('branchReplacementOrder');
+  if (urgentEl) urgentEl.checked = orderFlags.urgent;
+  if (replacementEl) replacementEl.checked = orderFlags.replacement;
   const branchStatusSelect = document.getElementById('bStatus');
   if (branchStatusSelect) {
     branchStatusSelect.disabled = !isAdmin();
@@ -7579,7 +7624,7 @@ document.addEventListener('DOMContentLoaded', function() {
       delivery_fee:     bDelivFee,
       status:           editingOrder ? (isAdmin() ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
-      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: true }),
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked) }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
@@ -7640,6 +7685,10 @@ document.addEventListener('DOMContentLoaded', function() {
       branchEditExistingPaymentImage='';
       duplicateCustomerAcknowledgedPhone.branch = [];
       branchForm.reset();
+      const urgentEl = document.getElementById('branchUrgentOrder');
+      const replacementEl = document.getElementById('branchReplacementOrder');
+      if (urgentEl) urgentEl.checked = false;
+      if (replacementEl) replacementEl.checked = false;
       const adminBranchDateWrap = document.getElementById('adminBranchOrderDateWrap');
       const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
       if (adminBranchDateWrap) adminBranchDateWrap.style.display = 'none';
@@ -7762,6 +7811,11 @@ function closeTransferModal() {
   transferOrderIds = [];
   const modal = document.getElementById('transferModal');
   if (modal) modal.style.display = 'none';
+  const confirmBtn = document.getElementById('transferConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '✅ تأكيد التحويل';
+  }
 }
 
 async function confirmTransfer() {
@@ -7780,39 +7834,44 @@ async function confirmTransfer() {
     alert('الأوردر موجود بالفعل في الفرع المختار. اختر فرعًا آخر.');
     return;
   }
-  const confirmBtn = document.querySelector('#transferModal button:last-child');
+  const confirmBtn = document.getElementById('transferConfirmBtn');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'جاري التحويل...'; }
+  try {
+    const { error } = await supabaseClient.from('orders').update({
+      transferred: true,
+      transferred_to: shipping,
+      shipping_company: shipping,
+      branch: destinationBranch || null
+    }).in('id', ids);
+    if (error) throw error;
 
-  const { error } = await supabaseClient.from('orders').update({
-    transferred: true,
-    transferred_to: shipping,
-    shipping_company: shipping,
-    branch: destinationBranch || null
-  }).in('id', ids);
-
-  if (error) {
-    alert('مشكلة في التحويل: ' + error.message);
-    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ تأكيد التحويل'; }
-    return;
-  }
-
-  for (const transferOrder of transferOrders) {
-    const previousShipping = transferOrder?.shipping_company || transferOrder?.branch || '—';
-    await logActivity(
-      'order_transfer',
-      'تم تحويل أوردر إلى فرع / شركة شحن',
-      `العميل: ${transferOrder?.customer_name||'—'} | من: ${previousShipping} | إلى: ${shipping}`,
-      {
-        ...getActivityOrderInfo(transferOrder),
-        branch_name: destinationBranch || shipping
+    for (const transferOrder of transferOrders) {
+      const previousShipping = transferOrder?.shipping_company || transferOrder?.branch || '—';
+      try {
+        await logActivity(
+          'order_transfer',
+          'تم تحويل أوردر إلى فرع / شركة شحن',
+          `العميل: ${transferOrder?.customer_name||'—'} | من: ${previousShipping} | إلى: ${shipping}`,
+          { ...getActivityOrderInfo(transferOrder), branch_name: destinationBranch || shipping }
+        );
+      } catch (activityError) {
+        console.warn('Transfer activity log failed:', activityError);
       }
-    );
+    }
+    closeTransferModal();
+    clearBranchOrderSelection();
+    await loadBranchOrders();
+    if (typeof loadOrders === 'function') await loadOrders();
+    alert(`✅ تم تحويل ${ids.length} أوردر إلى ${destinationBranch || shipping} بنجاح`);
+  } catch (error) {
+    console.error('Transfer failed:', error);
+    alert('مشكلة في التحويل: ' + (error?.message || error));
+  } finally {
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '✅ تأكيد التحويل';
+    }
   }
-  closeTransferModal();
-  clearBranchOrderSelection();
-  alert(`✅ تم تحويل ${ids.length} أوردر إلى ${destinationBranch || shipping} بنجاح`);
-  await loadBranchOrders();
-  if (typeof loadOrders === 'function') await loadOrders();
 }
 
 // ============================================================
@@ -8591,7 +8650,9 @@ function printKhaznaReport() {
     .filter(isReturnWithin14Days)
     .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
   const shippingTotal = getKhaznaShippingTotal();
-  const transfersTotal = getKhaznaTransfersTotal();
+  const secretaryTransfers = getKhaznaUpfrontTransfersTotal();
+  const collectionTransfers = getKhaznaCollectionTransfersTotal();
+  const transfersTotal = secretaryTransfers + collectionTransfers;
   const net = totalSales - return14Total - shippingTotal - transfersTotal;
   khaznaOrders = originalKhaznaOrdersForCalc;
 
@@ -8709,6 +8770,9 @@ function printKhaznaReport() {
     direction:ltr;
     unicode-bidi:isolate;
   }
+  .stat-box .transfer-breakdown { margin-top:5px; padding-top:5px; border-top:1px dashed #d1d5db; }
+  .stat-box .transfer-line { display:flex; justify-content:space-between; gap:5px; font-size:9px; line-height:1.5; color:#4b5563; }
+  .stat-box .transfer-line b { direction:ltr; unicode-bidi:isolate; color:#7e22ce; font-size:9px; white-space:nowrap; }
 
   table {
     width:100%;
@@ -8816,7 +8880,14 @@ function printKhaznaReport() {
     <div class="stats">
       <div class="stat-box"><div class="label">إجمالي المبيعات</div><div class="value" style="color:#6366f1;">${enMoney(totalSales)}</div></div>
       <div class="stat-box"><div class="label">مصروفات الشحن</div><div class="value" style="color:#ef4444;">${enMoney(shippingTotal)}</div></div>
-      <div class="stat-box"><div class="label">التحويلات</div><div class="value" style="color:#a855f7;">${enMoney(transfersTotal)}</div></div>
+      <div class="stat-box">
+        <div class="label">التحويلات</div>
+        <div class="value" style="color:#a855f7;">${enMoney(transfersTotal)}</div>
+        <div class="transfer-breakdown">
+          <div class="transfer-line"><span>تحويلات السكرتارية:</span><b>${enMoney(secretaryTransfers)}</b></div>
+          <div class="transfer-line"><span>تحويلات التحصيل من المندوب:</span><b>${enMoney(collectionTransfers)}</b></div>
+        </div>
+      </div>
       <div class="stat-box"><div class="label">صافي اليومية</div><div class="value" style="color:#10b981;">${enMoney(net)}</div></div>
       <div class="stat-box"><div class="label">عدد الأوردرات</div><div class="value" style="color:#f59e0b;">${enNumber(reportOrders.length)}</div></div>
     </div>
@@ -10376,6 +10447,8 @@ function generateReceiptHTML(order, branchName) {
   const deposit   = Number(order.deposit || 0);
   const remaining = getOrderOutstandingBalance(order);
   const discount  = Number(getOrderMeta(order).discount || 0);
+  const orderFlagLabels = getOrderFlagLabels(order);
+  const receiptCustomerName = `${order.customer_name || ''}${orderFlagLabels.length ? ` - ${orderFlagLabels.join(' - ')}` : ''}`;
   const products  = parseReceiptProducts(order.product_names || '');
   const productsTotal = products.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0) || Math.max(0, price - delivFee + discount);
   const ticketId  = getTicketId(order);
@@ -10467,7 +10540,7 @@ function generateReceiptHTML(order, branchName) {
     <span>Ticket ID: <strong>${ticketId}</strong></span>
     <span>Time: ${orderDate}</span>
   </div>
-  <div style="font-size:12px;margin-bottom:4px;">العميل: <strong>${order.customer_name || ''}</strong></div>
+  <div style="font-size:12px;margin-bottom:4px;">العميل: <strong>${escapeHTML(receiptCustomerName)}</strong></div>
   <div style="font-size:12px;margin-bottom:4px;">الدكتور: <strong>${order.doctor_name || ''}</strong></div>
  <div style="font-size:12px;margin-bottom:4px;">رقم الأوردر: <strong>${order.order_number || '—'}</strong></div>
   <div style="font-size:12px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>

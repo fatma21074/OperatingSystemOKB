@@ -638,6 +638,8 @@
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
 </select>
+<label class="order-flag-check"><input id="dashUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
+<label class="order-flag-check"><input id="dashReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
 </div>
 <div class="smart-products-box" data-cart="dash">
   <div class="smart-products-head">
@@ -1461,6 +1463,8 @@
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
 </select>
+<label class="order-flag-check"><input id="branchUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
+<label class="order-flag-check"><input id="branchReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
 </div>
 <div class="smart-products-box" data-cart="branch">
   <div class="smart-products-head">
@@ -1988,7 +1992,7 @@
 </select>
 <div style="display:flex;gap:10px;justify-content:flex-end;">
 <button onclick="closeTransferModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">إلغاء</button>
-<button onclick="confirmTransfer()" style="padding:8px 18px;border-radius:8px;border:none;background:#f59e0b;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ تأكيد التحويل</button>
+<button id="transferConfirmBtn" onclick="confirmTransfer()" style="padding:8px 18px;border-radius:8px;border:none;background:#f59e0b;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ تأكيد التحويل</button>
 </div>
 <!-- ===== Footer ===== -->
 <footer class="app-footer">
