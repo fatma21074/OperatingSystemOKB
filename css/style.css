@@ -2046,3 +2046,90 @@ body.customer-profile-open{overflow:hidden}
   pointer-events:none!important;
 }
 #okbStoresReportBadge:not(.hidden){display:inline-flex!important}
+
+/* ===== v17: searchable doctor/product list boxes ===== */
+.order-search-select{position:relative;width:100%;min-width:0;direction:rtl}
+.order-search-native{
+  position:absolute!important;
+  width:1px!important;
+  height:1px!important;
+  min-height:1px!important;
+  padding:0!important;
+  margin:0!important;
+  opacity:0!important;
+  pointer-events:none!important;
+  bottom:0;
+  right:0;
+}
+.order-search-input{
+  width:100%!important;
+  min-height:40px!important;
+  padding:8px 34px 8px 11px!important;
+  border:1px solid var(--border-color)!important;
+  border-radius:9px!important;
+  outline:none!important;
+  background:var(--bg-input)!important;
+  color:var(--text-primary)!important;
+  font-family:inherit!important;
+  font-size:12px!important;
+  font-weight:700!important;
+}
+.order-search-input::placeholder{color:var(--text-muted)!important;font-weight:600}
+.order-search-input:focus{
+  border-color:#22d3ee!important;
+  box-shadow:0 0 0 3px rgba(34,211,238,.12)!important;
+}
+.order-search-input:disabled{opacity:.58;cursor:not-allowed}
+.order-search-arrow{
+  position:absolute;
+  z-index:3;
+  top:50%;
+  right:12px;
+  transform:translateY(-54%);
+  color:var(--text-muted);
+  font-size:16px;
+  font-weight:900;
+  cursor:pointer;
+  pointer-events:auto;
+}
+.order-search-select.open .order-search-arrow{transform:translateY(-45%) rotate(180deg);color:#22d3ee}
+.order-search-options{
+  display:none;
+  position:absolute;
+  z-index:12000;
+  top:calc(100% + 6px);
+  right:0;
+  left:0;
+  max-height:250px;
+  overflow:auto;
+  padding:6px;
+  border:1px solid var(--border-color);
+  border-radius:11px;
+  background:var(--bg-card);
+  box-shadow:0 16px 36px rgba(15,23,42,.28);
+}
+.order-search-select.open .order-search-options{display:block}
+.order-search-option{
+  display:block;
+  width:100%;
+  min-height:38px;
+  padding:8px 10px;
+  border:1px solid transparent;
+  border-radius:8px;
+  background:transparent;
+  color:var(--text-secondary);
+  font-family:inherit;
+  font-size:12px;
+  font-weight:700;
+  text-align:right;
+  cursor:pointer;
+}
+.order-search-option:hover,.order-search-option.active{
+  border-color:rgba(34,211,238,.35);
+  background:rgba(34,211,238,.09);
+  color:var(--text-primary);
+  transform:none;
+}
+.order-search-option.selected{color:#10b981;font-weight:900}
+.order-search-empty{padding:14px 10px;text-align:center;color:var(--text-muted);font-size:11px}
+@media(max-width:700px){.order-search-options{position:fixed;top:auto;right:10px;left:10px;bottom:12px;max-height:52vh}}

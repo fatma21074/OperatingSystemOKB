@@ -10934,3 +10934,175 @@ document.addEventListener('DOMContentLoaded',()=>{
   const app=document.getElementById('app');
   if(app)new MutationObserver(applyMobileTableLabels).observe(app,{childList:true,subtree:true});
 });
+
+// ===== Searchable Doctor & Product list boxes =====
+const searchableOrderSelects = new Map();
+
+function normalizeSearchableText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('ar')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function enhanceOrderSearchableSelect(selectId, searchPlaceholder) {
+  const select = document.getElementById(selectId);
+  if (!select || searchableOrderSelects.has(selectId)) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'order-search-select';
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
+  select.classList.add('order-search-native');
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'order-search-input';
+  input.placeholder = searchPlaceholder;
+  input.autocomplete = 'off';
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+
+  const arrow = document.createElement('span');
+  arrow.className = 'order-search-arrow';
+  arrow.textContent = '⌄';
+
+  const panel = document.createElement('div');
+  panel.className = 'order-search-options';
+  panel.setAttribute('role', 'listbox');
+
+  wrapper.append(input, arrow, panel);
+  let activeIndex = -1;
+
+  function options() {
+    return Array.from(select.options).filter(option => option.value && !option.disabled);
+  }
+
+  function selectedLabel() {
+    return select.value ? String(select.selectedOptions?.[0]?.textContent || '').trim() : '';
+  }
+
+  function syncFromSelect() {
+    input.disabled = select.disabled;
+    input.value = selectedLabel();
+  }
+
+  function closePanel(restore = true) {
+    wrapper.classList.remove('open');
+    input.setAttribute('aria-expanded', 'false');
+    activeIndex = -1;
+    if (restore && select.value) input.value = selectedLabel();
+  }
+
+  function choose(option) {
+    select.value = option.value;
+    input.value = String(option.textContent || '').trim();
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    closePanel(false);
+    input.focus();
+  }
+
+  function renderOptions(query = '') {
+    const normalizedQuery = normalizeSearchableText(query);
+    const matches = options().filter(option =>
+      !normalizedQuery || normalizeSearchableText(option.textContent).includes(normalizedQuery)
+    );
+    activeIndex = -1;
+    panel.innerHTML = '';
+
+    if (!matches.length) {
+      const empty = document.createElement('div');
+      empty.className = 'order-search-empty';
+      empty.textContent = 'لا توجد نتائج مطابقة';
+      panel.appendChild(empty);
+      return;
+    }
+
+    matches.forEach(option => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'order-search-option';
+      button.setAttribute('role', 'option');
+      button.dataset.value = option.value;
+      button.textContent = String(option.textContent || '').trim();
+      if (String(option.value) === String(select.value)) button.classList.add('selected');
+      button.addEventListener('mousedown', event => event.preventDefault());
+      button.addEventListener('click', () => choose(option));
+      panel.appendChild(button);
+    });
+  }
+
+  function openPanel(clearForSearch = false) {
+    if (select.disabled) return;
+    if (clearForSearch) input.value = '';
+    renderOptions(clearForSearch ? '' : input.value);
+    wrapper.classList.add('open');
+    input.setAttribute('aria-expanded', 'true');
+  }
+
+  input.addEventListener('focus', () => {
+    syncFromSelect();
+    openPanel(true);
+  });
+  input.addEventListener('click', () => openPanel(false));
+  input.addEventListener('input', () => {
+    if (!wrapper.classList.contains('open')) openPanel(false);
+    renderOptions(input.value);
+  });
+  input.addEventListener('keydown', event => {
+    const items = Array.from(panel.querySelectorAll('.order-search-option'));
+    if (event.key === 'Escape') { closePanel(); input.blur(); return; }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!wrapper.classList.contains('open')) openPanel(false);
+      if (!items.length) return;
+      activeIndex = event.key === 'ArrowDown'
+        ? Math.min(activeIndex + 1, items.length - 1)
+        : Math.max(activeIndex - 1, 0);
+      items.forEach((item, index) => item.classList.toggle('active', index === activeIndex));
+      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (event.key === 'Enter' && wrapper.classList.contains('open')) {
+      event.preventDefault();
+      const target = items[activeIndex] || (items.length === 1 ? items[0] : null);
+      target?.click();
+    }
+  });
+  arrow.addEventListener('click', () => {
+    if (wrapper.classList.contains('open')) closePanel();
+    else { input.focus(); openPanel(true); }
+  });
+  select.addEventListener('change', syncFromSelect);
+  select.addEventListener('invalid', () => input.focus());
+
+  const observer = new MutationObserver(() => {
+    syncFromSelect();
+    if (wrapper.classList.contains('open')) renderOptions(input.value);
+  });
+  observer.observe(select, { childList: true, subtree: true, attributes: true });
+
+  searchableOrderSelects.set(selectId, { wrapper, input, panel, syncFromSelect, closePanel });
+  syncFromSelect();
+}
+
+function refreshOrderSearchableSelects() {
+  searchableOrderSelects.forEach(control => control.syncFromSelect());
+}
+
+document.addEventListener('click', event => {
+  searchableOrderSelects.forEach(control => {
+    if (!control.wrapper.contains(event.target)) control.closePanel();
+  });
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  enhanceOrderSearchableSelect('doctorName', 'ابحث باسم الدكتور أو الكود...');
+  enhanceOrderSearchableSelect('dashProductNameInput', 'ابحث باسم المنتج...');
+  enhanceOrderSearchableSelect('bDoctorName', 'ابحث باسم الدكتور أو الكود...');
+  enhanceOrderSearchableSelect('branchProductNameInput', 'ابحث باسم المنتج...');
+});
