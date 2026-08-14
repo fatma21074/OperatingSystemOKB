@@ -600,7 +600,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1>إضافة أوردر جديد</h1>
-<span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span>
+<div class="page-user-refresh"><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="refreshDashboardPage(this)">↻ Refresh</button></div>
 </div>
 <form id="orderForm">
 <div class="form-grid">
@@ -1429,7 +1429,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1 id="branchPageTitle">📦 Dashboard — فرع</h1>
-<span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span>
+<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="refreshBranchPage(this)">↻ Refresh</button></div>
 </div>
 <form id="branchOrderForm">
 <div class="form-grid">
@@ -1550,8 +1550,8 @@
 </select>
 <select id="bFilterEmployee"></select>
 <button class="success" id="bExportBtn" onclick="openOrdersExportMenu('branch', event)">⬇ Export</button>
-<button class="okb-stores-btn accounting-only" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
-<button class="okb-stores-btn branch-shipping-rank-only hidden" onclick="openBranchShippingRankFromBranch()" style="width:auto;padding:8px 16px;font-size:13px;">🚚 Shipping Rank</button>
+<button class="okb-stores-btn accounting-only" id="branchKhaznaBtn" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
+<button class="okb-stores-btn branch-shipping-rank-only hidden" id="branchShippingRankBtn" onclick="openBranchShippingRankFromBranch()" style="width:auto;padding:8px 16px;font-size:13px;">🚚 Shipping Rank</button>
 </div>
 <div class="branch-bulk-actions hidden" id="branchBulkActions">
   <strong id="branchSelectedCount">0 عميل محدد</strong>
@@ -1663,7 +1663,7 @@
 <option value="PaymentProof">إثبات دفع</option>
 </select>
 <button id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
-<button onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
+<button id="khaznaPrintReportBtn" onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
 <button id="lockDailyBtn" onclick="lockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔒 قفل اليومية</button>
 <button id="unlockDailyBtn" onclick="unlockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#10b981;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔓 فتح القفل</button>
 <span id="khaznaBadge" style="display:none;background:#6366f1;color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;"></span>

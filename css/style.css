@@ -2133,3 +2133,22 @@ body.customer-profile-open{overflow:hidden}
 .order-search-option.selected{color:#10b981;font-weight:900}
 .order-search-empty{padding:14px 10px;text-align:center;color:var(--text-muted);font-size:11px}
 @media(max-width:700px){.order-search-options{position:fixed;top:auto;right:10px;left:10px;bottom:12px;max-height:52vh}}
+
+/* ===== v18: page refresh + granular Buttons permission matrix ===== */
+.page-user-refresh{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.page-refresh-btn{cursor:pointer;font:inherit;font-weight:800;transition:.18s ease}
+.page-refresh-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.page-refresh-btn:disabled{opacity:.62;cursor:wait;transform:none}
+.permission-buttons-group{
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(235px,1fr));
+  gap:8px 12px;
+  padding:16px;
+  border-color:rgba(34,211,238,.28);
+  background:linear-gradient(135deg,rgba(34,211,238,.07),var(--bg-soft));
+}
+.permission-buttons-group h3{grid-column:1/-1;color:#22d3ee;padding-bottom:10px;border-bottom:1px solid rgba(34,211,238,.2)}
+.permission-buttons-group .permission-feature{min-height:44px;border:1px solid var(--border-color);border-radius:10px;background:rgba(15,23,42,.18);padding:10px 12px;transition:.18s ease}
+.permission-buttons-group .permission-feature:hover{border-color:rgba(34,211,238,.5);background:rgba(34,211,238,.08);transform:translateY(-1px)}
+@media(max-width:700px){.page-user-refresh{width:100%;justify-content:stretch}.page-user-refresh>*{flex:1;text-align:center}.permission-buttons-group{grid-template-columns:1fr}}

@@ -1076,7 +1076,30 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'users', label:'Users', group:'Settings' },
   { key:'daily_report', label:'Daily Report', group:'Settings' },
   { key:'activity_log', label:'Activity Log', group:'Main' },
-  { key:'product_reports', label:'Product Reports', group:'Main' }
+  { key:'product_reports', label:'Product Reports', group:'Main' },
+  { key:'btn_dashboard_export', label:'⬇ Export', group:'أزرار Dashboard' },
+  { key:'btn_dashboard_export_details', label:'Details', group:'أزرار Dashboard' },
+  { key:'btn_dashboard_export_smart', label:'Smart Summary', group:'أزرار Dashboard' },
+  { key:'btn_dashboard_import', label:'📥 Import Excel', group:'أزرار Dashboard' },
+  { key:'btn_dashboard_edit', label:'✏️ تعديل', group:'أزرار Dashboard' },
+  { key:'btn_branch_export', label:'⬇ Export', group:'أزرار صفحات الفروع' },
+  { key:'btn_branch_export_details', label:'Details', group:'أزرار صفحات الفروع' },
+  { key:'btn_branch_export_smart', label:'Smart Summary', group:'أزرار صفحات الفروع' },
+  { key:'btn_branch_edit', label:'✏️ تعديل', group:'أزرار صفحات الفروع' },
+  { key:'btn_branch_transfer', label:'🔄 تحويل', group:'أزرار صفحات الفروع' },
+  { key:'btn_delete_upfront_proof', label:'🖼️ حذف إثبات السكرتارية', group:'أزرار صفحات الفروع' },
+  { key:'btn_branch_shipping_rank', label:'🚚 Shipping Rank', group:'أزرار صفحات الفروع' },
+  { key:'btn_branch_khazna', label:'🏦 فتح الخزنة', group:'أزرار الخزنة' },
+  { key:'btn_delete_collection_proof', label:'🖼️ حذف إثبات التحصيل', group:'أزرار الخزنة' },
+  { key:'btn_khazna_summary', label:'📊 Summary Report', group:'أزرار الخزنة' },
+  { key:'btn_khazna_print_report', label:'🖨️ طباعة التقرير', group:'أزرار الخزنة' },
+  { key:'btn_khazna_lock', label:'🔒 قفل اليومية', group:'أزرار الخزنة' },
+  { key:'btn_order_collect', label:'$ تحصيل', group:'إجراءات الأوردر' },
+  { key:'btn_order_print', label:'🖨️ طباعة الأوردر', group:'إجراءات الأوردر' },
+  { key:'btn_order_cancel', label:'إلغاء الأوردر', group:'إجراءات الأوردر' },
+  { key:'btn_cancel_doctor_group', label:'إلغاء من الدكتور على الجروب', group:'أنواع الإلغاء' },
+  { key:'btn_cancel_customer_courier', label:'إلغاء من العميل مع المندوب', group:'أنواع الإلغاء' },
+  { key:'btn_cancel_return_14', label:'مرتجع خلال 14 يوم', group:'أنواع الإلغاء' }
 ];
 const ROLE_BRANCH_FEATURES = {
   'مدينة نصر':'branch_nasr',
@@ -1087,6 +1110,7 @@ const ROLE_BRANCH_FEATURES = {
 let rolePermissionsByRole = {};
 let rolePermissionsTableReady = true;
 let rolePermissionsSyncTimer = null;
+let rolePermissionsRealtimeChannel = null;
 
 function canonicalPermissionRole(role) {
   const key = getRoleKey(role);
@@ -1119,7 +1143,30 @@ function getDefaultRolePermissions(role) {
     daily_report:true,
     doctor_rank_stores:false,
     activity_log:false,
-    product_reports:operation || branchRole || accounting
+    product_reports:operation || branchRole || accounting,
+    btn_dashboard_export:!doctor,
+    btn_dashboard_export_details:!doctor,
+    btn_dashboard_export_smart:false,
+    btn_dashboard_import:!doctor,
+    btn_dashboard_edit:!doctor,
+    btn_branch_export:!doctor,
+    btn_branch_export_details:!doctor,
+    btn_branch_export_smart:false,
+    btn_branch_edit:!doctor,
+    btn_branch_transfer:accounting,
+    btn_delete_upfront_proof:!doctor,
+    btn_branch_khazna:accounting || key === 'cashier',
+    btn_delete_collection_proof:accounting || key === 'cashier',
+    btn_khazna_summary:accounting || key === 'cashier',
+    btn_khazna_print_report:accounting || key === 'cashier',
+    btn_khazna_lock:accounting || key === 'cashier',
+    btn_branch_shipping_rank:operation,
+    btn_order_collect:accounting || key === 'cashier',
+    btn_order_print:!doctor,
+    btn_order_cancel:accounting || key === 'store_manager' || key === 'secretary' || executive,
+    btn_cancel_doctor_group:accounting || key === 'store_manager' || key === 'secretary' || executive,
+    btn_cancel_customer_courier:accounting || key === 'store_manager' || key === 'secretary' || executive,
+    btn_cancel_return_14:accounting || key === 'store_manager' || key === 'secretary' || executive
   };
   return defaults;
 }
@@ -1133,6 +1180,10 @@ function hasRoleFeature(feature) {
   if (!currentUser) return false;
   if (isAdmin()) return true;
   return Boolean(getPermissionsForRole(currentUser.role)[feature]);
+}
+
+function hasButtonPermission(feature) {
+  return hasRoleFeature(feature);
 }
 
 async function loadRolePermissions() {
@@ -1164,6 +1215,10 @@ async function loadRolePermissions() {
 function stopRolePermissionsSync() {
   if (rolePermissionsSyncTimer) clearInterval(rolePermissionsSyncTimer);
   rolePermissionsSyncTimer = null;
+  if (rolePermissionsRealtimeChannel && supabaseClient?.removeChannel) {
+    supabaseClient.removeChannel(rolePermissionsRealtimeChannel);
+  }
+  rolePermissionsRealtimeChannel = null;
 }
 
 function currentPageStillAllowed() {
@@ -1189,7 +1244,22 @@ function startRolePermissionsSync() {
       setupUserView();
       if (!currentPageStillAllowed()) await showInitialPermittedPage();
     }
-  }, 15000);
+  }, 8000);
+  if (supabaseClient?.channel) {
+    rolePermissionsRealtimeChannel = supabaseClient
+      .channel('role-permissions-live-global')
+      .on('broadcast', { event:'permissions_updated' }, async () => {
+        await loadRolePermissions();
+        setupUserView();
+        if (!currentPageStillAllowed()) await showInitialPermittedPage();
+      })
+      .on('postgres_changes', { event:'*', schema:'public', table:'role_permissions' }, async () => {
+        await loadRolePermissions();
+        setupUserView();
+        if (!currentPageStillAllowed()) await showInitialPermittedPage();
+      })
+      .subscribe();
+  }
 }
 
 function populatePermissionRoleSelect() {
@@ -1210,7 +1280,7 @@ function renderRolePermissionMatrix() {
   if (!grid) return;
   const groups = [...new Set(ROLE_PERMISSION_FEATURES.map(feature => feature.group))];
   grid.innerHTML = groups.map(group => `
-    <div class="permission-group">
+    <div class="permission-group ${group.startsWith('أزرار') || group === 'إجراءات الأوردر' || group === 'أنواع الإلغاء' ? 'permission-buttons-group' : ''}">
       <h3>${escapeHTML(group)}</h3>
       ${ROLE_PERMISSION_FEATURES.filter(feature => feature.group === group).map(feature => `
         <label class="permission-feature">
@@ -1273,6 +1343,9 @@ async function saveRolePermissions() {
   rolePermissionsTableReady = true;
   try { localStorage.setItem('okb_role_permissions_cache', JSON.stringify(rolePermissionsByRole)); } catch (e) {}
   if (status) status.textContent = 'تم الحفظ بنجاح ✓';
+  try {
+    await rolePermissionsRealtimeChannel?.send({ type:'broadcast', event:'permissions_updated', payload:{ role } });
+  } catch (error) { console.warn('Permission live broadcast:', error?.message || error); }
   await logActivity('permissions_updated', 'تعديل صلاحيات Role', `تم تعديل صلاحيات ${role}`);
 }
 
@@ -1303,11 +1376,11 @@ function isAccountManager() {
   const role = getRoleKey(currentUser.role);
   return role === 'account_manager' || role === 'account_supervisor';
 }
-function canManageDailyLock() { return isAdmin() || isAccountManager() || isCashier(); }
+function canManageDailyLock() { return hasButtonPermission('btn_khazna_lock'); }
 function canUnlockDailyLock() { return isAdmin() || isAccountManager(); }
-function canManageKhaznaAndTransfer() { return isAdmin() || isAccountManager(); }
-function canViewKhazna() { return isAdmin() || isAccountManager() || isCashier(); }
-function canCollectOrders() { return isAdmin() || isAccountManager() || isCashier(); }
+function canManageKhaznaAndTransfer() { return hasButtonPermission('btn_branch_transfer'); }
+function canViewKhazna() { return hasButtonPermission('btn_branch_khazna'); }
+function canCollectOrders() { return hasButtonPermission('btn_order_collect'); }
 function isAgent() { return currentUser && getRoleKey(currentUser.role) === "agent"; }
 function isOperationManager() { const r = getRoleKey(currentUser && currentUser.role); return r === "manager" || r === "operation_manager" || r === "delivery_manager"; }
 function canViewAdminReports() { return isAdmin() || isOperationManager(); }
@@ -2328,7 +2401,7 @@ function togglePassword() {
 }
 
 function setupUserView() {
-  document.body.classList.toggle('doctor-readonly', isDoctorRole());
+  document.body.classList.toggle('doctor-readonly', isDoctorRole() && !hasButtonPermission('btn_dashboard_edit') && !hasButtonPermission('btn_branch_edit'));
   $("userNameHere").textContent = currentUser.name;
   $("userRoleHere").textContent = getRoleDisplayName(currentUser.role);
   const inline1 = $("userNameInline"), inline2 = $("userRoleInline");
@@ -2352,6 +2425,20 @@ const pendingBtn = document.getElementById('pendingHeaderBtn');
 if (pendingBtn) pendingBtn.style.display = hasRoleFeature('pending') ? 'inline-flex' : 'none';
 const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
 if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+const dashboardExportBtn = document.getElementById('exportBtn');
+if (dashboardExportBtn) dashboardExportBtn.style.display = hasButtonPermission('btn_dashboard_export') ? '' : 'none';
+const dashboardImportBtn = document.getElementById('importBtn');
+if (dashboardImportBtn) dashboardImportBtn.style.display = hasButtonPermission('btn_dashboard_import') ? '' : 'none';
+const branchExportBtn = document.getElementById('bExportBtn');
+if (branchExportBtn) branchExportBtn.style.display = hasButtonPermission('btn_branch_export') ? '' : 'none';
+const branchKhaznaBtn = document.getElementById('branchKhaznaBtn');
+if (branchKhaznaBtn) branchKhaznaBtn.style.display = canViewKhazna() ? '' : 'none';
+const branchShippingRankBtn = document.getElementById('branchShippingRankBtn');
+if (branchShippingRankBtn) branchShippingRankBtn.classList.toggle('hidden', !hasButtonPermission('btn_branch_shipping_rank'));
+const khaznaSummaryBtn = document.getElementById('khaznaSummaryReportBtn');
+if (khaznaSummaryBtn) khaznaSummaryBtn.style.display = hasButtonPermission('btn_khazna_summary') ? '' : 'none';
+const khaznaPrintBtn = document.getElementById('khaznaPrintReportBtn');
+if (khaznaPrintBtn) khaznaPrintBtn.style.display = hasButtonPermission('btn_khazna_print_report') ? '' : 'none';
 const settingsHeaderWrap = document.getElementById('headerSettingsWrap');
 const canOpenSettings = hasRoleFeature('settings_page');
 const canOpenUsers = hasRoleFeature('users');
@@ -2375,11 +2462,17 @@ startActivityLogNotifications();
 startOnlinePresence();
 startPendingHeaderNotifications();
 startOKBStoresReportNotifications();
+if (!document.getElementById('ordersPage')?.classList.contains('hidden') && typeof renderOrders === 'function') renderOrders();
+if (!document.getElementById('branchPage')?.classList.contains('hidden') && typeof renderBranchOrders === 'function') renderBranchOrders();
+if (!document.getElementById('khaznaPage')?.classList.contains('hidden')) {
+  if (typeof renderKhaznaLockUI === 'function') renderKhaznaLockUI();
+  if (typeof syncKhaznaSelectionUI === 'function') syncKhaznaSelectionUI();
+}
 
   document.querySelectorAll(".settings-menu-btn").forEach(el => el.classList.toggle("hidden", !hasRoleFeature('settings_root')));
   document.querySelectorAll(".admin-manager-only").forEach(el => el.classList.toggle("hidden", !canViewAdminReports()));
   document.querySelectorAll(".accounting-only").forEach(el => el.classList.toggle("hidden", !canViewKhazna()));
-  document.querySelectorAll(".branch-shipping-rank-only").forEach(el => el.classList.toggle("hidden", !(isAdmin() || isOperationManager())));
+  document.querySelectorAll(".branch-shipping-rank-only").forEach(el => el.classList.toggle("hidden", !hasButtonPermission('btn_branch_shipping_rank')));
 
   const isRestrictedRole = isExecutiveAssistant() || isSecretary() || isCashier() || isStoreManager() || isAccountManager();
   document.querySelectorAll(".restricted-role-hide").forEach(el => {
@@ -3506,10 +3599,7 @@ async function printBranchKhaznaReportForCashier() {
 
 
 async function printBranchSummaryReportForCashier() {
-  if (!(isCashier() || isAdmin() || isAccountManager())) {
-    alert('Summary Report متاح للكاشير والأدمن ومدير الحسابات فقط');
-    return;
-  }
+  if (!hasButtonPermission('btn_khazna_summary')) { alert('Summary Report غير مضاف لصلاحيات حسابك'); return; }
   if (!currentBranchName) {
     alert('افتح صفحة الفرع أولاً');
     return;
@@ -3832,7 +3922,7 @@ function renderOrders() {
         <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
         <td class="notes-cell" title="${safeNotes}">${displayNotes || ''}</td>
         <td>${formatEnglishDateTime(o.created_at)}</td>
-        <td><div style="display:flex;gap:4px">${!isDoctorRole()?`<button class="edit" style="padding:4px 10px;font-size:11px" onclick="editOrder('${o.id}')">تعديل</button>`:''}${isAdmin() ? `<button class="danger" style="padding:4px 10px;font-size:11px" onclick="deleteOrder('${o.id}')">حذف</button>` : ''}</div></td>
+        <td><div style="display:flex;gap:4px">${hasButtonPermission('btn_dashboard_edit')?`<button class="edit" style="padding:4px 10px;font-size:11px" onclick="editOrder('${o.id}')">تعديل</button>`:''}${isAdmin() ? `<button class="danger" style="padding:4px 10px;font-size:11px" onclick="deleteOrder('${o.id}')">حذف</button>` : ''}</div></td>
       </tr>`;
   }
   
@@ -3859,7 +3949,7 @@ function syncBulkSelectionUI(currentPageRows = []) {
 
 orderForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if(isDoctorRole()){alert('حساب Doctor للعرض فقط ولا يمكنه حفظ أو تعديل الأوردرات');return;}
+  if(isDoctorRole() && !(editId && hasButtonPermission('btn_dashboard_edit'))){alert('حساب Doctor للعرض فقط ولا يمكنه إنشاء أوردر جديد');return;}
 
   const empEl    = document.getElementById("employeeName");
   const docEl    = document.getElementById("doctorName");
@@ -3955,6 +4045,11 @@ orderForm.addEventListener("submit", async (e) => {
     
     if (editId) {
       const existingOrder = orders.find(x => String(x.id) === String(editId));
+      if (existingOrder && !canCurrentUserEditRegisteredOrder(existingOrder)) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'حفظ التعديل';
+        return;
+      }
       if (existingOrder && String(existingOrder.status || '').trim() === 'Signed' && !isAdmin()) {
         alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط');
         submitButton.disabled = false;
@@ -4065,12 +4160,20 @@ function checkBranchDepositImageRequirement() {
   return true;
 }
 
+function canCurrentUserEditRegisteredOrder(order, showMessage = true) {
+  if (isAdmin()) return true;
+  const creator = String(order?.employee_name || '').trim();
+  const userName = String(currentUser?.name || '').trim();
+  if (creator && userName && creator.localeCompare(userName, undefined, { sensitivity: 'base' }) === 0) return true;
+  if (showMessage) alert(`ليس لديك صلاحية تعديل الأوردر. تم تسجيل الأوردر بواسطة "${creator || 'مستخدم آخر'}"، برجاء الرجوع له.`);
+  return false;
+}
+
 window.editOrder = function (id) {
-  if(isDoctorRole()){alert('حساب Doctor للعرض فقط');return;}
+  if(!hasButtonPermission('btn_dashboard_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   const o = orders.find(x => String(x.id) === String(id));
   if (!o) return;
-  if (isFinalizedDeliveredOrder(o) && !isAdmin()) { showDeliveredOrderLockedMessage(); return; }
-  if (!isAdmin() && o.employee_name !== currentUser.name) { alert("غير مسموح بتعديل أوردرات موظف آخر"); return; }
+  if (!canCurrentUserEditRegisteredOrder(o)) return;
   editId = id;
   employeeName.value = o.employee_name || "";
   doctorName.value = o.doctor_name || "";
@@ -5161,18 +5264,26 @@ function openOrdersExportMenu(scope, event) {
   if (existing && ordersExportMenuScope === scope) { closeOrdersExportMenu(); return; }
   closeOrdersExportMenu();
   if (!button) return;
+  const exportFeature = scope === 'branch' ? 'btn_branch_export' : 'btn_dashboard_export';
+  if (!hasButtonPermission(exportFeature)) { alert('زر Export غير مضاف لصلاحيات حسابك'); return; }
+
+  const detailsFeature = scope === 'branch' ? 'btn_branch_export_details' : 'btn_dashboard_export_details';
+  const smartFeature = scope === 'branch' ? 'btn_branch_export_smart' : 'btn_dashboard_export_smart';
+  const detailsAllowed = hasButtonPermission(detailsFeature);
+  const smartAllowed = hasButtonPermission(smartFeature);
+  if (!detailsAllowed && !smartAllowed) { alert('لا يوجد نوع تصدير مضاف لصلاحيات حسابك'); return; }
 
   ordersExportMenuScope = scope;
   const menu = document.createElement('div');
   menu.id = 'ordersExportMenu';
   menu.className = 'orders-export-menu';
   menu.innerHTML = `
-    <button type="button" onclick="runOrdersExport('${scope}','details')">
+    ${detailsAllowed ? `<button type="button" onclick="runOrdersExport('${scope}','details')">
       <span>📄</span><span>Details<small>نظام التصدير التفصيلي القديم</small></span>
-    </button>
-    <button type="button" onclick="runOrdersExport('${scope}','smart')">
+    </button>` : ''}
+    ${smartAllowed ? `<button type="button" onclick="runOrdersExport('${scope}','smart')">
       <span>🧠</span><span>Smart Summary<small>Overview + Status Tabs + Performance</small></span>
-    </button>`;
+    </button>` : ''}`;
   document.body.appendChild(menu);
   const rect = button.getBoundingClientRect();
   const menuWidth = 220;
@@ -5185,12 +5296,15 @@ function openOrdersExportMenu(scope, event) {
 function runOrdersExport(scope, mode) {
   closeOrdersExportMenu();
   if (mode === 'details') {
+    const feature = scope === 'branch' ? 'btn_branch_export_details' : 'btn_dashboard_export_details';
+    if (!hasButtonPermission(feature)) { alert('Details غير مضاف لصلاحيات حسابك'); return; }
     if (scope === 'branch') exportBranchOrders();
     else exportData();
     return;
   }
-  if (!isAdmin()) {
-    alert('هذا النوع من التصدير متاح للأدمن فقط');
+  const smartFeature = scope === 'branch' ? 'btn_branch_export_smart' : 'btn_dashboard_export_smart';
+  if (!hasButtonPermission(smartFeature)) {
+    alert('Smart Summary غير مضاف لصلاحيات حسابك');
     return;
   }
   exportSmartOperationSummary(scope);
@@ -6567,6 +6681,7 @@ const systemRequiredFields = [
 ];
 
 function openImportModal() {
+  if (!hasButtonPermission('btn_dashboard_import')) { alert('Import Excel غير مضاف لصلاحيات حسابك'); return; }
   document.getElementById("importModal").style.display = "flex";
   document.getElementById("importStep1").classList.remove("hidden");
   document.getElementById("importStep2").classList.add("hidden");
@@ -7093,8 +7208,7 @@ function getBranchFilteredOrders() {
 }
 
 function canChangeBranchOrderStatus() {
-  const role = getRoleKey(currentUser && currentUser.role);
-  return isAdmin() || isAccountManager() || isStoreManager() || isSecretary() || isExecutiveAssistant();
+  return hasButtonPermission('btn_order_cancel');
 }
 
 function cleanVisibleOrderNotes(notes) {
@@ -7121,6 +7235,19 @@ function appendVisibleOrderNote(notes, addition) {
 
 function isReturnWithin14Days(order) {
   return /نوع الإلغاء:\s*مرتجع خلال 14 يوم/i.test(String(order?.notes || ''));
+}
+
+const BRANCH_CANCEL_TYPE_PERMISSIONS = [
+  { value:'Cancel', feature:'btn_cancel_doctor_group', label:'الغاء من الدكتور علي الجروب' },
+  { value:'Returned', feature:'btn_cancel_customer_courier', label:'الغاء من العميل مع المندوب' },
+  { value:'Returned14', feature:'btn_cancel_return_14', label:'مرتجع خلال 14 يوم' }
+];
+function getPermittedBranchCancelTypes(){
+  return BRANCH_CANCEL_TYPE_PERMISSIONS.filter(item => hasButtonPermission(item.feature));
+}
+function canUseBranchCancelType(value){
+  const item=BRANCH_CANCEL_TYPE_PERMISSIONS.find(option=>option.value===value);
+  return Boolean(item && hasButtonPermission(item.feature));
 }
 
 function getReturnWithin14DaysDateISO(order) {
@@ -7151,15 +7278,22 @@ function getBranchStatusButtonHtml(order) {
 function openBranchCancelStatusModal(orderId) {
   const order = branchOrders.find(x => String(x.id) === String(orderId)); if (!order) return;
   if (!canChangeBranchOrderStatus()) { alert('غير مسموح لك بتعديل حالة الأوردر'); return; }
+  const permittedTypes=getPermittedBranchCancelTypes();
+  if(!permittedTypes.length){alert('لا توجد أنواع إلغاء مضافة لصلاحيات حسابك');return;}
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
   if (isFinalizedDeliveredOrder(order)) { showDeliveredOrderLockedMessage(); return; }
   let modal=$('branchCancelStatusModal');
   if(!modal){ modal=document.createElement('div'); modal.id='branchCancelStatusModal'; modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;align-items:center;justify-content:center;padding:18px;'; modal.innerHTML=`<div style="width:470px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl"><h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary)">إلغاء الأوردر</h3><p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px"></p><label for="branchCancelTypeSelect" style="display:block;margin-bottom:7px;color:var(--text-muted);font-size:12px;font-weight:900">نوع الإلغاء</label><select id="branchCancelTypeSelect" style="width:100%;margin-bottom:14px"><option value="Cancel">الغاء من الدكتور علي الجروب</option><option value="Returned">الغاء من العميل مع المندوب</option><option value="Returned14">مرتجع خلال 14 يوم</option></select><label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800">سبب الإلغاء <span style="color:#EF4444">*</span></label><textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px"></textarea><div style="display:flex;gap:10px;justify-content:flex-start"><button id="branchCancelConfirmBtn" onclick="confirmBranchCancelStatus()" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:900">تأكيد الإلغاء</button><button onclick="closeBranchCancelStatusModal()" style="background:var(--bg-soft);color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px 18px;font-weight:800">إغلاق</button></div></div>`; document.body.appendChild(modal); }
-  modal.dataset.orderId=orderId; $('branchCancelModalCustomer').textContent=`العميل: ${order.customer_name||'—'} | الحالة الحالية: ${order.status||'—'}`; $('branchCancelReasonInput').value=''; if($('branchCancelTypeSelect'))$('branchCancelTypeSelect').value='Cancel'; modal.style.display='flex'; setTimeout(()=>$('branchCancelReasonInput')?.focus(),50);
+  modal.dataset.orderId=orderId; $('branchCancelModalCustomer').textContent=`العميل: ${order.customer_name||'—'} | الحالة الحالية: ${order.status||'—'}`; $('branchCancelReasonInput').value='';
+  const typeSelect=$('branchCancelTypeSelect');
+  if(typeSelect){typeSelect.innerHTML=permittedTypes.map(item=>`<option value="${item.value}">${escapeHTML(item.label)}</option>`).join('');typeSelect.value=permittedTypes[0].value;}
+  modal.style.display='flex'; setTimeout(()=>$('branchCancelReasonInput')?.focus(),50);
 }
 function closeBranchCancelStatusModal(){ const modal=$('branchCancelStatusModal'); if(modal)modal.style.display='none'; }
 async function confirmBranchCancelStatus(){
+  if(!hasButtonPermission('btn_order_cancel')){alert('صلاحية إلغاء الأوردر غير مضافة لحسابك');return;}
   const modal=$('branchCancelStatusModal'); const orderId=modal?.dataset?.orderId; const reasonEl=$('branchCancelReasonInput'); const reason=String(reasonEl?.value||'').trim(); const target=$('branchCancelTypeSelect')?.value||'Cancel';
+  if(!canUseBranchCancelType(target)){alert('نوع الإلغاء المحدد غير مضاف لصلاحيات حسابك');return;}
   if(!orderId)return; if(!reason){alert('لازم تكتب سبب الإلغاء');reasonEl?.focus();return;}
   const order=branchOrders.find(x=>String(x.id)===String(orderId)); if(!order)return;
   const isReturn14=target==='Returned14';
@@ -7173,7 +7307,7 @@ async function confirmBranchCancelStatus(){
 }
 
 function openBranchShippingRankFromBranch() {
-  if (!(isAdmin() || isOperationManager())) { alert('زر Shipping Rank من صفحة الفرع متاح للأدمن و Operation Manager فقط'); return; }
+  if (!hasButtonPermission('btn_branch_shipping_rank')) { alert('زر Shipping Rank غير مضاف لصلاحيات حسابك'); return; }
   if (!currentBranchName) { alert('افتح صفحة فرع أولاً'); return; }
   branchShippingRankOverride = currentBranchName;
   setShippingCurrentMonthRange(true);
@@ -7280,7 +7414,7 @@ function renderBranchOrders() {
       <td class="branch-actions-cell">
         <div style="display:flex;gap:5px;align-items:center;">
           ${getCollectButtonHtml(o, 'branch')}
-          <button onclick="printBranchOrderReceipt('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🖨️ طباعة</button>
+          ${hasButtonPermission('btn_order_print') ? `<button onclick="printBranchOrderReceipt('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🖨️ طباعة</button>` : ''}
           ${getBranchStatusButtonHtml(o)}
         </div>
       </td>
@@ -7340,14 +7474,14 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   const selectAll=document.getElementById('selectBranchPageOrders');
   if(bar) bar.classList.toggle('hidden',count===0);
   if(countEl) countEl.textContent=`${num(count)} عميل محدد`;
-  if(editBtn) editBtn.classList.toggle('hidden',count!==1||isDoctorRole());
-  if(transferBtn) transferBtn.classList.toggle('hidden',count===0||!canManageKhaznaAndTransfer());
+  if(editBtn) editBtn.classList.toggle('hidden',count!==1||!hasButtonPermission('btn_branch_edit'));
+  if(transferBtn) transferBtn.classList.toggle('hidden',count===0||!hasButtonPermission('btn_branch_transfer'));
   if(deleteBtn) deleteBtn.classList.toggle('hidden',count===0||!isAdmin());
   if(deleteProofBtn){
     const selectedOrders=branchOrders.filter(order=>branchSelectedOrderIds.has(String(order.id)));
     const selectedOrder=selectedOrders.length===1?selectedOrders[0]:null;
     const hasPaymentProof=Boolean(String(selectedOrder?.payment_image||'').trim());
-    const shouldShow=count===1&&selectedOrders.length===1&&hasPaymentProof&&!isDoctorRole();
+    const shouldShow=count===1&&selectedOrders.length===1&&hasPaymentProof&&hasButtonPermission('btn_delete_upfront_proof');
     deleteProofBtn.classList.toggle('hidden',!shouldShow);
     deleteProofBtn.disabled=!shouldShow;
     deleteProofBtn.setAttribute('aria-hidden',shouldShow?'false':'true');
@@ -7361,6 +7495,7 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
 }
 
 async function printSelectedBranchOrders(){
+  if(!hasButtonPermission('btn_order_print')){alert('زر الطباعة غير مضاف لصلاحيات حسابك');return;}
   if(!branchSelectedOrderIds.size){alert('اختر أوردر واحد على الأقل للطباعة');return;}
   const selected=branchOrders.filter(o=>branchSelectedOrderIds.has(String(o.id)));
   if(!selected.length){alert('الأوردرات المحددة غير موجودة في الفرع الحالي');clearBranchOrderSelection();return;}
@@ -7413,6 +7548,7 @@ async function deleteSelectedBranchOrders(){
 }
 
 async function deleteSelectedBranchPaymentProof(){
+  if(!hasButtonPermission('btn_delete_upfront_proof')){alert('حذف إثبات السكرتارية غير مضاف لصلاحيات حسابك');return;}
   if(branchSelectedOrderIds.size!==1)return;
   const order=branchOrders.find(item=>branchSelectedOrderIds.has(String(item.id)));
   if(!order||!order.payment_image){
@@ -7442,6 +7578,7 @@ async function deleteSelectedBranchPaymentProof(){
 }
 
 function editSelectedBranchOrder(){
+  if(!hasButtonPermission('btn_branch_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   if(branchSelectedOrderIds.size!==1){return;}
   const id=[...branchSelectedOrderIds][0];
   editBranchOrder(id);
@@ -7490,11 +7627,10 @@ function resetBranchDateFilter() {
 }
 
 function editBranchOrder(id) {
-  if(isDoctorRole()){alert('حساب Doctor للعرض فقط');return;}
+  if(!hasButtonPermission('btn_branch_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   const o = branchOrders.find(x => String(x.id) === String(id));
   if (!o) return;
-  if (isOrderLockedByDaily(o) && !isAdmin()) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
-  if (isFinalizedDeliveredOrder(o) && !isAdmin()) { showDeliveredOrderLockedMessage(); return; }
+  if (!canCurrentUserEditRegisteredOrder(o)) return;
   branchEditId=String(o.id);
   branchEditExistingPaymentImage=o.payment_image||'';
   const setValue=(id,value)=>{const el=document.getElementById(id);if(el)el.value=value??'';};
@@ -7518,11 +7654,9 @@ function editBranchOrder(id) {
   if (replacementEl) replacementEl.checked = orderFlags.replacement;
   const branchStatusSelect = document.getElementById('bStatus');
   if (branchStatusSelect) {
-    branchStatusSelect.disabled = !isAdmin();
-    branchStatusSelect.style.opacity = isAdmin() ? '1' : '0.85';
-    branchStatusSelect.title = isAdmin()
-      ? 'الأدمن يستطيع تعديل حالة الأوردر'
-      : 'حالة الأوردر متاحة للتعديل بواسطة الأدمن فقط';
+    branchStatusSelect.disabled = !hasButtonPermission('btn_branch_edit');
+    branchStatusSelect.style.opacity = hasButtonPermission('btn_branch_edit') ? '1' : '0.85';
+    branchStatusSelect.title = hasButtonPermission('btn_branch_edit') ? 'مسموح بتعديل حالة الأوردر' : 'غير مسموح بتعديل حالة الأوردر';
   }
   setValue('bOrderNotes',cleanVisibleOrderNotes(o.notes||''));
   setProductCartFromOrder('branch',o);
@@ -7581,7 +7715,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   branchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if(isDoctorRole()){alert('حساب Doctor للعرض فقط ولا يمكنه حفظ أو تعديل الأوردرات');return;}
+    if(isDoctorRole() && !(branchEditId && hasButtonPermission('btn_branch_edit'))){alert('حساب Doctor للعرض فقط ولا يمكنه إنشاء أوردر جديد');return;}
 
     const empEl   = document.getElementById('bEmployeeName');
     const docEl   = document.getElementById('bDoctorName');
@@ -7658,6 +7792,10 @@ document.addEventListener('DOMContentLoaded', function() {
       let savedOrder;
       let error;
       if(wasEditing){
+        if(!canCurrentUserEditRegisteredOrder(editingOrder)){
+          if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='حفظ التعديل';}
+          return;
+        }
         const result=await supabaseClient.from('orders').update(orderData).eq('id',editingOrder.id).select().single();
         savedOrder=result.data;
         error=result.error;
@@ -8519,7 +8657,7 @@ function syncKhaznaSelectionUI(visibleOrders = null) {
   if (bar) bar.classList.toggle('hidden', selectedCount === 0);
   if (count) count.textContent = `${selectedCount} محدد`;
   if (deleteBtn) deleteBtn.classList.toggle('hidden', !isAdmin() || selectedCount === 0);
-  const canDeleteCollectionProof = selectedCount === 1 && Boolean(getOrderCollectionProofUrl(selected[0]));
+  const canDeleteCollectionProof = hasButtonPermission('btn_delete_collection_proof') && selectedCount === 1 && Boolean(getOrderCollectionProofUrl(selected[0]));
   if (deleteProofBtn) deleteProofBtn.classList.toggle('hidden', !canDeleteCollectionProof);
 
   if (master) {
@@ -8558,6 +8696,7 @@ async function deleteSelectedKhaznaOrders() {
 }
 
 async function deleteSelectedKhaznaCollectionProof() {
+  if (!hasButtonPermission('btn_delete_collection_proof')) { alert('حذف إثبات التحصيل غير مضاف لصلاحيات حسابك'); return; }
   const selected = khaznaOrders.filter(order => khaznaSelectedIds.has(String(order.id)));
   if (selected.length !== 1) return;
   const order = selected[0];
@@ -8627,6 +8766,7 @@ async function printSelectedOrders() {
 }
 
 function printKhaznaReport() {
+  if (!hasButtonPermission('btn_khazna_print_report')) { alert('طباعة تقرير الخزنة غير مضافة لصلاحيات حسابك'); return; }
   if (!canViewKhazna()) {
     alert('تقرير الخزنة متاح للأدمن ومدير الحسابات فقط');
     return;
@@ -9004,6 +9144,7 @@ function printKhaznaReport() {
 }
 
 async function printBranchOrderReceipt(orderId) {
+  if (!hasButtonPermission('btn_order_print')) { alert('زر الطباعة غير مضاف لصلاحيات حسابك'); return; }
   let order = branchOrders.find(o => String(o.id) === String(orderId));
   if (!order) { alert('مش لاقي بيانات الأوردر دا للطباعة'); return; }
   order = await ensureOrderIdentifiers(order);
@@ -11106,3 +11247,31 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('bDoctorName', 'ابحث باسم الدكتور أو الكود...');
   enhanceOrderSearchableSelect('branchProductNameInput', 'ابحث باسم المنتج...');
 });
+
+async function refreshDashboardPage(button) {
+  const oldText = button?.textContent || '↻ Refresh';
+  if (button) { button.disabled = true; button.textContent = '↻ جاري التحديث...'; }
+  try {
+    await Promise.all([loadOrders(), loadDoctors(), loadOKBItems(), loadShippingSystems()]);
+    renderOrders();
+  } catch (error) {
+    console.error('Dashboard refresh error:', error);
+    alert('تعذر تحديث بيانات الداشبورد: ' + (error.message || error));
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText; }
+  }
+}
+
+async function refreshBranchPage(button) {
+  const oldText = button?.textContent || '↻ Refresh';
+  if (button) { button.disabled = true; button.textContent = '↻ جاري التحديث...'; }
+  try {
+    await Promise.all([loadBranchOrders(), loadDoctors(), loadOKBItems(), loadShippingSystems()]);
+    renderBranchOrders();
+  } catch (error) {
+    console.error('Branch refresh error:', error);
+    alert('تعذر تحديث بيانات الفرع: ' + (error.message || error));
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText; }
+  }
+}
