@@ -17,6 +17,7 @@ let doctorsList = [];
 let shippingSystems = [];
 
 let shippingCompanyFilterMenu = null; 
+let shippingRankMode = 'branch';
 
 let doctorsSettingsPage = 1;
 const DOCTORS_PAGE_SIZE = 10;
@@ -1059,6 +1060,7 @@ const ROLE_PERMISSION_ROLES = [
   { key:'account_supervisor', label:'Account Supervisor' }
   ,{ key:'doctor', label:'Doctor' }
 ];
+const BUILTIN_PERMISSION_ROLE_KEYS = new Set(ROLE_PERMISSION_ROLES.map(role => role.key));
 const ROLE_PERMISSION_FEATURES = [
   { key:'dashboard', label:'Dashboard', group:'Main' },
   { key:'shipping_rank', label:'Shipping Rank', group:'Main' },
@@ -1075,6 +1077,7 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'settings_page', label:'Settings — المنتجات والدكاترة والشحن', group:'Settings' },
   { key:'users', label:'Users', group:'Settings' },
   { key:'daily_report', label:'Daily Report', group:'Settings' },
+  { key:'chat', label:'Chat', group:'Settings' },
   { key:'activity_log', label:'Activity Log', group:'Main' },
   { key:'product_reports', label:'Product Reports', group:'Main' },
   { key:'btn_dashboard_export', label:'⬇ Export', group:'أزرار Dashboard' },
@@ -1121,6 +1124,8 @@ function canonicalPermissionRole(role) {
 
 function getDefaultRolePermissions(role) {
   const key = canonicalPermissionRole(role);
+  const isCustomRole = !BUILTIN_PERMISSION_ROLE_KEYS.has(key) && key !== 'admin';
+  if (isCustomRole) return Object.fromEntries(ROLE_PERMISSION_FEATURES.map(feature => [feature.key, false]));
   const operation = key === 'manager';
   const accounting = key === 'account_manager' || key === 'account_supervisor';
   const branchRole = key === 'store_manager' || key === 'cashier';
@@ -1141,6 +1146,7 @@ function getDefaultRolePermissions(role) {
     settings_page:executive,
     users:executive,
     daily_report:true,
+    chat:true,
     doctor_rank_stores:false,
     activity_log:false,
     product_reports:operation || branchRole || accounting,
@@ -1193,6 +1199,8 @@ async function loadRolePermissions() {
     Object.assign(cached, raw ? JSON.parse(raw) : {});
   } catch (e) {}
   rolePermissionsByRole = cached;
+  syncDynamicRoleCatalog();
+  populateUserRoleSelects();
   const { data, error } = await supabaseClient.from('role_permissions').select('role,permissions');
   if (error) {
     rolePermissionsTableReady = false;
@@ -1209,6 +1217,8 @@ async function loadRolePermissions() {
     }
     rolePermissionsByRole[key] = permissions;
   });
+  syncDynamicRoleCatalog();
+  populateUserRoleSelects();
   try { localStorage.setItem('okb_role_permissions_cache', JSON.stringify(rolePermissionsByRole)); } catch (e) {}
 }
 
@@ -1227,7 +1237,7 @@ function currentPageStillAllowed() {
     ['pendingPage','pending'], ['okbStoresReportPage','stores_report'], ['branchStockPage','branch_stock'],
     ['branchsPage','settings_page'], ['usersPage','users'],
     ['branchRankPage','daily_report'], ['doctorRankPage','doctor_rank_stores'],
-    ['activityLogPage','activity_log'], ['productReportsPage','product_reports']
+    ['activityLogPage','activity_log'], ['productReportsPage','product_reports'], ['chatPage','chat']
   ];
   return checks.every(([pageId, feature]) =>
     document.getElementById(pageId)?.classList.contains('hidden') || hasRoleFeature(feature)
@@ -1270,6 +1280,43 @@ function populatePermissionRoleSelect() {
     `<option value="${role.key}">${escapeHTML(role.label)}</option>`
   ).join('');
   if (ROLE_PERMISSION_ROLES.some(role => role.key === current)) select.value = current;
+}
+
+function syncDynamicRoleCatalog(){
+  Object.entries(rolePermissionsByRole || {}).forEach(([key, permissions]) => {
+    if(!permissions?.__custom_role || ROLE_PERMISSION_ROLES.some(role=>role.key===key)) return;
+    ROLE_PERMISSION_ROLES.push({key,label:String(permissions.__role_label || key)});
+  });
+}
+
+function populateUserRoleSelects(){
+  const roles=[{key:'admin',label:'Admin'},...ROLE_PERMISSION_ROLES];
+  ['newRole','editRoleSelect'].forEach(id=>{
+    const select=document.getElementById(id);if(!select)return;
+    const current=select.value;
+    select.innerHTML=roles.map(role=>`<option value="${escapeHTML(role.key)}">${escapeHTML(role.label)}</option>`).join('');
+    if(roles.some(role=>role.key===current))select.value=current;
+  });
+}
+
+async function createCustomRole(){
+  if(!isAdmin()){alert('إضافة Role جديدة متاحة للأدمن فقط');return;}
+  const input=document.getElementById('customRoleNameInput');
+  const label=String(input?.value||'').trim();
+  if(label.length<2){alert('اكتب اسم واضح للـ Role الجديدة');input?.focus();return;}
+  const key=label.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,'_').replace(/^_+|_+$/g,'');
+  if(!key){alert('اسم الـ Role غير صالح');return;}
+  if(key==='admin'||ROLE_PERMISSION_ROLES.some(role=>role.key===key)){alert('هذه الـ Role موجودة بالفعل');return;}
+  const permissions={...Object.fromEntries(ROLE_PERMISSION_FEATURES.map(feature=>[feature.key,false])),__custom_role:true,__role_label:label};
+  const payload={role:key,permissions,updated_at:new Date().toISOString(),updated_by:currentUser?.username||currentUser?.name||'admin'};
+  const {error}=await supabaseClient.from('role_permissions').upsert(payload,{onConflict:'role'});
+  if(error){alert('تعذر إنشاء الـ Role: '+error.message);return;}
+  rolePermissionsByRole[key]=permissions;
+  ROLE_PERMISSION_ROLES.push({key,label});
+  populateUserRoleSelects();populatePermissionRoleSelect();
+  if(input)input.value='';
+  await logActivity('permissions_updated','تم إنشاء Role جديدة',`Role: ${label} (${key})`);
+  alert(`تم إنشاء ${label} بنجاح. افتح Permission وحدد صلاحياتها.`);
 }
 
 function renderRolePermissionMatrix() {
@@ -1325,6 +1372,8 @@ async function saveRolePermissions() {
   document.querySelectorAll('#permissionFeaturesGrid [data-permission-feature]').forEach(input => {
     permissions[input.dataset.permissionFeature] = input.checked;
   });
+  const previousRoleMeta=rolePermissionsByRole[role]||{};
+  if(previousRoleMeta.__custom_role){permissions.__custom_role=true;permissions.__role_label=previousRoleMeta.__role_label||role;}
   const status = document.getElementById('permissionSaveStatus');
   if (status) status.textContent = 'جاري الحفظ...';
   const payload = {
@@ -2425,6 +2474,8 @@ const pendingBtn = document.getElementById('pendingHeaderBtn');
 if (pendingBtn) pendingBtn.style.display = hasRoleFeature('pending') ? 'inline-flex' : 'none';
 const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
 if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+const shippingRankHeaderWrap = document.getElementById('shippingRankHeaderWrap');
+if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
 const dashboardExportBtn = document.getElementById('exportBtn');
 if (dashboardExportBtn) dashboardExportBtn.style.display = hasButtonPermission('btn_dashboard_export') ? '' : 'none';
 const dashboardImportBtn = document.getElementById('importBtn');
@@ -2449,8 +2500,8 @@ document.querySelectorAll('.users-page-item').forEach(el => el.classList.toggle(
 document.querySelectorAll('.daily-report-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDailyReport));
 document.querySelectorAll('.doctor-rank-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDoctorRank));
 document.querySelectorAll('.permission-page-item').forEach(el => el.classList.toggle('hidden', !isAdmin()));
-document.querySelectorAll('.chat-page-item').forEach(el => el.classList.remove('hidden'));
-if (settingsHeaderWrap) settingsHeaderWrap.style.display = currentUser ? 'inline-flex' : 'none';
+document.querySelectorAll('.chat-page-item').forEach(el => el.classList.toggle('hidden', !hasRoleFeature('chat')));
+if (settingsHeaderWrap) settingsHeaderWrap.style.display = hasRoleFeature('settings_root') ? 'inline-flex' : 'none';
 const cleanAllDoctorsBtn = document.getElementById('cleanAllDoctorsBtn');
 if (cleanAllDoctorsBtn) cleanAllDoctorsBtn.style.display = isAdmin() ? '' : 'none';
 const activityBtn = document.getElementById("activityLogHeaderBtn");
@@ -2870,7 +2921,7 @@ function hideAllPages() {
 
 function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-function showShippingRankPage() { if (!canViewShippingRank()) return; branchShippingRankOverride = null; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
+function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
 function showDoctorRankPage() {
   if (!hasRoleFeature('doctor_rank_stores')) { alert('Doctor Rank غير مضاف لصلاحيات حسابك'); return; }
   closeOKBStoresMenu();
@@ -2893,6 +2944,9 @@ function showUsersPage() {
   if (!hasRoleFeature('users')) return;
   hideAllPages(); $("usersPage").classList.remove("hidden"); 
   setActiveMenu("usersPage"); loadUsers();
+  populateUserRoleSelects();
+  const roleCreator=document.getElementById('customRoleCreatorCard');
+  if(roleCreator)roleCreator.style.display=isAdmin()?'block':'none';
   applyUsersFormRoleLock();
 }
 
@@ -2952,6 +3006,32 @@ function toggleHeaderSettingsMenu(event) {
   }
 }
 
+function closeShippingRankMenu() {
+  document.getElementById('shippingRankHeaderMenu')?.classList.remove('show');
+  document.getElementById('shippingRankHeaderBtn')?.classList.remove('open');
+}
+
+function toggleShippingRankMenu(event) {
+  event?.stopPropagation();
+  if (!canViewShippingRank()) return;
+  const menu = document.getElementById('shippingRankHeaderMenu');
+  const button = document.getElementById('shippingRankHeaderBtn');
+  if (!menu || !button) return;
+  const willOpen = !menu.classList.contains('show');
+  closeShippingRankMenu();
+  closeHeaderSettingsMenu();
+  closeOKBStoresMenu();
+  if (willOpen) {
+    menu.classList.add('show');
+    button.classList.add('open');
+  }
+}
+
+function openShippingRankMode(mode) {
+  closeShippingRankMenu();
+  showShippingRankPage(mode);
+}
+
 function openHeaderSettingsPage(page) {
   closeHeaderSettingsMenu();
   if (page === 'settings') return showBranchsPage();
@@ -2975,12 +3055,19 @@ async function showInitialPermittedPage() {
   if (hasRoleFeature('daily_report')) return showBranchRankPage();
   if (hasRoleFeature('shipping_rank')) return showShippingRankPage();
   if (hasRoleFeature('branch_stock')) return showBranchStockPage();
+  if (hasRoleFeature('stores_report')) return showOKBStoresReportPage();
+  if (hasRoleFeature('activity_log')) return showActivityLogPage();
+  if (hasRoleFeature('settings_root') && hasRoleFeature('daily_report')) return showBranchRankPage();
+  if (hasRoleFeature('settings_root') && hasRoleFeature('settings_page')) return showBranchsPage();
+  if (hasRoleFeature('settings_root') && hasRoleFeature('users')) return showUsersPage();
+  if (hasRoleFeature('settings_root') && hasRoleFeature('chat')) return showChatPage();
   hideAllPages();
   alert('لا توجد صفحات مخصصة لهذا الحساب. تواصل مع الأدمن لإضافة الصلاحيات.');
 }
 
 document.addEventListener('click', event => {
   if (!event.target.closest('#headerSettingsWrap')) closeHeaderSettingsMenu();
+  if (!event.target.closest('#shippingRankHeaderWrap')) closeShippingRankMenu();
 });
 
 function resetForm() { 
@@ -4400,7 +4487,7 @@ function renderAnalytics() {
 function getShippingRankRows() {
   const src = getShippingFilteredOrders();
   return getShippingAnalysisRows(src)
-    .filter(r => String(r.company || '').trim())
+    .filter(r => String(r.company || '').trim() && Number(r.total || 0) > 0)
     .map(r => {
       const conversion = percentNum(r.signed, r.total);
       const returnRate = percentNum(r.returned, r.total);
@@ -4524,6 +4611,40 @@ function getFilteredShippingRankRows() {
   return rows;
 }
 
+function isShippingRankBranchOrder(order){
+  return Boolean(getProductReportOrderBranch(order));
+}
+
+function normalizeShippingRankCompanyName(value){
+  return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function isShippingRankBranchCompanyName(value){
+  const normalized=normalizeShippingRankCompanyName(value);
+  if(!normalized)return false;
+  const branchNames=[
+    'Nasr City Branch','Alexandria Branch','TanTa Branch','Mansoura Branch',
+    'مدينة نصر','اسكندرية','الإسكندرية','طنطا','المنصورة'
+  ];
+  return branchNames.some(name=>normalizeShippingRankCompanyName(name)===normalized);
+}
+
+function isShippingRankExternalCompanyOrder(order){
+  const company=String(order?.shipping_company || '').trim();
+  return Boolean(company) && !isShippingRankBranchCompanyName(company);
+}
+
+function setShippingRankMode(mode){
+  shippingRankMode=mode==='company'?'company':'branch';
+  if(branchShippingRankOverride)shippingRankMode='branch';
+  selectedShippingCompanies=[];
+  pageState.shippingRank=1;
+  document.getElementById('shippingRankBranchModeBtn')?.classList.toggle('active',shippingRankMode==='branch');
+  document.getElementById('shippingRankCompanyModeBtn')?.classList.toggle('active',shippingRankMode==='company');
+  renderShippingRank();
+  renderShippingCharts();
+}
+
 function getFilteredDoctorRankRows() {
   const q = String(document.getElementById('doctorRankSearch')?.value || '').trim().toLocaleLowerCase();
   const rows = getDoctorRankRows();
@@ -4589,7 +4710,7 @@ function updateShippingMiniDashboard() {
       const branches = getCurrentUserManagedBranches();
       scope.textContent = branches.length ? branches.map(b => `فرع ${b}`).join(" / ") : "لا توجد فروع مُدارة";
     } else {
-      scope.textContent = "جميع الفروع";
+      scope.textContent = shippingRankMode==='branch' ? "تقارير الفروع الأربعة فقط" : "تقارير شركات الشحن فقط — بدون الفروع";
     }
   }
   const backBtn = document.getElementById('branchShippingBackBtn');
@@ -4648,7 +4769,7 @@ function getShippingCompanyPerformanceRows() {
     "المنصورة"
   ]);
   return getShippingRankRows()
-    .filter(r => !branchCompanyNames.has(String(r.company || '').trim()))
+    .filter(r => !isShippingRankBranchCompanyName(r.company))
     .map(r => ({
       name: r.company,
       total: r.total,
@@ -4698,12 +4819,21 @@ function renderGlobalShippingSections() {
 
   if (isStoreManager()) return;
 
-  renderPerformanceRows("branchPerformanceBody", getBranchPerformanceRows(), "No branch performance data");
-  renderPerformanceRows("shippingCompanyPerformanceBody", getShippingCompanyPerformanceRows(), "No shipping company data");
+  const branchCard=document.getElementById('shippingBranchPerformanceCard');
+  const companyCard=document.getElementById('shippingCompanyPerformanceCard');
+  if(branchCard)branchCard.classList.toggle('hidden',shippingRankMode!=='branch');
+  if(companyCard)companyCard.classList.toggle('hidden',shippingRankMode!=='company');
+  const grid=box?.querySelector('.shipping-charts-grid');if(grid)grid.style.gridTemplateColumns='1fr';
+  if(shippingRankMode==='branch')renderPerformanceRows("branchPerformanceBody", getBranchPerformanceRows(), "No branch performance data");
+  else renderPerformanceRows("shippingCompanyPerformanceBody", getShippingCompanyPerformanceRows(), "No shipping company data");
 }
 
 function renderShippingRank() {
   setShippingCurrentMonthRange(false);
+  if(branchShippingRankOverride)shippingRankMode='branch';
+  document.getElementById('shippingRankBranchModeBtn')?.classList.toggle('active',shippingRankMode==='branch');
+  document.getElementById('shippingRankCompanyModeBtn')?.classList.toggle('active',shippingRankMode==='company');
+  const companyModeBtn=document.getElementById('shippingRankCompanyModeBtn');if(companyModeBtn)companyModeBtn.disabled=Boolean(branchShippingRankOverride);
   updateShippingMiniDashboard();
   renderGlobalShippingSections();
   const pagination = document.getElementById("shippingRankPagination");
@@ -5138,6 +5268,12 @@ function getShippingFilteredOrders() {
       managedShippingNames.includes(o.shipping_company)
     );
   }
+
+  // The two reports are independent dimensions: a Bosta order belongs to its
+  // branch report and to Bosta's company report at the same time.
+  src=src.filter(order=>shippingRankMode==='branch'
+    ? isShippingRankBranchOrder(order)
+    : isShippingRankExternalCompanyOrder(order));
 
   if (!shippingDateFrom && !shippingDateTo) return src;
 
@@ -5589,7 +5725,16 @@ function exportData() {
 }
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
-function exportShippingRank() { const rows = getShippingRankRows(); downloadCSV("shipping-dashboard.csv", ["Rank", "Shipping Company", "Total Order", "Signed", "Delivering", "Returned", "Conversion Rate", "Cancel Rate", "Score"], rows.map((r, i) => [i + 1, r.company, r.total, r.signed, r.delivering, r.returned, r.conversionRate, r.returnRate, r.score.toFixed(1)])); }
+function exportShippingRank() {
+  const isBranch=shippingRankMode==='branch';
+  const rows=isBranch?getBranchPerformanceRows():getShippingCompanyPerformanceRows();
+  if(!rows.length){alert('لا توجد بيانات للتصدير في التبويب الحالي');return;}
+  downloadCSV(
+    isBranch?'shipping-branches-report.csv':'shipping-companies-report.csv',
+    ["Rank",isBranch?"Branch":"Shipping Company","Total Order","Signed","Delivering","Returned","Conversion Rate","Return Rate",isBranch?"Group Cancel":"Score"],
+    rows.map((r,i)=>[i+1,r.name,r.total,r.signed,r.delivering,r.returned,r.conversionRate,r.returnRate,isBranch?r.cancelled:Number(r.score||0).toFixed(1)])
+  );
+}
 function exportDoctorRank() {
   if (typeof XLSX === 'undefined') { alert('مكتبة Excel غير متاحة'); return; }
   const rows = getFilteredDoctorRankRows();
@@ -5688,7 +5833,8 @@ userForm.addEventListener("submit", async (e) => {
 
 function getRoleDisplayName(role) {
   const map = { admin: "Admin", manager: "Operation Manager", operation_manager: "Operation Manager", delivery_manager: "Operation Manager", agent: "Agent", executive_assistant: "Executive Assistant", receptionist: "Secretary", secretary: "Secretary", cashier: "Cashier", store_manager: "Store Manager", account_manager: "Account Manager", account_supervisor: "Account Supervisor", doctor:"Doctor" };
-  return map[String(role || "").toLowerCase()] || role || "";
+  const key=canonicalPermissionRole(role);
+  return map[String(role || "").toLowerCase()] || ROLE_PERMISSION_ROLES.find(item=>item.key===key)?.label || role || "";
 }
 
 function renderUsers() {
@@ -5764,6 +5910,7 @@ window.openEditRoleModal = function (id) {
 
   $("editRoleUserId").value = u.id;
   $("editRoleUserName").textContent = `المستخدم: ${u.name} (${u.username})`;
+  populateUserRoleSelects();
   $("editRoleSelect").value = String(u.role || "agent").toLowerCase();
 
   document.querySelectorAll(".edit-role-branch-cb").forEach(cb => cb.checked = false);
@@ -7475,7 +7622,11 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   if(bar) bar.classList.toggle('hidden',count===0);
   if(countEl) countEl.textContent=`${num(count)} عميل محدد`;
   if(editBtn) editBtn.classList.toggle('hidden',count!==1||!hasButtonPermission('btn_branch_edit'));
-  if(transferBtn) transferBtn.classList.toggle('hidden',count===0||!hasButtonPermission('btn_branch_transfer'));
+  if(transferBtn){
+    const showTransfer=count>0&&hasButtonPermission('btn_branch_transfer');
+    transferBtn.classList.toggle('hidden',!showTransfer);
+    transferBtn.style.display=showTransfer?'inline-flex':'none';
+  }
   if(deleteBtn) deleteBtn.classList.toggle('hidden',count===0||!isAdmin());
   if(deleteProofBtn){
     const selectedOrders=branchOrders.filter(order=>branchSelectedOrderIds.has(String(order.id)));
@@ -7756,7 +7907,7 @@ document.addEventListener('DOMContentLoaded', function() {
       deposit:          Number(depEl?.value || 0),
       quantity:         bQty,
       delivery_fee:     bDelivFee,
-      status:           editingOrder ? (isAdmin() ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
+      status:           editingOrder ? (hasButtonPermission('btn_branch_edit') ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
       notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked) }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
@@ -7900,7 +8051,7 @@ function getEligibleSelectedTransferOrders() {
 
 function transferSelectedBranchOrders() {
   if (!canManageKhaznaAndTransfer()) {
-    alert('زر التحويل متاح للأدمن و Account Manager فقط');
+    alert('زر التحويل غير مضاف لصلاحيات حسابك');
     return;
   }
   if (!branchSelectedOrderIds.size) {
@@ -7930,7 +8081,7 @@ function transferSelectedBranchOrders() {
 }
 
 function transferBranchOrder(orderId) {
-  if (!canManageKhaznaAndTransfer()) { alert('زر التحويل متاح للأدمن و Account Manager فقط'); return; }
+  if (!canManageKhaznaAndTransfer()) { alert('زر التحويل غير مضاف لصلاحيات حسابك'); return; }
   const o = branchOrders.find(x => String(x.id) === String(orderId)) || khaznaOrders.find(x => String(x.id) === String(orderId));
   transferOrderId = orderId;
   transferOrderIds = [String(orderId)];
@@ -7957,7 +8108,7 @@ function closeTransferModal() {
 }
 
 async function confirmTransfer() {
-  if (!canManageKhaznaAndTransfer()) { alert('زر التحويل متاح للأدمن و Account Manager فقط'); return; }
+  if (!canManageKhaznaAndTransfer()) { alert('زر التحويل غير مضاف لصلاحيات حسابك'); return; }
   const shipping = document.getElementById('transferShippingSelect')?.value;
   if (!shipping) { alert('اختر شركة الشحن أولاً'); return; }
   const ids = transferOrderIds.length
@@ -8263,7 +8414,7 @@ async function unlockKhaznaDay() {
 
 function openKhaznaPage() {
   if (!canViewKhazna()) { 
-    alert('الخزنة متاحة للأدمن و Account Manager والكاشير فقط'); 
+    alert('صفحة الخزنة غير مضافة لصلاحيات حسابك'); 
     return; 
   }
   
@@ -8768,7 +8919,7 @@ async function printSelectedOrders() {
 function printKhaznaReport() {
   if (!hasButtonPermission('btn_khazna_print_report')) { alert('طباعة تقرير الخزنة غير مضافة لصلاحيات حسابك'); return; }
   if (!canViewKhazna()) {
-    alert('تقرير الخزنة متاح للأدمن ومدير الحسابات فقط');
+    alert('صفحة الخزنة غير مضافة لصلاحيات حسابك');
     return;
   }
 
@@ -9233,8 +9384,7 @@ function getLatestCollectPaymentMethod(order) {
 }
 
 async function openCollectModal(orderId, customerName, price, deposit, src) {
-  if(isDoctorRole()){alert('حساب Doctor للعرض فقط');return;}
-  if (!canCollectOrders()) { alert('زر التحصيل متاح للكاشير والأدمن ومدير الحسابات فقط'); return; }
+  if (!canCollectOrders()) { alert('زر التحصيل غير مضاف لصلاحيات حسابك'); return; }
   const order = getOrderByIdAny(orderId);
   if (order && isReturnedOrCancelledOrder(order)) {
     await showReturnedOrderCollectionBlockedMessage(order);
@@ -9399,7 +9549,7 @@ function calcCollect() {
 }
 
 async function confirmCollectOrder() {
-  if (!canCollectOrders()) { alert('زر التحصيل متاح للكاشير والأدمن ومدير الحسابات فقط'); return; }
+  if (!canCollectOrders()) { alert('زر التحصيل غير مضاف لصلاحيات حسابك'); return; }
   if (!_collectOrderId) return;
 
   const sales    = parseFloat(document.getElementById('collectSalesInput').value)    || 0;
@@ -10247,6 +10397,7 @@ async function initChatFeature(){
 
 async function showChatPage(){
   if (!currentUser) return;
+  if (!hasRoleFeature('chat')) { alert('صفحة Chat غير مضافة لصلاحيات حسابك'); return; }
   hideAllPages();
   document.getElementById('chatPage')?.classList.remove('hidden');
   setActiveMenu('chatPage');

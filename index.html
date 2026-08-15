@@ -507,10 +507,17 @@
   </span>
   <span class="dashboard-header-label">Dashboard</span>
 </button>
-<button class="shipping-rank-header-btn" id="shippingRankHeaderBtn" type="button" onclick="showShippingRankPage()" title="Shipping Rank">
-  <span class="shipping-rank-header-icon" aria-hidden="true">🚚</span>
-  <span class="shipping-rank-header-label">Shipping Rank</span>
-</button>
+<div class="header-settings-wrap shipping-rank-header-wrap" id="shippingRankHeaderWrap">
+  <button class="shipping-rank-header-btn" id="shippingRankHeaderBtn" type="button" onclick="toggleShippingRankMenu(event)" title="Shipping Rank">
+    <span class="shipping-rank-header-icon" aria-hidden="true">🚚</span>
+    <span class="shipping-rank-header-label">Shipping Rank</span>
+    <span class="settings-header-arrow">▾</span>
+  </button>
+  <div class="header-settings-menu shipping-rank-header-menu" id="shippingRankHeaderMenu">
+    <button class="header-settings-item" type="button" onclick="openShippingRankMode('branch')">🏪 <span>Branch Rank</span></button>
+    <button class="header-settings-item" type="button" onclick="openShippingRankMode('company')">🚚 <span>Company Rank</span></button>
+  </div>
+</div>
 <div class="header-okb-stores-wrap">
   <button class="header-okb-stores-btn" id="okbStoresHeaderBtn" type="button" onclick="toggleOKBStores(this)" title="OKB Stores">
     <span class="header-okb-stores-icon" aria-hidden="true">
@@ -997,7 +1004,7 @@
   </div>
   <div id="globalShippingRankSections" style="margin-top:18px;">
     <div class="shipping-charts-grid" style="grid-template-columns:1fr 1fr;">
-      <div class="shipping-chart-card">
+      <div class="shipping-chart-card" id="shippingBranchPerformanceCard">
         <div class="section-head" style="margin-bottom:12px;">
           <h2 style="margin:0!important;">🏪 Branch Performance</h2>
           <span style="font-size:12px;color:#94A3B8;">ترتيب الفروع حسب الأداء</span>
@@ -1011,7 +1018,7 @@
           </table>
         </div>
       </div>
-      <div class="shipping-chart-card">
+      <div class="shipping-chart-card" id="shippingCompanyPerformanceCard">
         <div class="section-head" style="margin-bottom:12px;">
           <h2 style="margin:0!important;">🚚 Shipping Company Ranking</h2>
           <span style="font-size:12px;color:#94A3B8;">ترتيب شركات الشحن فقط</span>
@@ -1187,6 +1194,15 @@
 </section>
 <!-- ===== Users Page ===== -->
 <section class="hidden" id="usersPage">
+<div class="card" id="customRoleCreatorCard" style="display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div><h2 style="margin:0 0 5px;">＋ Create New Role</h2><p style="margin:0;color:var(--text-muted);font-size:12px;">أنشئ Role جديدة ثم حدد صلاحياتها من صفحة Permission.</p></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <input id="customRoleNameInput" type="text" placeholder="اسم الـ Role الجديدة" style="min-width:260px;"/>
+      <button class="success" type="button" onclick="createCustomRole()">＋ إضافة Role</button>
+    </div>
+  </div>
+</div>
 <div class="card">
 <h1>👥 Users Management</h1>
 <form id="userForm">
