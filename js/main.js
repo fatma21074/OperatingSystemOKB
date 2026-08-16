@@ -5729,12 +5729,36 @@ function exportData() {
 }
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
+function getShippingExportBranchScope() {
+  if (isAdmin()) return '';
+  if (branchShippingRankOverride && canAccessBranch(branchShippingRankOverride)) return branchShippingRankOverride;
+  const managed = getCurrentUserManagedBranches().filter(branch => canOpenPermissionBranch(branch) && canAccessBranch(branch));
+  if (managed.length === 1) return managed[0];
+  if (currentBranchName && canOpenPermissionBranch(currentBranchName) && canAccessBranch(currentBranchName)) return currentBranchName;
+  const permitted = Object.keys(ROLE_BRANCH_FEATURES).filter(branch => canOpenPermissionBranch(branch) && canAccessBranch(branch));
+  return permitted.length === 1 ? permitted[0] : '';
+}
+
 function exportShippingRank() {
   const isBranch=shippingRankMode==='branch';
-  const rows=isBranch?getBranchPerformanceRows():getShippingCompanyPerformanceRows();
+  const exportBranch=getShippingExportBranchScope();
+  const previousOverride=branchShippingRankOverride;
+  if(exportBranch)branchShippingRankOverride=exportBranch;
+  let rows;
+  try {
+    rows=isBranch?getBranchPerformanceRows():getShippingCompanyPerformanceRows();
+  } finally {
+    branchShippingRankOverride=previousOverride;
+  }
+  if(exportBranch && isBranch)rows=rows.filter(r=>String(r.name||'').trim()===String(exportBranch).trim());
+  rows=rows.filter(r=>Number(r.total||0)>0);
   if(!rows.length){alert('لا توجد بيانات للتصدير في التبويب الحالي');return;}
+  const safeBranchName=String(exportBranch||'').replace(/[\\/:*?"<>|]/g,'-').trim();
+  const fileName=exportBranch
+    ? `تقرير فرع ${safeBranchName}.csv`
+    : (isBranch?'shipping-branches-report.csv':'shipping-companies-report.csv');
   downloadCSV(
-    isBranch?'shipping-branches-report.csv':'shipping-companies-report.csv',
+    fileName,
     ["Rank",isBranch?"Branch":"Shipping Company","Total Order","Signed","Delivering","Returned","Conversion Rate","Return Rate",isBranch?"Group Cancel":"Score"],
     rows.map((r,i)=>[i+1,r.name,r.total,r.signed,r.delivering,r.returned,r.conversionRate,r.returnRate,isBranch?r.cancelled:Number(r.score||0).toFixed(1)])
   );
