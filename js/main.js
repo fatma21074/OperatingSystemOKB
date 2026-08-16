@@ -4724,10 +4724,14 @@ function calculateBranchMiniDashboardStats(list) {
   const delivering = source.filter(o => o.status === 'Delivering').length;
   const returned = source.filter(o => o.status === 'Returned').length;
   const cancelled = source.filter(o => o.status === 'Cancel').length;
-  const conversionNum = percentNum(signed, total);
+  // Group Cancel orders were cancelled by the doctor before dispatch, so they
+  // remain visible in Total but are excluded only from the Conversion base.
+  const conversionBase = Math.max(0, total - cancelled);
+  const conversionNum = percentNum(signed, conversionBase);
   const returnNum = percentNum(returned, total);
   return {
     total,
+    conversionBase,
     signed,
     delivering,
     returned,
