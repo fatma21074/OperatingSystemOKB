@@ -1064,6 +1064,7 @@ const BUILTIN_PERMISSION_ROLE_KEYS = new Set(ROLE_PERMISSION_ROLES.map(role => r
 const ROLE_PERMISSION_FEATURES = [
   { key:'dashboard', label:'Dashboard', group:'Main' },
   { key:'shipping_rank', label:'Shipping Rank', group:'Main' },
+  { key:'company_rank', label:'Company Rank', group:'Main' },
   { key:'okb_stores', label:'OKB Stores', group:'OKB Stores' },
   { key:'branch_nasr', label:'فرع مدينة نصر', group:'OKB Stores' },
   { key:'branch_alex', label:'فرع اسكندرية', group:'OKB Stores' },
@@ -1134,6 +1135,7 @@ function getDefaultRolePermissions(role) {
   const defaults = {
     dashboard:!doctor,
     shipping_rank:operation || key === 'agent' || accounting || key === 'store_manager',
+    company_rank:false,
     okb_stores:true,
     branch_nasr:true,
     branch_alex:true,
@@ -2476,6 +2478,15 @@ const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
 if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
 const shippingRankHeaderWrap = document.getElementById('shippingRankHeaderWrap');
 if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+document.querySelectorAll('.company-rank-menu-item').forEach(el => {
+  el.classList.toggle('hidden', !hasRoleFeature('company_rank'));
+});
+if (shippingRankMode === 'company' && !hasRoleFeature('company_rank')) {
+  shippingRankMode = 'branch';
+  if (!document.getElementById('shippingRankPage')?.classList.contains('hidden')) {
+    setTimeout(() => { renderShippingRank(); renderShippingCharts(); }, 0);
+  }
+}
 const dashboardExportBtn = document.getElementById('exportBtn');
 if (dashboardExportBtn) dashboardExportBtn.style.display = hasButtonPermission('btn_dashboard_export') ? '' : 'none';
 const dashboardImportBtn = document.getElementById('importBtn');
@@ -2921,7 +2932,7 @@ function hideAllPages() {
 
 function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
+function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; if(mode === 'company' && !hasRoleFeature('company_rank')){alert('صفحة Company Rank غير مضافة لصلاحيات حسابك');return;} closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
 function showDoctorRankPage() {
   if (!hasRoleFeature('doctor_rank_stores')) { alert('Doctor Rank غير مضاف لصلاحيات حسابك'); return; }
   closeOKBStoresMenu();
@@ -3029,6 +3040,10 @@ function toggleShippingRankMenu(event) {
 
 function openShippingRankMode(mode) {
   closeShippingRankMenu();
+  if (mode === 'company' && !hasRoleFeature('company_rank')) {
+    alert('صفحة Company Rank غير مضافة لصلاحيات حسابك');
+    return;
+  }
   showShippingRankPage(mode);
 }
 
@@ -4247,11 +4262,30 @@ function checkBranchDepositImageRequirement() {
   return true;
 }
 
+function normalizeOrderCreatorIdentity(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function isOrderCreatedBySecretary(order) {
+  const creator = normalizeOrderCreatorIdentity(order?.employee_name);
+  if (!creator) return false;
+  return (users || []).some(user => {
+    const role = getRoleKey(user?.role);
+    if (role !== 'secretary' && role !== 'receptionist') return false;
+    return [user?.name, user?.username]
+      .map(normalizeOrderCreatorIdentity)
+      .filter(Boolean)
+      .includes(creator);
+  });
+}
+
 function canCurrentUserEditRegisteredOrder(order, showMessage = true) {
   if (isAdmin()) return true;
   const creator = String(order?.employee_name || '').trim();
   const userName = String(currentUser?.name || '').trim();
   if (creator && userName && creator.localeCompare(userName, undefined, { sensitivity: 'base' }) === 0) return true;
+  // Executive Assistant can supervise and edit Secretary orders only.
+  if (isExecutiveAssistant() && isOrderCreatedBySecretary(order)) return true;
   if (showMessage) alert(`ليس لديك صلاحية تعديل الأوردر. تم تسجيل الأوردر بواسطة "${creator || 'مستخدم آخر'}"، برجاء الرجوع له.`);
   return false;
 }
@@ -5583,10 +5617,10 @@ function exportSmartOperationSummary(scope) {
   });
   const employees = [...new Set(filtered.map(o => String(o.employee_name || 'بدون موظف').trim() || 'بدون موظف'))].sort();
   const statusEmployeeRows = [];
-  statuses.forEach(status => {
-    employees.forEach(employee => {
+  employees.forEach(employee => {
+    statuses.forEach(status => {
       const subset = filtered.filter(order => smartExportStatus(order) === status && String(order.employee_name || 'بدون موظف').trim() === employee);
-      if (subset.length) statusEmployeeRows.push([status, employee, subset.length, smartExportRevenue(subset)]);
+      if (subset.length) statusEmployeeRows.push([employee, status, subset.length, smartExportRevenue(subset)]);
     });
   });
 
@@ -5607,7 +5641,7 @@ function exportSmartOperationSummary(scope) {
     ['Branch', context.branch],
     ['Doctor', context.doctor],
     ['Employee', context.employee],
-    ['Status', 'Employee', 'Total Orders', 'Revenue'],
+    ['Employee', 'Status', 'Total Orders', 'Revenue'],
     ...statusEmployeeRows,
     [],
     ['Operational KPIs', 'Value', 'Total Revenue'],
