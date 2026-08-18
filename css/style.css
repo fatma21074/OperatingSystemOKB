@@ -1906,7 +1906,7 @@ body.customer-profile-open{overflow:hidden}
 /* ===== Doctor Weekly Comparison ===== */
 .doctor-weekly-btn{min-height:39px;padding:8px 13px;border:1px solid rgba(168,85,247,.5);border-radius:10px;background:linear-gradient(135deg,rgba(126,34,206,.2),rgba(8,145,178,.16));color:#e9d5ff;font-weight:900;cursor:pointer;box-shadow:0 0 14px rgba(168,85,247,.12);white-space:nowrap}
 .doctor-weekly-btn:hover{border-color:#c084fc;box-shadow:0 0 20px rgba(168,85,247,.25);transform:translateY(-1px)}
-.doctor-rank-smart-export-btn{min-height:34px!important;padding:6px 10px!important;font-size:10px!important;align-self:end}
+.doctor-rank-smart-export-btn{min-height:39px!important;padding:8px 13px!important;font-size:inherit!important;align-self:end}
 .doctor-weekly-panel{padding:16px;border:1px solid rgba(168,85,247,.28);border-radius:17px;background:linear-gradient(145deg,rgba(88,28,135,.08),var(--bg-card));box-shadow:0 14px 35px rgba(15,23,42,.08)}
 .doctor-weekly-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.doctor-weekly-head h2{margin:0 0 4px;font-size:18px}.doctor-weekly-head p{margin:0;color:var(--text-muted);font-size:11px}
 .doctor-weekly-controls{display:grid;grid-template-columns:minmax(190px,1.3fr) minmax(210px,1.4fr) repeat(4,minmax(135px,1fr)) repeat(3,auto);gap:9px;align-items:end;padding:12px;border:1px solid var(--border-soft);border-radius:13px;background:var(--bg-soft)}
