@@ -1065,7 +1065,10 @@
 <div class="doctor-rank-shell">
   <div class="card doctor-rank-head">
     <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p></div>
-    <button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button>
+    <div class="doctor-rank-head-actions">
+      <button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button>
+      <button class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
+    </div>
   </div>
   <div class="card doctor-rank-toolbar">
     <label>من <input id="doctorRankFromDate" type="date"></label>
@@ -1073,10 +1076,9 @@
     <label>الفرع <select id="doctorRankBranchFilter"><option value="all">كل الفروع</option><option value="nasr-city">مدينة نصر</option><option value="alexandria">اسكندرية</option><option value="tanta">طنطا</option><option value="mansoura">المنصورة</option></select></label>
     <input class="rank-search" id="doctorRankSearch" placeholder="بحث باسم الدكتور أو الكود...">
     <button class="success" type="button" onclick="applyDoctorRankFilters()">Filter 🔍</button>
+    <button class="doctor-weekly-btn doctor-rank-smart-export-btn" type="button" onclick="exportDoctorRank()">⬇ Smart Export</button>
     <button class="soft" type="button" onclick="resetDoctorRankFilters()">Reset ✕</button>
-    <button class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
     <button class="doctor-weekly-btn" type="button" onclick="toggleDoctorWeeklyComparison(true)">📊 Weekly Comparison</button>
-    <button class="success" type="button" onclick="exportDoctorRank()">⬇ Smart Export</button>
   </div>
   <section class="doctor-weekly-panel hidden" id="doctorWeeklyPanel">
     <div class="doctor-weekly-head">

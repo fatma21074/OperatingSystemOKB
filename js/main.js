@@ -4581,12 +4581,14 @@ function getDoctorRankRows() {
     const total = tickets.length;
     const signed = countStatus(tickets, 'Signed');
     const delivering = countStatus(tickets, 'Delivering');
-    const returned = countStatus(tickets, 'Returned') + countStatus(tickets, 'مرتجع خلال 14 يوم');
+    const returnedTickets = tickets.filter(order => ['Returned', 'مرتجع خلال 14 يوم'].includes(getOrderDisplayStatus(order) || order.status));
+    const returned = returnedTickets.length;
+    const salesReturned = returnedTickets.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
     const cancelGroup = countStatus(tickets, 'Cancel');
     const fakeDoctor = getFakeDoctorCount(tickets);
     const revenue = tickets.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
     return {
-      ...meta, tickets, total, signed, delivering, returned, cancelGroup, fakeDoctor, revenue,
+      ...meta, tickets, total, signed, delivering, returned, salesReturned, cancelGroup, fakeDoctor, revenue,
       conversionRate: percent(signed, total), conversionRateNum: percentNum(signed, total),
       returnRate: percent(returned, total), returnRateNum: percentNum(returned, total),
       cancelGroupRate: percent(cancelGroup, total), cancelGroupRateNum: percentNum(cancelGroup, total)
@@ -4919,7 +4921,9 @@ function renderDoctorRank() {
   const filteredOrders = getDoctorRankFilteredOrders();
   const total = filteredOrders.length;
   const signed = countStatus(filteredOrders, 'Signed');
-  const returned = countStatus(filteredOrders, 'Returned') + countStatus(filteredOrders, 'مرتجع خلال 14 يوم');
+  const returnedOrders = filteredOrders.filter(order => ['Returned', 'مرتجع خلال 14 يوم'].includes(getOrderDisplayStatus(order) || order.status));
+  const returned = returnedOrders.length;
+  const salesReturned = returnedOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
   const cancel = countStatus(filteredOrders, 'Cancel');
   const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
   setText('doctorRankDoctorsCount', num(allRows.length));
@@ -5797,21 +5801,24 @@ function exportShippingRank() {
     rows.map((r,i)=>[i+1,r.name,r.total,r.signed,r.delivering,r.returned,r.conversionRate,r.returnRate,isBranch?r.cancelled:Number(r.score||0).toFixed(1)])
   );
 }
-function exportDoctorRank() {
-  if (typeof XLSX === 'undefined') { alert('مكتبة Excel غير متاحة'); return; }
+async function exportDoctorRank() {
+  if (typeof ExcelJS === 'undefined') { alert('مكتبة Excel غير متاحة'); return; }
   const rows = getFilteredDoctorRankRows();
   if (!rows.length) { alert('لا توجد بيانات دكاترة للتصدير'); return; }
   const from = document.getElementById('doctorRankFromDate')?.value || 'All';
   const to = document.getElementById('doctorRankToDate')?.value || 'All';
   const branchSelect = document.getElementById('doctorRankBranchFilter');
   const branch = branchSelect?.selectedOptions?.[0]?.textContent || 'كل الفروع';
-  const workbook = XLSX.utils.book_new();
+  const workbook = new ExcelJS.Workbook();
   const usedNames = new Set();
   const filteredOrders = getDoctorRankFilteredOrders();
   const total = filteredOrders.length;
   const signed = countStatus(filteredOrders, 'Signed');
-  const returned = countStatus(filteredOrders, 'Returned') + countStatus(filteredOrders, 'مرتجع خلال 14 يوم');
+  const returnedOrders = filteredOrders.filter(order => ['Returned', 'مرتجع خلال 14 يوم'].includes(getOrderDisplayStatus(order) || order.status));
+  const returned = returnedOrders.length;
+  const salesReturned = returnedOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
   const cancel = countStatus(filteredOrders, 'Cancel');
+  const totalRevenue = filteredOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
   const overviewData = [
     ['Doctor Rank Smart Report', `${from} → ${to}`],
     ['Branch', branch],
@@ -5819,26 +5826,48 @@ function exportDoctorRank() {
     ['Doctors With Orders', rows.filter(row => row.total > 0).length],
     ['Total Orders', total],
     ['Signed', signed],
+    ['Total Revenue', totalRevenue],
     ['Returned', returned],
     ['Cancel Group', cancel],
-    ['Conversion Rate', percent(signed, total)],
-    ['Cancel Group Rate', percent(cancel, total)]
+    ['Sales Returned', salesReturned],
+    ['Conversion Rate', total ? signed / total : 0],
+    ['Cancel Group Rate', total ? cancel / total : 0],
+    ['Return Rate', total ? returned / total : 0]
   ];
-  const overview = XLSX.utils.aoa_to_sheet(overviewData);
-  overview['!cols'] = [{ wch:26 }, { wch:28 }];
-  XLSX.utils.book_append_sheet(workbook, overview, smartExportSafeSheetName('Overview', usedNames));
+  const overview = workbook.addWorksheet(smartExportSafeSheetName('Overview', usedNames));
+  overview.columns = [{ width:30 }, { width:31 }];
+  overview.addRows(overviewData);
+  overview.eachRow(row => { row.alignment = { vertical:'middle' }; row.font = { name:'Calibri', size:11 }; });
+  overview.getRow(1).font = { name:'Calibri', size:12, bold:true };
+  overview.getCell('B7').numFmt = '#,##0.00';
+  overview.getCell('B10').numFmt = '#,##0.00';
+  ['B11','B12','B13'].forEach(ref => { overview.getCell(ref).numFmt = '0.0%'; });
+  ['A6','B6','A7','B7'].forEach(ref => { overview.getCell(ref).font = { name:'Calibri', size:11, bold:true, color:{ argb:'FF000000' } }; });
+  ['A8','B8','A9','B9','A10','B10'].forEach(ref => { overview.getCell(ref).font = { name:'Calibri', size:11, bold:true, color:{ argb:'FFFF0000' } }; });
+  overview.getCell('B11').font = { name:'Calibri', size:11, bold:true, color:{ argb:'FF000000' } };
+  ['B12','B13'].forEach(ref => { overview.getCell(ref).font = { name:'Calibri', size:11, bold:true, color:{ argb:'FFFF0000' } }; });
 
-  const performanceHeaders = ['Doctor', 'Code', 'Total Orders', 'Signed', 'Delivering', 'Returned', 'Fake Doctor', 'Cancel Group', 'Revenue', 'Conversion Rate', 'Return Rate', 'Cancel Group Rate'];
-  const performanceData = rows.map(row => [row.doctor, row.code || '', row.total, row.signed, row.delivering, row.returned, row.fakeDoctor, row.cancelGroup, row.revenue, row.conversionRate, row.returnRate, row.cancelGroupRate]);
-  const performance = XLSX.utils.aoa_to_sheet([
-    ['Doctor Performance', `${from} → ${to}`],
-    ['Branch', branch],
-    [],
-    performanceHeaders,
-    ...performanceData
-  ]);
-  smartExportSetLayout(performance, [28,12,14,11,13,12,13,15,16,17,14,18], 3, performanceData.length, [8]);
-  XLSX.utils.book_append_sheet(workbook, performance, smartExportSafeSheetName('Doctor Performance', usedNames));
+  const performanceHeaders = ['Doctor', 'Code', 'Total Orders', 'Signed', 'Delivering', 'Returned', 'Fake Doctor', 'Cancel Group', 'Revenue', 'Conversion Rate', 'Return Rate', 'Cancel Group Rate', 'Sales Returned'];
+  const performanceData = rows.map(row => [row.doctor, row.code || '', row.total, row.signed, row.delivering, row.returned, row.fakeDoctor, row.cancelGroup, row.revenue, row.conversionRateNum / 100, row.returnRateNum / 100, row.cancelGroupRateNum / 100, row.salesReturned]);
+  const performance = workbook.addWorksheet(smartExportSafeSheetName('Doctor Performance', usedNames), { views:[{ state:'frozen', ySplit:4 }] });
+  performance.columns = [28,12,14,11,13,12,13,15,16,17,14,18,18].map(width => ({ width }));
+  performance.addRow(['Doctor Performance', `${from} → ${to}`]);
+  performance.addRow(['Branch', branch]);
+  performance.addRow([]);
+  performance.addRow(performanceHeaders);
+  performance.addRows(performanceData);
+  performance.getRow(4).font = { name:'Calibri', size:11, bold:true };
+  performance.autoFilter = { from:{ row:4, column:1 }, to:{ row:4, column:13 } };
+  for (let rowNumber=5; rowNumber<=performance.rowCount; rowNumber+=1) {
+    performance.getCell(rowNumber,9).numFmt = '#,##0.00';
+    performance.getCell(rowNumber,13).numFmt = '#,##0.00';
+    [10,11,12].forEach(column => { performance.getCell(rowNumber,column).numFmt = '0.0%'; });
+    performance.getCell(rowNumber,10).font = { name:'Calibri', size:12, bold:true, color:{ argb:'FF000000' } };
+    performance.getCell(rowNumber,11).font = { name:'Calibri', size:12, bold:true, color:{ argb:'FFFF0000' } };
+    performance.getCell(rowNumber,13).font = { name:'Calibri', size:12, bold:true, color:{ argb:'FFFF0000' } };
+  }
+  performance.getCell(4,10).font = { name:'Calibri', size:12, bold:true, color:{ argb:'FF000000' } };
+  [11,13].forEach(column => { performance.getCell(4,column).font = { name:'Calibri', size:12, bold:true, color:{ argb:'FFFF0000' } }; });
 
   const ticketHeaders = ['Ticket ID', 'Order Number', 'Customer', 'Phone', 'Branch', 'Status', 'Revenue', 'Paid', 'Remaining', 'Date', 'Employee', 'Notes'];
   rows.filter(row => row.tickets.length).forEach(row => {
@@ -5848,15 +5877,46 @@ function exportDoctorRank() {
       getEffectiveOrderPrice(order), Number(order.deposit || 0), getOrderOutstandingBalance(order),
       formatEnglishDateTime(order.created_at), order.employee_name || '', cleanVisibleOrderNotes(order.notes || '')
     ]);
-    const sheet = XLSX.utils.aoa_to_sheet([
-      ['Doctor', row.doctor], ['Code', row.code || '—'], ['Period', `${from} → ${to}`], ['Branch', branch],
-      ['Total Orders', row.total], ['Cancel Group', row.cancelGroup], [], ticketHeaders, ...ticketRows
+    const sheet = workbook.addWorksheet(smartExportSafeSheetName(row.doctor, usedNames), { views:[{ state:'frozen', ySplit:8 }] });
+    sheet.columns = [14,16,25,16,18,17,14,14,14,22,20,45].map(width => ({ width }));
+    sheet.addRows([
+      ['Doctor', row.doctor, 'KPI', 'Value'],
+      ['Code', row.code || '—', 'Conversion Rate', row.conversionRateNum / 100],
+      ['Period', `${from} → ${to}`, 'Return Rate', row.returnRateNum / 100],
+      ['Branch', branch, 'Cancel Group Rate', row.cancelGroupRateNum / 100],
+      ['Total Orders', row.total, 'Sales Returned', row.salesReturned],
+      ['Cancel Group', row.cancelGroup],
+      [], ticketHeaders, ...ticketRows
     ]);
-    smartExportSetLayout(sheet, [14,16,25,16,18,17,14,14,14,22,20,45], 7, ticketRows.length, [6,7,8]);
-    XLSX.utils.book_append_sheet(workbook, sheet, smartExportSafeSheetName(row.doctor, usedNames));
+    sheet.getRow(8).font = { name:'Calibri', size:11, bold:true };
+    sheet.getCell('C1').font = { name:'Calibri', size:12, bold:true };
+    sheet.getCell('D1').font = { name:'Calibri', size:12, bold:true };
+    ['D2','D3','D4'].forEach(ref => { sheet.getCell(ref).numFmt = '0.0%'; });
+    sheet.getCell('D5').numFmt = '#,##0.00';
+    for(let rowNumber=9;rowNumber<=sheet.rowCount;rowNumber+=1){
+      [7,8,9].forEach(column=>{sheet.getCell(rowNumber,column).numFmt='#,##0.00';});
+    }
+    sheet.autoFilter = { from:{ row:8, column:1 }, to:{ row:8, column:12 } };
   });
   workbook.Props = { Title:'Doctor Rank Smart Report', Author:currentUser?.name || 'OKB CRM', CreatedDate:new Date() };
-  XLSX.writeFile(workbook, `Doctor-Rank-${from}_${to}.xlsx`);
+  workbook.creator = currentUser?.name || 'OKB CRM';
+  workbook.created = new Date();
+  workbook.worksheets.forEach(worksheet => {
+    worksheet.eachRow({ includeEmpty:true }, row => {
+      row.eachCell({ includeEmpty:true }, cell => {
+        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+      });
+    });
+  });
+  const buffer = await workbook.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Doctor-Rank-${from}_${to}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
   logActivity('data_exported', 'تصدير Doctor Rank', `الفترة: ${from} → ${to} | الفرع: ${branch} | الدكاترة: ${rows.length} | الأوردرات: ${total}`);
 }
 
