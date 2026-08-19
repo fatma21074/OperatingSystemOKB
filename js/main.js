@@ -1,7 +1,20 @@
-const supabaseClient = window.supabase.createClient(
-  "https://nsynylbqrkdftnyqrgkn.supabase.co",
-  "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv"
-);
+const OKB_SUPABASE_URL = "https://nsynylbqrkdftnyqrgkn.supabase.co";
+const OKB_SUPABASE_KEY = "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv";
+const OKB_LOGIN_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-login`;
+let supabaseClient = createOkbSupabaseClient();
+
+function createOkbSupabaseClient(accessToken = "") {
+  const options = accessToken
+    ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
+    : {};
+  const client = window.supabase.createClient(OKB_SUPABASE_URL, OKB_SUPABASE_KEY, options);
+  if (accessToken && client.realtime?.setAuth) client.realtime.setAuth(accessToken);
+  return client;
+}
+
+function setOkbSecureSession(token) {
+  supabaseClient = createOkbSupabaseClient(token);
+}
 
 // ===== المتغيرات العامة =====
 let orders = [];
@@ -1065,6 +1078,7 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'dashboard', label:'Dashboard', group:'Main' },
   { key:'shipping_rank', label:'Shipping Rank', group:'Main' },
   { key:'company_rank', label:'Company Rank', group:'Main' },
+  { key:'operation_manager_report', label:'Operation Manager Report', group:'Shipping Rank' },
   { key:'okb_stores', label:'OKB Stores', group:'OKB Stores' },
   { key:'branch_nasr', label:'فرع مدينة نصر', group:'OKB Stores' },
   { key:'branch_alex', label:'فرع اسكندرية', group:'OKB Stores' },
@@ -1136,6 +1150,7 @@ function getDefaultRolePermissions(role) {
     dashboard:!doctor,
     shipping_rank:operation || key === 'agent' || accounting || key === 'store_manager',
     company_rank:false,
+    operation_manager_report:operation,
     okb_stores:true,
     branch_nasr:true,
     branch_alex:true,
@@ -2365,16 +2380,30 @@ function resetDateFilter() {
 
 // ===== دوال تسجيل الدخول =====
 async function login() {
-  const { data, error } = await supabaseClient
-    .from("user")
-    .select("*")
-    .eq("username", loginUsername.value.trim())
-    .eq("password", loginPassword.value.trim())
-    .limit(1);
+  if (loginError) loginError.style.display = "none";
+  let response;
+  try {
+    response = await fetch(OKB_LOGIN_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: OKB_SUPABASE_KEY },
+      body: JSON.stringify({
+        username: loginUsername.value.trim(),
+        password: loginPassword.value
+      })
+    });
+  } catch (networkError) {
+    console.error("Secure login network error:", networkError);
+    if (loginError) loginError.style.display = "block";
+    return;
+  }
 
-  if (error || !data || !data.length) { loginError.style.display = "block"; return; }
-  const u = data[0];
-  if (u.active === false) { loginError.style.display = "block"; return; }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.token || !result?.user) {
+    if (loginError) loginError.style.display = "block";
+    return;
+  }
+  const u = result.user;
+  setOkbSecureSession(result.token);
 
   resetAppState();
 
@@ -2383,9 +2412,12 @@ async function login() {
     name: u.name,
     username: u.username,
     role: u.role || (u.username === "admin" ? "admin" : "agent"),
-    managed_branches: u.managed_branches || null
+    managed_branches: u.managed_branches || null,
+    system_permissions: u.system_permissions || {}
   };
   sessionStorage.setItem("okb_current_user", JSON.stringify(currentUser));
+  sessionStorage.setItem("okb_access_token", result.token);
+  sessionStorage.setItem("okb_access_expires_at", String(result.expires_at || 0));
   await logActivity("login", "تسجيل دخول", "تم تسجيل الدخول إلى السيستم بنجاح");
 
   loginPage.classList.add("hidden");
@@ -2412,6 +2444,8 @@ async function logout() {
   stopChatRealtime();
   await stopOnlinePresence();
   sessionStorage.removeItem("okb_current_user");
+  sessionStorage.removeItem("okb_access_token");
+  sessionStorage.removeItem("okb_access_expires_at");
   sessionStorage.clear();
   resetAppState();
   app.classList.add("hidden");
@@ -2424,7 +2458,11 @@ async function logout() {
 
 async function checkLogin() {
   const s = sessionStorage.getItem("okb_current_user");
-  if (s) {
+  const token = sessionStorage.getItem("okb_access_token");
+  const expiresAt = Number(sessionStorage.getItem("okb_access_expires_at") || 0);
+  const sessionIsValid = Boolean(s && token && expiresAt > Math.floor(Date.now() / 1000) + 30);
+  if (sessionIsValid) {
+    setOkbSecureSession(token);
     currentUser = JSON.parse(s);
     await logActivity("login", "فتح السيستم", "تم فتح السيستم واستعادة جلسة المستخدم");
     loginPage.classList.add("hidden");
@@ -2441,6 +2479,9 @@ async function checkLogin() {
     await loadOKBItems();
     await showInitialPermittedPage();
   } else {
+    sessionStorage.removeItem("okb_current_user");
+    sessionStorage.removeItem("okb_access_token");
+    sessionStorage.removeItem("okb_access_expires_at");
     app.classList.add("hidden");
     loginPage.classList.remove("hidden");
   }
@@ -2481,6 +2522,8 @@ if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = canViewShippi
 document.querySelectorAll('.company-rank-menu-item').forEach(el => {
   el.classList.toggle('hidden', !hasRoleFeature('company_rank'));
 });
+const operationManagerReportBtn = document.getElementById('operationManagerReportBtn');
+if (operationManagerReportBtn) operationManagerReportBtn.classList.toggle('hidden', shippingRankMode !== 'branch' || !hasRoleFeature('operation_manager_report'));
 if (shippingRankMode === 'company' && !hasRoleFeature('company_rank')) {
   shippingRankMode = 'branch';
   if (!document.getElementById('shippingRankPage')?.classList.contains('hidden')) {
@@ -2663,7 +2706,9 @@ async function loadOrders() {
 }
 
 async function loadUsers() {
-  const { data, error } = await supabaseClient.from("user").select("*").order("name", { ascending: true });
+  const { data, error } = await supabaseClient.from("user")
+    .select("id,name,username,role,active,managed_branches,system_permissions")
+    .order("name", { ascending: true });
   if (error) { alert("مشكلة في تحميل المستخدمين: " + error.message); return; }
   users = data || []; 
   renderUsers();
@@ -4874,6 +4919,8 @@ function renderShippingRank() {
   document.getElementById('shippingRankBranchModeBtn')?.classList.toggle('active',shippingRankMode==='branch');
   document.getElementById('shippingRankCompanyModeBtn')?.classList.toggle('active',shippingRankMode==='company');
   const companyModeBtn=document.getElementById('shippingRankCompanyModeBtn');if(companyModeBtn)companyModeBtn.disabled=Boolean(branchShippingRankOverride);
+  const operationReportBtn=document.getElementById('operationManagerReportBtn');
+  if(operationReportBtn)operationReportBtn.classList.toggle('hidden',shippingRankMode!=='branch'||!hasRoleFeature('operation_manager_report'));
   updateShippingMiniDashboard();
   renderGlobalShippingSections();
   const pagination = document.getElementById("shippingRankPagination");
@@ -5775,6 +5822,274 @@ function getShippingExportBranchScope() {
   if (currentBranchName && canOpenPermissionBranch(currentBranchName) && canAccessBranch(currentBranchName)) return currentBranchName;
   const permitted = Object.keys(ROLE_BRANCH_FEATURES).filter(branch => canOpenPermissionBranch(branch) && canAccessBranch(branch));
   return permitted.length === 1 ? permitted[0] : '';
+}
+
+const OPERATION_REPORT_BRANCHES = [
+  { key:'nasr-city', name:'مدينة نصر', sheet:'Nasr City' },
+  { key:'alexandria', name:'اسكندرية', sheet:'Alexandria' },
+  { key:'tanta', name:'طنطا', sheet:'Tanta' },
+  { key:'mansoura', name:'المنصورة', sheet:'Mansoura' }
+];
+
+function operationReportDate(value) {
+  const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match?new Date(Number(match[1]),Number(match[2])-1,Number(match[3])):null;
+}
+
+function operationReportShiftDate(value, days) {
+  const date=operationReportDate(value);
+  if(!date)return '';
+  date.setDate(date.getDate()+Number(days||0));
+  return getLocalDateISO(date);
+}
+
+function getOperationReportPreviousRange(from,to) {
+  const start=operationReportDate(from),end=operationReportDate(to);
+  if(!start||!end)return {from:'',to:''};
+  const lastOfStartMonth=new Date(start.getFullYear(),start.getMonth()+1,0);
+  const isFullCalendarMonth=start.getDate()===1&&end.getFullYear()===start.getFullYear()&&end.getMonth()===start.getMonth()&&end.getDate()===lastOfStartMonth.getDate();
+  if(isFullCalendarMonth){
+    return {
+      from:getLocalDateISO(new Date(start.getFullYear(),start.getMonth()-1,1)),
+      to:getLocalDateISO(new Date(start.getFullYear(),start.getMonth(),0))
+    };
+  }
+  const days=Math.round((end-start)/86400000)+1;
+  const previousTo=operationReportShiftDate(from,-1);
+  return {from:operationReportShiftDate(previousTo,-(days-1)),to:previousTo};
+}
+
+function getOperationReportAllowedBranches() {
+  if(isAdmin()||isManager())return OPERATION_REPORT_BRANCHES;
+  if(branchShippingRankOverride){
+    return OPERATION_REPORT_BRANCHES.filter(item=>item.name===branchShippingRankOverride);
+  }
+  const managed=getCurrentUserManagedBranches();
+  return OPERATION_REPORT_BRANCHES.filter(item=>
+    managed.includes(item.name)||(canOpenPermissionBranch(item.name)&&canAccessBranch(item.name))
+  );
+}
+
+function getOperationReportOrders(from,to,branchKeys) {
+  const allowed=new Set(branchKeys||[]);
+  return (orders||[]).filter(order=>{
+    const branch=getProductReportOrderBranch(order);
+    if(!allowed.has(branch))return false;
+    const day=getLocalDateISO(order.created_at);
+    return (!from||day>=from)&&(!to||day<=to);
+  });
+}
+
+function getOperationReportMetrics(list) {
+  const source=Array.isArray(list)?list:[];
+  const statusOf=order=>getOrderDisplayStatus(order)||String(order?.status||'');
+  const signed=source.filter(order=>statusOf(order)==='Signed');
+  const delivering=source.filter(order=>statusOf(order)==='Delivering');
+  const returned=source.filter(order=>['Returned','مرتجع خلال 14 يوم'].includes(statusOf(order)));
+  const cancelled=source.filter(order=>statusOf(order)==='Cancel');
+  const total=source.length;
+  const conversionBase=Math.max(0,total-cancelled.length);
+  const revenue=source.reduce((sum,order)=>sum+getEffectiveOrderPrice(order),0);
+  const signedRevenue=signed.reduce((sum,order)=>sum+getEffectiveOrderPrice(order),0);
+  const returnedValue=returned.reduce((sum,order)=>sum+getEffectiveOrderPrice(order),0);
+  const deliveringValue=delivering.reduce((sum,order)=>sum+getEffectiveOrderPrice(order),0);
+  return {
+    total,netOrders:conversionBase,signed:signed.length,delivering:delivering.length,
+    returned:returned.length,cancelled:cancelled.length,revenue,signedRevenue,returnedValue,deliveringValue,
+    averageOrder:total?revenue/total:0,
+    conversionRate:conversionBase?signed.length/conversionBase:0,
+    returnRate:total?returned.length/total:0,
+    cancelRate:total?cancelled.length/total:0
+  };
+}
+
+function operationReportChange(current,previous) {
+  const c=Number(current||0),p=Number(previous||0);
+  if(!p)return c?1:0;
+  return (c-p)/Math.abs(p);
+}
+
+function styleOperationManagerSheet(sheet,headerRows=[]) {
+  const navy='FF0F172A',teal='FF0F8074',white='FFFFFFFF',soft='FFE2E8F0';
+  sheet.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.25,right:.25,top:.45,bottom:.45,header:.2,footer:.2}};
+  sheet.properties.defaultRowHeight=21;
+  sheet.eachRow({includeEmpty:true},row=>{
+    row.height=23;
+    row.eachCell({includeEmpty:true},cell=>{
+      cell.font={name:'Calibri',size:11,color:{argb:'FF111827'}};
+      cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};
+      cell.border={top:{style:'thin',color:{argb:soft}},left:{style:'thin',color:{argb:soft}},bottom:{style:'thin',color:{argb:soft}},right:{style:'thin',color:{argb:soft}}};
+    });
+  });
+  const title=sheet.getRow(1);
+  title.height=31;
+  title.eachCell({includeEmpty:true},cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:navy}};cell.font={name:'Calibri',size:13,bold:true,color:{argb:white}};});
+  headerRows.forEach(rowNumber=>{
+    const row=sheet.getRow(rowNumber);row.height=26;
+    row.eachCell({includeEmpty:true},cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:teal}};cell.font={name:'Calibri',size:11,bold:true,color:{argb:white}};});
+  });
+}
+
+function mergeOperationManagerTitle(sheet,lastColumn,title) {
+  sheet.getCell(1,1).value=title;
+  sheet.mergeCells(1,1,1,lastColumn);
+  sheet.getCell(1,1).alignment={horizontal:'center',vertical:'middle',wrapText:true};
+}
+
+function addOperationBranchSheet(workbook,branch,currentOrders,previousOrders,from,to,previousFrom,previousTo) {
+  const current=getOperationReportMetrics(currentOrders),previous=getOperationReportMetrics(previousOrders);
+  const sheet=workbook.addWorksheet(branch.sheet);
+  sheet.columns=[29,18,18,16,16,14,14,15,17,15,18].map(width=>({width}));
+  sheet.addRows([
+    [`${branch.name} — Monthly Operations`,'','','',''],
+    ['Metric','Current','Previous','Change','Target / Gap'],
+    ['Total Orders',current.total,previous.total,operationReportChange(current.total,previous.total),'—'],
+    ['Net Orders after Group Cancel',current.netOrders,previous.netOrders,operationReportChange(current.netOrders,previous.netOrders),'—'],
+    ['Signed',current.signed,previous.signed,operationReportChange(current.signed,previous.signed),'—'],
+    ['Delivering',current.delivering,previous.delivering,operationReportChange(current.delivering,previous.delivering),'—'],
+    ['Returned',current.returned,previous.returned,operationReportChange(current.returned,previous.returned),'≤ 10%'],
+    ['Group Cancel',current.cancelled,previous.cancelled,operationReportChange(current.cancelled,previous.cancelled),'Monitor'],
+    ['Conversion Rate',current.conversionRate,previous.conversionRate,current.conversionRate-previous.conversionRate,current.conversionRate-.9],
+    ['Return Rate',current.returnRate,previous.returnRate,current.returnRate-previous.returnRate,.1-current.returnRate],
+    ['Total Revenue',current.revenue,previous.revenue,operationReportChange(current.revenue,previous.revenue),'—'],
+    ['Average Order Value',current.averageOrder,previous.averageOrder,operationReportChange(current.averageOrder,previous.averageOrder),'—'],
+    [],
+    ['Week','From','To','Total','Signed','Delivering','Returned','Group Cancel','Conversion Rate','Return Rate','Revenue']
+  ]);
+  const start=operationReportDate(from),end=operationReportDate(to);
+  let cursor=new Date(start),week=1;
+  while(cursor<=end){
+    const weekFrom=getLocalDateISO(cursor);
+    const weekEnd=new Date(cursor);weekEnd.setDate(weekEnd.getDate()+6);if(weekEnd>end)weekEnd.setTime(end.getTime());
+    const weekTo=getLocalDateISO(weekEnd);
+    const metrics=getOperationReportMetrics(currentOrders.filter(order=>{const day=getLocalDateISO(order.created_at);return day>=weekFrom&&day<=weekTo;}));
+    sheet.addRow([`Week ${week}`,weekFrom,weekTo,metrics.total,metrics.signed,metrics.delivering,metrics.returned,metrics.cancelled,metrics.conversionRate,metrics.returnRate,metrics.revenue]);
+    cursor=new Date(weekEnd);cursor.setDate(cursor.getDate()+1);week+=1;
+  }
+  [9,10].forEach(row=>[2,3,4,5].forEach(col=>sheet.getCell(row,col).numFmt='0.0%'));
+  [3,4,5,6,7,8,11,12].forEach(row=>sheet.getCell(row,4).numFmt='0.0%');
+  [11,12].forEach(row=>[2,3].forEach(col=>sheet.getCell(row,col).numFmt='#,##0.00'));
+  for(let row=15;row<=sheet.rowCount;row+=1){sheet.getCell(row,9).numFmt='0.0%';sheet.getCell(row,10).numFmt='0.0%';sheet.getCell(row,11).numFmt='#,##0.00';}
+  mergeOperationManagerTitle(sheet,5,`${branch.name} — Monthly Operations`);
+  styleOperationManagerSheet(sheet,[2,14]);
+  return {current,previous};
+}
+
+async function exportOperationManagerReport(button) {
+  if(!hasRoleFeature('operation_manager_report')){alert('هذا التقرير غير مضاف لصلاحيات حسابك');return;}
+  if(shippingRankMode!=='branch'){alert('التقرير متاح داخل Branch Rank فقط');return;}
+  if(typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة');return;}
+  const from=document.getElementById('shippingFromDate')?.value||shippingDateFrom;
+  const to=document.getElementById('shippingToDate')?.value||shippingDateTo;
+  const start=operationReportDate(from),end=operationReportDate(to);
+  if(!start||!end||start>end){alert('اختر فترة تاريخ صحيحة');return;}
+  const branches=getOperationReportAllowedBranches();
+  if(!branches.length){alert('لا توجد فروع متاحة للتقرير');return;}
+  const previousRange=getOperationReportPreviousRange(from,to);
+  const previousFrom=previousRange.from;
+  const previousTo=previousRange.to;
+  const keys=branches.map(item=>item.key);
+  const currentOrders=getOperationReportOrders(from,to,keys);
+  const previousOrders=getOperationReportOrders(previousFrom,previousTo,keys);
+  if(!currentOrders.length&&!previousOrders.length){alert('لا توجد بيانات في الفترة المحددة أو الفترة السابقة');return;}
+  const old=button?.innerHTML;if(button){button.disabled=true;button.innerHTML='جاري تجهيز التقرير...';}
+  try{
+    const workbook=new ExcelJS.Workbook();
+    workbook.creator=currentUser?.name||currentUser?.username||'OKB CRM';workbook.created=new Date();
+    const currentTotal=getOperationReportMetrics(currentOrders),previousTotal=getOperationReportMetrics(previousOrders);
+    const protectedOrders=Math.max(0,(previousTotal.returnRate*currentTotal.total)-currentTotal.returned);
+    const protectedRevenue=protectedOrders*currentTotal.averageOrder;
+    const branchResults=branches.map(branch=>{
+      const current=currentOrders.filter(order=>getProductReportOrderBranch(order)===branch.key);
+      const previous=previousOrders.filter(order=>getProductReportOrderBranch(order)===branch.key);
+      return {branch,current:getOperationReportMetrics(current),previous:getOperationReportMetrics(previous),currentOrders:current,previousOrders:previous};
+    });
+
+    const overview=workbook.addWorksheet('Executive Overview');
+    overview.columns=[{width:31},{width:20},{width:20},{width:18},{width:20}];
+    overview.addRows([
+      [`Executive Overview — ${from} → ${to}`,'','','',''],
+      ['Previous Comparison',`${previousFrom} → ${previousTo}`,'','',''],
+      ['Scope',branches.map(item=>item.name).join(' / '),'','',''],
+      ['Prepared By',currentUser?.name||currentUser?.username||'—','','',''],
+      [],
+      ['Executive KPI','Current','Previous','Change','Target / Gap'],
+      ['Total Orders',currentTotal.total,previousTotal.total,operationReportChange(currentTotal.total,previousTotal.total),'—'],
+      ['Net Orders after Group Cancel',currentTotal.netOrders,previousTotal.netOrders,operationReportChange(currentTotal.netOrders,previousTotal.netOrders),'—'],
+      ['Signed',currentTotal.signed,previousTotal.signed,operationReportChange(currentTotal.signed,previousTotal.signed),'—'],
+      ['Delivering',currentTotal.delivering,previousTotal.delivering,operationReportChange(currentTotal.delivering,previousTotal.delivering),'—'],
+      ['Returned',currentTotal.returned,previousTotal.returned,operationReportChange(currentTotal.returned,previousTotal.returned),'≤ 10%'],
+      ['Group Cancel',currentTotal.cancelled,previousTotal.cancelled,operationReportChange(currentTotal.cancelled,previousTotal.cancelled),'Monitor'],
+      ['Conversion Rate',currentTotal.conversionRate,previousTotal.conversionRate,currentTotal.conversionRate-previousTotal.conversionRate,currentTotal.conversionRate-.9],
+      ['Return Rate',currentTotal.returnRate,previousTotal.returnRate,currentTotal.returnRate-previousTotal.returnRate,.1-currentTotal.returnRate],
+      ['Group Cancel Rate',currentTotal.cancelRate,previousTotal.cancelRate,currentTotal.cancelRate-previousTotal.cancelRate,'Monitor'],
+      ['Total Revenue',currentTotal.revenue,previousTotal.revenue,operationReportChange(currentTotal.revenue,previousTotal.revenue),'—'],
+      ['Signed Revenue',currentTotal.signedRevenue,previousTotal.signedRevenue,operationReportChange(currentTotal.signedRevenue,previousTotal.signedRevenue),'—'],
+      ['Average Order Value',currentTotal.averageOrder,previousTotal.averageOrder,operationReportChange(currentTotal.averageOrder,previousTotal.averageOrder),'—'],
+      ['Returned Value',currentTotal.returnedValue,previousTotal.returnedValue,operationReportChange(currentTotal.returnedValue,previousTotal.returnedValue),'Reduce'],
+      ['Revenue at Risk — Delivering',currentTotal.deliveringValue,previousTotal.deliveringValue,operationReportChange(currentTotal.deliveringValue,previousTotal.deliveringValue),'Follow Up'],
+      ['Estimated Revenue Protected',protectedRevenue,0,protectedRevenue>0?1:0,'Management Impact']
+    ]);
+    mergeOperationManagerTitle(overview,5,`Executive Overview — ${from} → ${to}`);
+    [13,14,15].forEach(row=>[2,3,4,5].forEach(col=>overview.getCell(row,col).numFmt='0.0%'));
+    [7,8,9,10,11,12,16,17,18,19,20,21].forEach(row=>overview.getCell(row,4).numFmt='0.0%');
+    [16,17,18,19,20,21].forEach(row=>[2,3].forEach(col=>overview.getCell(row,col).numFmt='#,##0.00'));
+    overview.getCell('B21').numFmt='#,##0.00';
+    styleOperationManagerSheet(overview,[6]);
+    ['A9','B9','A16','B16','A17','B17','A21','B21'].forEach(ref=>{overview.getCell(ref).font={name:'Calibri',size:11,bold:true,color:{argb:'FF047857'}};});
+    ['A11','B11','A12','B12','A19','B19'].forEach(ref=>{overview.getCell(ref).font={name:'Calibri',size:11,bold:true,color:{argb:'FFDC2626'}};});
+
+    const comparison=workbook.addWorksheet('Branch Comparison');
+    comparison.columns=[22,13,13,13,13,13,15,14,16,16,17,17,17].map(width=>({width}));
+    comparison.addRow([`Branch Comparison — ${from} → ${to}`]);comparison.addRow([]);
+    comparison.addRow(['Branch','Total','Net Orders','Signed','Delivering','Returned','Group Cancel','Conversion Rate','Return Rate','Revenue','Previous Conversion','Previous Return','Revenue Change']);
+    branchResults.forEach(item=>comparison.addRow([item.branch.name,item.current.total,item.current.netOrders,item.current.signed,item.current.delivering,item.current.returned,item.current.cancelled,item.current.conversionRate,item.current.returnRate,item.current.revenue,item.previous.conversionRate,item.previous.returnRate,operationReportChange(item.current.revenue,item.previous.revenue)]));
+    for(let row=4;row<=comparison.rowCount;row+=1){[8,9,11,12,13].forEach(col=>comparison.getCell(row,col).numFmt='0.0%');comparison.getCell(row,10).numFmt='#,##0.00';}
+    comparison.autoFilter={from:{row:3,column:1},to:{row:3,column:13}};mergeOperationManagerTitle(comparison,13,`Branch Comparison — ${from} → ${to}`);styleOperationManagerSheet(comparison,[3]);
+
+    branchResults.forEach(item=>addOperationBranchSheet(workbook,item.branch,item.currentOrders,item.previousOrders,from,to,previousFrom,previousTo));
+
+    const finance=workbook.addWorksheet('Financial Impact');finance.columns=[{width:34},{width:20},{width:20},{width:18},{width:34}];
+    finance.addRows([
+      [`Financial Impact — ${from} → ${to}`,'','','',''],
+      ['Metric','Current','Previous','Change','Management Meaning'],
+      ['Total Revenue',currentTotal.revenue,previousTotal.revenue,operationReportChange(currentTotal.revenue,previousTotal.revenue),'إجمالي قيمة الأوردرات داخل الفترة'],
+      ['Signed Revenue',currentTotal.signedRevenue,previousTotal.signedRevenue,operationReportChange(currentTotal.signedRevenue,previousTotal.signedRevenue),'قيمة الأوردرات المؤكدة'],
+      ['Returned Value',currentTotal.returnedValue,previousTotal.returnedValue,operationReportChange(currentTotal.returnedValue,previousTotal.returnedValue),'قيمة المبيعات المرتجعة'],
+      ['Revenue at Risk — Delivering',currentTotal.deliveringValue,previousTotal.deliveringValue,operationReportChange(currentTotal.deliveringValue,previousTotal.deliveringValue),'قيمة تحتاج متابعة حتى التسليم'],
+      ['Average Order Value',currentTotal.averageOrder,previousTotal.averageOrder,operationReportChange(currentTotal.averageOrder,previousTotal.averageOrder),'متوسط قيمة الأوردر'],
+      ['Estimated Returned Orders Avoided',protectedOrders,0,protectedOrders>0?1:0,'مقارنة بمعدل المرتجعات في الفترة السابقة'],
+      ['Estimated Revenue Protected',protectedRevenue,0,protectedRevenue>0?1:0,'تقدير إداري وليس تحصيلًا نقديًا مؤكدًا']
+    ]);
+    for(let row=3;row<=finance.rowCount;row+=1){finance.getCell(row,2).numFmt='#,##0.00';finance.getCell(row,3).numFmt='#,##0.00';finance.getCell(row,4).numFmt='0.0%';}
+    mergeOperationManagerTitle(finance,5,`Financial Impact — ${from} → ${to}`);styleOperationManagerSheet(finance,[2]);
+    ['A8','B8','A9','B9'].forEach(ref=>{finance.getCell(ref).font={name:'Calibri',size:11,bold:true,color:{argb:'FF047857'}};});
+
+    const ranked=[...branchResults].sort((a,b)=>b.current.conversionRate-a.current.conversionRate);
+    const improved=[...branchResults].sort((a,b)=>(b.previous.returnRate-b.current.returnRate)-(a.previous.returnRate-a.current.returnRate));
+    const insights=workbook.addWorksheet('Management Insights');insights.columns=[{width:8},{width:30},{width:76}];
+    const revenueChange=operationReportChange(currentTotal.revenue,previousTotal.revenue);
+    const conversionDirection=currentTotal.conversionRate>=previousTotal.conversionRate?'ارتفع':'انخفض';
+    const returnDirection=currentTotal.returnRate<=previousTotal.returnRate?'تحسن وانخفض':'ارتفع ويحتاج متابعة';
+    const insightRows=[
+      ['1','نمو الإيرادات',`إجمالي الإيرادات ${revenueChange>=0?'ارتفع':'انخفض'} بنسبة ${Math.abs(revenueChange*100).toFixed(1)}% مقارنة بالفترة السابقة المماثلة.`],
+      ['2','كفاءة التسليم',`معدل التحويل ${conversionDirection} إلى ${(currentTotal.conversionRate*100).toFixed(1)}% مقابل ${(previousTotal.conversionRate*100).toFixed(1)}% في الفترة السابقة، بينما المستهدف 90%.`],
+      ['3','السيطرة على المرتجعات',`معدل المرتجعات ${returnDirection} إلى ${(currentTotal.returnRate*100).toFixed(1)}% مقابل ${(previousTotal.returnRate*100).toFixed(1)}% سابقًا، والحد الأقصى المستهدف 10%.`],
+      ['4','أفضل فرع',ranked.length?`يتصدر فرع ${ranked[0].branch.name} أداء الفروع بمعدل تحويل ${(ranked[0].current.conversionRate*100).toFixed(1)}%.`:'لا توجد بيانات فروع كافية خلال الفترة المحددة.'],
+      ['5','الفرع الأكثر تحسنًا',improved.length?`حقق فرع ${improved[0].branch.name} أفضل تحسن في معدل المرتجعات بفارق ${((improved[0].previous.returnRate-improved[0].current.returnRate)*100).toFixed(1)} نقطة مئوية مقارنة بالفترة السابقة.`:'لا توجد بيانات مقارنة كافية لقياس التحسن.'],
+      ['6','القيمة المحمية',`القيمة التقديرية للإيرادات التي تم الحفاظ عليها تبلغ ${money(protectedRevenue)} جنيه، بناءً على معدل المرتجعات السابق ومتوسط قيمة الأوردر الحالي.`],
+      ['7','متابعة فورية',`توجد أوردرات Delivering بقيمة ${money(currentTotal.deliveringValue)} جنيه تحتاج إلى متابعة حتى الإغلاق النهائي.`]
+    ];
+    insights.addRow([`Management Insights — ${from} → ${to}`]);insights.addRow(['#','المحور','الاستنتاج الإداري']);insights.addRows(insightRows);mergeOperationManagerTitle(insights,3,`Management Insights — ${from} → ${to}`);styleOperationManagerSheet(insights,[2]);
+    for(let row=3;row<=insights.rowCount;row+=1)insights.getRow(row).height=39;
+
+    workbook.worksheets.forEach(sheet=>sheet.eachRow({includeEmpty:true},row=>row.eachCell({includeEmpty:true},cell=>{cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};})));
+    const buffer=await workbook.xlsx.writeBuffer();
+    const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    const link=document.createElement('a');link.href=url;link.download=`Operation-Manager-Report-${from}_${to}.xlsx`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1200);
+    logActivity('data_exported','تصدير Operation Manager Report',`الفترة: ${from} → ${to} | الفروع: ${branches.map(item=>item.name).join('، ')} | الأوردرات: ${currentTotal.total}`);
+  }catch(error){console.error('Operation Manager Report error:',error);alert(`تعذر تجهيز التقرير: ${error?.message||error}`);}
+  finally{if(button){button.disabled=false;button.innerHTML=old||'📈 Operation Manager Report';}}
 }
 
 function exportShippingRank() {
@@ -10536,7 +10851,7 @@ async function refreshChatPage(button){
 }
 
 async function loadChatUsers(){
-  const {data,error}=await supabaseClient.from('user').select('id,name,username,role,active').order('name',{ascending:true});
+  const {data,error}=await supabaseClient.rpc('okb_list_chat_users');
   if(error){console.error('Chat users:',error);return;}
   const me=chatCurrentUsername();
   chatUsers=(data||[]).filter(user=>user.active!==false&&chatUserKey(user)!==me);
@@ -11246,33 +11561,14 @@ async function changeMyAccountPassword(event) {
   }
 
   try {
-    // تحقق من كلمة المرور الحالية للمستخدم الحالي فقط
-    const { data: matchedUsers, error: verifyError } = await supabaseClient
-      .from('user')
-      .select('id')
-      .eq('id', currentUser.id)
-      .eq('password', currentPassword)
-      .limit(1);
-
-    if (verifyError) throw verifyError;
-
-    if (!matchedUsers || !matchedUsers.length) {
-      setMyAccountMessage('كلمة المرور الحالية غير صحيحة.', 'error');
-      return;
-    }
-
-    // تحديث كلمة مرور المستخدم الحالي فقط
-    const { data: updatedUsers, error: updateError } = await supabaseClient
-      .from('user')
-      .update({ password: newPassword })
-      .eq('id', currentUser.id)
-      .eq('password', currentPassword)
-      .select('id');
+    const { data: changed, error: updateError } = await supabaseClient.rpc('okb_change_my_password', {
+      p_current_password: currentPassword,
+      p_new_password: newPassword
+    });
 
     if (updateError) throw updateError;
-
-    if (!updatedUsers || !updatedUsers.length) {
-      setMyAccountMessage('لم يتم تحديث كلمة المرور. حاول مرة أخرى.', 'error');
+    if (changed !== true) {
+      setMyAccountMessage('كلمة المرور الحالية غير صحيحة.', 'error');
       return;
     }
 
