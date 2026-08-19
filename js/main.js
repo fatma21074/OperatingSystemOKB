@@ -2399,8 +2399,7 @@ async function requestSecureLogin(credentials, attempt = 1) {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        apikey: OKB_SUPABASE_KEY,
-        "Cache-Control": "no-cache"
+        apikey: OKB_SUPABASE_KEY
       },
       body: JSON.stringify(credentials)
     });
