@@ -2422,6 +2422,41 @@ async function requestSecureLogin(credentials, attempt = 1) {
   }
 }
 
+function startPostLoginDataLoads() {
+  const tasks = [
+    loadDoctors(),
+    loadShippingSystems(),
+    loadOrders(),
+    refreshPendingHeaderCount(),
+    loadOKBItems()
+  ];
+  if (isAdmin() || isExecutiveAssistant()) {
+    tasks.push(loadUsers().then(() => applyUsersFormRoleLock()));
+  }
+  Promise.allSettled(tasks).then(results => {
+    results.forEach(result => {
+      if (result.status === 'rejected') console.error('Background startup load failed:', result.reason);
+    });
+  });
+  initChatFeature().catch(error => console.error('Chat startup failed:', error));
+}
+
+async function openAuthenticatedApp(activityTitle, activityDetails) {
+  loginPage.classList.add("hidden");
+  app.classList.remove("hidden");
+
+  // Permissions are the only startup dependency required before drawing navigation.
+  await loadRolePermissions();
+  setupUserView();
+  startRolePermissionsSync();
+  await showInitialPermittedPage();
+
+  // All heavy datasets load in parallel after the interface is already visible.
+  startPostLoginDataLoads();
+  logActivity("login", activityTitle, activityDetails)
+    .catch(error => console.error('Login activity failed:', error));
+}
+
 async function login() {
   if (loginError) loginError.style.display = "none";
   const loginButton = document.getElementById("loginSubmitBtn") || document.querySelector(".signin-btn");
@@ -2480,23 +2515,7 @@ async function login() {
   sessionStorage.setItem("okb_current_user", JSON.stringify(currentUser));
   sessionStorage.setItem("okb_access_token", result.token);
   sessionStorage.setItem("okb_access_expires_at", String(result.expires_at || 0));
-  await logActivity("login", "تسجيل دخول", "تم تسجيل الدخول إلى السيستم بنجاح");
-
-  loginPage.classList.add("hidden");
-  app.classList.remove("hidden");
-
-  await loadRolePermissions();
-  setupUserView();
-  startRolePermissionsSync();
-  await loadDoctors();
-  await loadShippingSystems();
-  await loadOrders();
-  await refreshPendingHeaderCount();
-  await initChatFeature();
-  if (isAdmin() || isExecutiveAssistant()) { await loadUsers(); applyUsersFormRoleLock(); }
-  await loadOKBItems();
-
-  await showInitialPermittedPage();
+  await openAuthenticatedApp("تسجيل دخول", "تم تسجيل الدخول إلى السيستم بنجاح");
   if (loginButton) { loginButton.disabled = false; loginButton.textContent = originalButtonText; }
 }
 
@@ -2527,20 +2546,7 @@ async function checkLogin() {
   if (sessionIsValid) {
     setOkbSecureSession(token);
     currentUser = JSON.parse(s);
-    await logActivity("login", "فتح السيستم", "تم فتح السيستم واستعادة جلسة المستخدم");
-    loginPage.classList.add("hidden");
-    app.classList.remove("hidden");
-    await loadRolePermissions();
-    setupUserView();
-    startRolePermissionsSync();
-    await loadDoctors();
-    await loadShippingSystems();
-    await loadOrders();
-    await refreshPendingHeaderCount();
-    await initChatFeature();
-    if (isAdmin() || isExecutiveAssistant()) { await loadUsers(); applyUsersFormRoleLock(); }
-    await loadOKBItems();
-    await showInitialPermittedPage();
+    await openAuthenticatedApp("فتح السيستم", "تم فتح السيستم واستعادة جلسة المستخدم");
   } else {
     sessionStorage.removeItem("okb_current_user");
     sessionStorage.removeItem("okb_access_token");
