@@ -336,6 +336,8 @@ async function loadActivityLogs(){
   const type=document.getElementById('activityLogType')?.value||'all';
   let query=supabaseClient.from('activity_logs').select('*').order('id',{ascending:false}).limit(1000);
   if(type!=='all') query=query.eq('action_type',type);
+  if(from) query=query.gte('action_date',from);
+  if(to) query=query.lte('action_date',to);
   const {data,error}=await query;
   if(error){ if(list) list.innerHTML='<div class="activity-log-empty">تعذر تحميل السجل: '+escapeHTML(error.message)+'</div>'; return; }
   activityLogs=(data||[])
