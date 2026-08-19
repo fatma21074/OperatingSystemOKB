@@ -2379,27 +2379,88 @@ function resetDateFilter() {
 }
 
 // ===== دوال تسجيل الدخول =====
+function showLoginMessage(message) {
+  if (!loginError) return;
+  loginError.textContent = message;
+  loginError.style.display = "block";
+}
+
+function waitForLoginRetry(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function requestSecureLogin(credentials, attempt = 1) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(OKB_LOGIN_ENDPOINT, {
+      method: "POST",
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: OKB_SUPABASE_KEY,
+        "Cache-Control": "no-cache"
+      },
+      body: JSON.stringify(credentials)
+    });
+
+    if (response.status >= 500 && attempt < 2) {
+      await waitForLoginRetry(800);
+      return requestSecureLogin(credentials, attempt + 1);
+    }
+    return response;
+  } catch (error) {
+    if (attempt < 2) {
+      await waitForLoginRetry(800);
+      return requestSecureLogin(credentials, attempt + 1);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function login() {
   if (loginError) loginError.style.display = "none";
+  const loginButton = document.getElementById("loginSubmitBtn") || document.querySelector(".signin-btn");
+  const originalButtonText = loginButton?.textContent || "Sign In";
+  if (loginButton?.disabled) return;
+  if (loginButton) {
+    loginButton.disabled = true;
+    loginButton.textContent = "Signing in...";
+  }
+
+  const credentials = {
+    username: loginUsername.value.trim(),
+    password: loginPassword.value
+  };
+  if (!credentials.username || !credentials.password) {
+    showLoginMessage("من فضلك اكتب اسم المستخدم وكلمة المرور");
+    if (loginButton) { loginButton.disabled = false; loginButton.textContent = originalButtonText; }
+    return;
+  }
+
   let response;
   try {
-    response = await fetch(OKB_LOGIN_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: OKB_SUPABASE_KEY },
-      body: JSON.stringify({
-        username: loginUsername.value.trim(),
-        password: loginPassword.value
-      })
-    });
+    response = await requestSecureLogin(credentials);
   } catch (networkError) {
     console.error("Secure login network error:", networkError);
-    if (loginError) loginError.style.display = "block";
+    showLoginMessage("تعذر الاتصال بالسيستم. تأكد من الإنترنت ثم حاول مرة أخرى");
+    if (loginButton) { loginButton.disabled = false; loginButton.textContent = originalButtonText; }
     return;
   }
 
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result?.token || !result?.user) {
-    if (loginError) loginError.style.display = "block";
+    if (response.status === 401) {
+      showLoginMessage("اسم المستخدم أو كلمة المرور غير صحيحة، أو الحساب غير مفعل");
+    } else if (response.status === 429) {
+      showLoginMessage("محاولات دخول كثيرة. انتظر لحظات ثم حاول مرة أخرى");
+    } else {
+      showLoginMessage("خدمة تسجيل الدخول مشغولة مؤقتًا. حاول مرة أخرى بعد لحظات");
+    }
+    if (loginButton) { loginButton.disabled = false; loginButton.textContent = originalButtonText; }
     return;
   }
   const u = result.user;
@@ -2435,6 +2496,7 @@ async function login() {
   await loadOKBItems();
 
   await showInitialPermittedPage();
+  if (loginButton) { loginButton.disabled = false; loginButton.textContent = originalButtonText; }
 }
 
 async function logout() {
