@@ -4134,10 +4134,22 @@ function getVisibleOrders() {
 
 function renderEmployeeFilter() {
   const current = filterEmployee.value, base = getVisibleOrders();
-  const employees = [...new Set(base.map(o => o.employee_name).filter(Boolean))];
+  const employees = getEmployeeFilterNames(base);
   filterEmployee.innerHTML = `<option value="الكل">كل الموظفين</option>` + employees.map(e => `<option value="${e}">${e}</option>`).join("");
   filterEmployee.disabled = false;
   filterEmployee.value = employees.includes(current) ? current : "الكل";
+  refreshOrderSearchableSelects();
+}
+
+function getEmployeeFilterNames(orderList = []) {
+  const userNames = (Array.isArray(users) ? users : [])
+    .filter(user => user && user.active !== false)
+    .map(user => String(user.name || user.username || '').trim())
+    .filter(Boolean);
+  const historicNames = (Array.isArray(orderList) ? orderList : [])
+    .map(order => String(order?.employee_name || '').trim())
+    .filter(Boolean);
+  return [...new Set([...userNames, ...historicNames])].sort((a, b) => a.localeCompare(b, 'ar'));
 }
 
 function renderDashboardShippingFilter() {
@@ -4147,6 +4159,7 @@ function renderDashboardShippingFilter() {
   const companies = getShippingCompanyNames();
   sel.innerHTML = `<option value="الكل">كل شركات الشحن</option>` + companies.map(c => `<option value="${c}">${c}</option>`).join("");
   sel.value = companies.includes(current) ? current : "الكل";
+  refreshOrderSearchableSelects();
 }
 
 function getFilteredOrders() {
@@ -5682,7 +5695,8 @@ function openOrdersExportMenu(scope, event) {
   const smartFeature = scope === 'branch' ? 'btn_branch_export_smart' : 'btn_dashboard_export_smart';
   const detailsAllowed = hasButtonPermission(detailsFeature);
   const smartAllowed = hasButtonPermission(smartFeature);
-  if (!detailsAllowed && !smartAllowed) { alert('لا يوجد نوع تصدير مضاف لصلاحيات حسابك'); return; }
+  const okbBranchAllowed = scope === 'dashboard' && detailsAllowed;
+  if (!detailsAllowed && !smartAllowed && !okbBranchAllowed) { alert('لا يوجد نوع تصدير مضاف لصلاحيات حسابك'); return; }
 
   ordersExportMenuScope = scope;
   const menu = document.createElement('div');
@@ -5694,6 +5708,9 @@ function openOrdersExportMenu(scope, event) {
     </button>` : ''}
     ${smartAllowed ? `<button type="button" onclick="runOrdersExport('${scope}','smart')">
       <span>🧠</span><span>Smart Summary<small>Overview + Status Tabs + Performance</small></span>
+    </button>` : ''}
+    ${okbBranchAllowed ? `<button type="button" onclick="runOrdersExport('${scope}','okb-branch')">
+      <span>🏪</span><span>OKB Branch<small>تفاصيل الفروع الأربعة حسب التاريخ</small></span>
     </button>` : ''}`;
   document.body.appendChild(menu);
   const rect = button.getBoundingClientRect();
@@ -5706,6 +5723,14 @@ function openOrdersExportMenu(scope, event) {
 
 function runOrdersExport(scope, mode) {
   closeOrdersExportMenu();
+  if (mode === 'okb-branch') {
+    if (scope !== 'dashboard' || !hasButtonPermission('btn_dashboard_export_details')) {
+      alert('OKB Branch غير مضاف لصلاحيات حسابك');
+      return;
+    }
+    exportOKBBranchOrders();
+    return;
+  }
   if (mode === 'details') {
     const feature = scope === 'branch' ? 'btn_branch_export_details' : 'btn_dashboard_export_details';
     if (!hasButtonPermission(feature)) { alert('Details غير مضاف لصلاحيات حسابك'); return; }
@@ -5997,6 +6022,54 @@ function exportData() {
       o.created_at
     ])
   );
+}
+
+function exportOKBBranchOrders() {
+  const from = activeDateFrom || document.getElementById('fromDate')?.value || '';
+  const to = activeDateTo || document.getElementById('toDate')?.value || '';
+  const fourBranches = new Set(PENDING_BRANCH_NAMES);
+  const filtered = (Array.isArray(orders) ? orders : []).filter(order => {
+    const branch = pendingOrderBranch(order) || getBranchNameFromShippingCompany(order?.shipping_company) || '';
+    if (!fourBranches.has(branch)) return false;
+    const date = getLocalDateISO(order?.created_at);
+    return (!from || date >= from) && (!to || date <= to);
+  });
+  if (!filtered.length) { alert('لا توجد بيانات للفروع الأربعة في التاريخ المحدد'); return; }
+
+  const headers = ['#', 'Ticket ID', 'الموظف', 'الدكتور', 'العميل', 'الموبايل', 'الموبايل 2', 'رقم الأوردر', 'شركة الشحن', 'الفرع', 'المنطقة', 'المنتجات', 'الكمية', 'سعر الوحدة', 'خدمة التوصيل', 'الخصم', 'الإجمالي', 'المدفوع', 'المتبقي', 'الحالة', 'ملاحظات', 'التاريخ'];
+  const compactText = value => String(value || '').replace(/[\r\n\t]+/g, ' / ').replace(/\s{2,}/g, ' ').trim();
+  const rows = filtered.map((order, index) => {
+    const quantity = Number(order.quantity || 1);
+    const deliveryFee = Number(order.delivery_fee || 0);
+    const price = getEffectiveOrderPrice(order);
+    const unitPrice = quantity > 0 ? (price - deliveryFee) / quantity : price;
+    return [
+      index + 1, getTicketId(order) || '', order.employee_name || '', order.doctor_name || '',
+      order.customer_name || '', order.phone || '', order.phone2 || '', order.order_number || '',
+      order.shipping_company || '', pendingOrderBranch(order) || getBranchNameFromShippingCompany(order.shipping_company) || '',
+      order.area || '', compactText(order.product_names), quantity, Number(unitPrice.toFixed(2)),
+      deliveryFee, Number(getOrderMeta(order).discount || 0), price, Number(order.deposit || 0),
+      getOrderOutstandingBalance(order), getOrderDisplayStatus(order) || order.status || '',
+      compactText(cleanVisibleOrderNotes(order.notes || '')), formatEnglishDateTime(order.created_at)
+    ];
+  });
+  const period = `${from || 'all'}_${to || 'all'}`;
+  if (typeof XLSX === 'undefined') {
+    downloadCSV(`OKB-Branch-${period}.csv`, headers, rows);
+    return;
+  }
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet['!rows'] = Array(rows.length + 1).fill(null).map((_, index) => ({ hpt: index === 0 ? 22 : 17 }));
+  worksheet['!cols'] = headers.map((header, index) => {
+    if ([11, 20].includes(index)) return { wch: 34 };
+    if ([4, 8, 9, 10].includes(index)) return { wch: 20 };
+    return { wch: Math.max(11, Math.min(19, String(header).length + 5)) };
+  });
+  worksheet['!autofilter'] = { ref: XLSX.utils.encode_range({ r: 0, c: 0 }, { r: rows.length, c: headers.length - 1 }) };
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'OKB Branch');
+  XLSX.writeFile(workbook, `OKB-Branch-${period}.xlsx`);
+  logActivity('data_exported', 'تصدير OKB Branch', `الفترة: ${from || 'الكل'} إلى ${to || 'الكل'} | عدد الأوردرات: ${filtered.length}`);
 }
 function exportShippingAnalysis() { const rows = getShippingAnalysisRows(); downloadCSV("shipping-analysis.csv", ["Shipping Company", "Total Orders", "Signed", "Transit", "Returned", "Fake Delivery", "Conversion Rate", "Fake Rate", "Return Rate"], rows.map(r => [r.company, r.total, r.signed, r.transit, r.returned, r.fakeDelivery, r.conversionRate, r.fakeRate, r.returnRate])); }
 function exportDoctorsAnalysis() { const r = getDoctorsAnalysisRows(); if (!r.length) { alert("لا توجد بيانات دكاترة للتصدير"); return; } downloadCSV("doctors-analysis.csv", ["Doctor", "Total Orders", "Signed", "Transit", "Returned", "Fake Doctor", "Total Revenue", "Conversion Rate", "Fake Rate", "Return Rate"], r.map(x => [x.doctor, x.total, x.signed, x.transit, x.returned, x.fakeDoctor, x.revenue, x.conversionRate, x.fakeRate, x.returnRate])); }
@@ -8137,9 +8210,10 @@ function renderBranchOrders() {
   const empSel = document.getElementById('bFilterEmployee');
   if (empSel) {
     const curEmp = empSel.value;
-    const employees = [...new Set(branchOrders.map(o => o.employee_name).filter(Boolean))];
+    const employees = getEmployeeFilterNames(branchOrders);
     empSel.innerHTML = '<option value="الكل">كل الموظفين</option>' + employees.map(e => `<option value="${e}">${e}</option>`).join('');
     empSel.value = employees.includes(curEmp) ? curEmp : 'الكل';
+    refreshOrderSearchableSelects();
   }
 
   const tbody = document.getElementById('branchOrdersTableBody');
@@ -12026,6 +12100,11 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('dashProductNameInput', 'ابحث باسم المنتج...');
   enhanceOrderSearchableSelect('bDoctorName', 'ابحث باسم الدكتور أو الكود...');
   enhanceOrderSearchableSelect('branchProductNameInput', 'ابحث باسم المنتج...');
+  enhanceOrderSearchableSelect('filterEmployee', 'ابحث باسم الموظف...');
+  enhanceOrderSearchableSelect('filterStatus', 'ابحث باسم الحالة...');
+  enhanceOrderSearchableSelect('filterShippingCompany', 'ابحث باسم شركة الشحن...');
+  enhanceOrderSearchableSelect('bFilterEmployee', 'ابحث باسم الموظف...');
+  enhanceOrderSearchableSelect('bFilterStatus', 'ابحث باسم الحالة...');
 });
 
 async function refreshDashboardPage(button) {

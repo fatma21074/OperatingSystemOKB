@@ -2064,6 +2064,7 @@ body.customer-profile-open{overflow:hidden}
 
 /* ===== v17: searchable doctor/product list boxes ===== */
 .order-search-select{position:relative;width:100%;min-width:0;direction:rtl}
+.toolbar > .order-search-select{flex:0 0 180px;width:180px;min-width:160px;max-width:200px}
 .order-search-native{
   position:absolute!important;
   width:1px!important;
