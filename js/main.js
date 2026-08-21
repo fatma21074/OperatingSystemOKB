@@ -2,6 +2,29 @@ const OKB_SUPABASE_URL = "https://nsynylbqrkdftnyqrgkn.supabase.co";
 const OKB_SUPABASE_KEY = "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv";
 const OKB_LOGIN_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-login`;
 let supabaseClient = createOkbSupabaseClient();
+const optionalScriptLoads = new Map();
+
+function loadOptionalScript(src, globalName) {
+  if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
+  if (optionalScriptLoads.has(src)) return optionalScriptLoads.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(globalName ? window[globalName] : true);
+    script.onerror = () => {
+      optionalScriptLoads.delete(src);
+      reject(new Error(`تعذر تحميل المكتبة المطلوبة: ${globalName || src}`));
+    };
+    document.head.appendChild(script);
+  });
+  optionalScriptLoads.set(src, promise);
+  return promise;
+}
+
+function ensureChartLibrary() {
+  return loadOptionalScript('https://cdn.jsdelivr.net/npm/chart.js', 'Chart');
+}
 
 function createOkbSupabaseClient(accessToken = "") {
   const options = accessToken
@@ -23,6 +46,9 @@ let editId = null;
 let currentUser = null;
 let charts = {};
 let selectedOrderIds = new Set();
+let dashboardOrderSubmitInProgress = false;
+let branchOrderSubmitInProgress = false;
+let ordersDataScope = 'none';
 
 let branchs = [];
 let okbItems = [];
@@ -211,7 +237,7 @@ function startActivityLogNotifications(){
     })
     .subscribe();
   // Polling is a safe fallback when Realtime is not enabled for activity_logs.
-  activityLogPollingTimer = setInterval(refreshActivityLogUnreadCount, 5000);
+  activityLogPollingTimer = setInterval(refreshActivityLogUnreadCount, 30000);
 }
 function markActivityLogsRead(){
   markActivityLogsReadFromServer();
@@ -226,6 +252,62 @@ function getCairoDateISO(date = new Date()) {
   } catch (e) {
     return date.toISOString().slice(0, 10);
   }
+}
+
+function getCurrentDashboardMonthRange() {
+  const today = getCairoDateISO();
+  const [year, month] = today.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const mm = String(month).padStart(2, '0');
+  return {
+    key: `${year}-${mm}`,
+    from: `${year}-${mm}-01`,
+    to: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`
+  };
+}
+
+function shiftISODate(isoDate, days) {
+  const [year, month, day] = String(isoDate || '').split('-').map(Number);
+  if (!year || !month || !day) return '';
+  const date = new Date(Date.UTC(year, month - 1, day + Number(days || 0)));
+  return date.toISOString().slice(0, 10);
+}
+
+function setDashboardCurrentMonthRange() {
+  const range = getCurrentDashboardMonthRange();
+  activeDateFrom = range.from;
+  activeDateTo = range.to;
+  const from = document.getElementById('fromDate');
+  const to = document.getElementById('toDate');
+  if (from) { from.value = range.from; from.min = range.from; from.max = range.to; }
+  if (to) { to.value = range.to; to.min = range.from; to.max = range.to; }
+  const badge = document.getElementById('activeDateBadge');
+  if (badge) {
+    badge.textContent = '';
+    badge.classList.remove('visible');
+  }
+  return range;
+}
+
+function setBranchCurrentMonthRange() {
+  const range = getCurrentDashboardMonthRange();
+  branchActiveDateFrom = range.from;
+  branchActiveDateTo = range.to;
+  const from = document.getElementById('bFromDate');
+  const to = document.getElementById('bToDate');
+  if (from) { from.value = range.from; from.min = range.from; from.max = range.to; }
+  if (to) { to.value = range.to; to.min = range.from; to.max = range.to; }
+  const badge = document.getElementById('bActiveDateBadge');
+  if (badge) {
+    badge.textContent = '';
+    badge.classList.remove('visible');
+  }
+  return range;
+}
+
+async function loadDashboardMonthOrders() {
+  const range = setDashboardCurrentMonthRange();
+  return loadOrders({ from: range.from, to: range.to, scope: range.key });
 }
 function getActivityOrderInfo(order){
   if (!order) return {};
@@ -677,7 +759,7 @@ function renderProductReportsChart(){
   charts.productReportsChart=new Chart(canvas,{type:'bar',data:{labels:rows.map(x=>x.name),datasets:[{label,data,backgroundColor:'rgba(217,70,239,.55)',borderColor:'#ff4df3',borderWidth:1,borderRadius:7}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:text}}},scales:{x:{beginAtZero:true,ticks:{color:text},grid:{color:isDark?'rgba(148,163,184,.12)':'rgba(15,23,42,.08)'}},y:{ticks:{color:text},grid:{display:false}}}}});
 }
 function renderProductReports(){ ensureProductReportEnhancements(); buildProductReportData(); updateProductReportKPIs(); renderProductReportTable(); renderProductReportsChart(); }
-async function showProductReportsPage(){ if(!canViewProductReports()){alert('غير مسموح لك بفتح Product Reports');return;} hideAllPages(); $('productReportsPage')?.classList.remove('hidden'); setActiveMenu('productReportsPage'); ensureProductReportEnhancements(); populateProductReportFilters(); const today=getCairoDateISO(); if(!$('productReportTo').value)$('productReportTo').value=today; if(!$('productReportFrom').value){const d=new Date();d.setDate(d.getDate()-7);$('productReportFrom').value=d.toISOString().split('T')[0];} renderProductReports(); }
+async function showProductReportsPage(){ if(!canViewProductReports()){alert('غير مسموح لك بفتح Product Reports');return;} hideAllPages(); $('productReportsPage')?.classList.remove('hidden'); setActiveMenu('productReportsPage'); ensureProductReportEnhancements(); const today=getCairoDateISO(); if(!$('productReportTo').value)$('productReportTo').value=today; if(!$('productReportFrom').value){const d=new Date();d.setDate(d.getDate()-7);$('productReportFrom').value=d.toISOString().split('T')[0];} const loads=[]; if(ordersDataScope!=='all')loads.push(loadOrders()); loads.push(ensureChartLibrary()); await Promise.allSettled(loads); populateProductReportFilters(); renderProductReports(); }
 function applyProductReportFilters(){ renderProductReports(); }
 function resetProductReportFilters(){ const d=new Date(); d.setDate(d.getDate()-7); $('productReportFrom').value=d.toISOString().split('T')[0]; $('productReportTo').value=getCairoDateISO(); if($('productReportBranch'))$('productReportBranch').value='all'; if($('productReportDoctor'))$('productReportDoctor').value='all'; if($('productReportSearch'))$('productReportSearch').value=''; renderProductReports(); }
 function setProductReportTab(tab){ productReportTab=tab; ['top','returned','cancel','dead','total'].forEach(x=>$('productTab'+(x==='top'?'Top':x==='returned'?'Returned':x==='cancel'?'Cancel':x==='total'?'Total':'Dead'))?.classList.toggle('active',x===tab)); renderProductReportTable(); renderProductReportsChart(); }
@@ -1273,7 +1355,7 @@ function startRolePermissionsSync() {
       setupUserView();
       if (!currentPageStillAllowed()) await showInitialPermittedPage();
     }
-  }, 8000);
+  }, 45000);
   if (supabaseClient?.channel) {
     rolePermissionsRealtimeChannel = supabaseClient
       .channel('role-permissions-live-global')
@@ -2114,7 +2196,7 @@ async function deleteSelectedOrders() {
   
   await logActivity('order_deleted','حذف جماعي للأوردرات',`تم حذف ${deletedCount} أوردر${errorCount ? ` وفشل حذف ${errorCount}` : ''}`);
   selectedOrderIds.clear();
-  await loadOrders();
+  await loadDashboardMonthOrders();
 }
 
 // ===== دوال التحقق من الصورة والديبوزيت =====
@@ -2352,6 +2434,12 @@ function applyDateFilter() {
   const from = $("fromDate").value;
   const to = $("toDate").value;
   if (!from && !to) { alert("اختر تاريخ من أو إلى على الأقل"); return; }
+  const monthRange = getCurrentDashboardMonthRange();
+  if ((from && (from < monthRange.from || from > monthRange.to)) || (to && (to < monthRange.from || to > monthRange.to))) {
+    setDashboardCurrentMonthRange();
+    alert('فيلتر الداشبورد مخصص للشهر الحالي فقط');
+    return;
+  }
   activeDateFrom = from || null;
   activeDateTo = to || null;
   const badge = $("activeDateBadge");
@@ -2368,9 +2456,7 @@ function applyDateFilter() {
 }
 
 function resetDateFilter() {
-  activeDateFrom = null; activeDateTo = null;
-  $("fromDate").value = ""; $("toDate").value = "";
-  $("activeDateBadge").classList.remove("visible");
+  setDashboardCurrentMonthRange();
   if (searchInput) searchInput.value = "";
   if (filterStatus) filterStatus.value = "الكل";
   if (filterEmployee) filterEmployee.value = "الكل";
@@ -2423,10 +2509,14 @@ async function requestSecureLogin(credentials, attempt = 1) {
 }
 
 function startPostLoginDataLoads() {
+  const dashboardMonth = getCurrentDashboardMonthRange();
+  const dashboardScope = `range:${dashboardMonth.key}`;
   const tasks = [
     loadDoctors(),
     loadShippingSystems(),
-    loadOrders(),
+    ordersDataScope === dashboardScope
+      ? Promise.resolve()
+      : loadOrders({ from: dashboardMonth.from, to: dashboardMonth.to, scope: dashboardMonth.key }),
     refreshPendingHeaderCount(),
     loadOKBItems()
   ];
@@ -2739,18 +2829,24 @@ function resetAppState() {
 }
 
 // ===== دوال تحميل البيانات =====
-async function loadOrders() {
+async function loadOrders(options = {}) {
+  const requestedFrom = String(options.from || '').trim();
+  const requestedTo = String(options.to || '').trim();
   let allOrders = [];
   const pageSize = 1000;
   let from = 0;
 
   while (true) {
     const to = from + pageSize - 1;
-    const { data, error } = await supabaseClient
+    let query = supabaseClient
       .from("orders")
       .select("*")
-      .order("created_at", { ascending: false })
-      .range(from, to);
+      .order("created_at", { ascending: false });
+    // Query a small UTC safety margin, then apply the exact Cairo date below.
+    // This stays correct across Cairo daylight-saving time changes.
+    if (requestedFrom) query = query.gte('created_at', `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`);
+    if (requestedTo) query = query.lt('created_at', `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`);
+    const { data, error } = await query.range(from, to);
 
     if (error) { 
       alert("مشكلة في تحميل البيانات: " + error.message); 
@@ -2764,9 +2860,16 @@ async function loadOrders() {
     from += pageSize;
   }
 
-  orders = isAccountSupervisor()
-    ? allOrders.filter(order => isOrderInManagedBranches(order))
-    : allOrders;
+  if (requestedFrom || requestedTo) {
+    allOrders = allOrders.filter(order => {
+      const localDate = getLocalDateISO(order.created_at);
+      return (!requestedFrom || localDate >= requestedFrom) && (!requestedTo || localDate <= requestedTo);
+    });
+  }
+  orders = isAccountSupervisor() ? allOrders.filter(order => isOrderInManagedBranches(order)) : allOrders;
+  ordersDataScope = requestedFrom || requestedTo
+    ? `range:${options.scope || `${requestedFrom}:${requestedTo}`}`
+    : 'all';
   renderDoctorOptions(); 
   renderShippingOptions(); 
   renderOrders(); 
@@ -2891,7 +2994,7 @@ function startPendingHeaderNotifications(){
   stopPendingHeaderNotifications();
   if(!canViewPendingHeaderCount())return;
   refreshPendingHeaderCount();
-  pendingHeaderPollingTimer=setInterval(refreshPendingHeaderCount,15000);
+  pendingHeaderPollingTimer=setInterval(refreshPendingHeaderCount,45000);
 }
 function setupPendingBranchFilter(){
   const el=document.getElementById('pendingBranchFilter'); if(!el)return;
@@ -2964,7 +3067,7 @@ async function refreshOKBStoresReportBadge(){
   updateOKBStoresReportBadge((data||[]).filter(canSeeStoresReportOrder).length);
 }
 function stopOKBStoresReportNotifications(){if(storesReportPollingTimer)clearInterval(storesReportPollingTimer);storesReportPollingTimer=null;updateOKBStoresReportBadge(0);}
-function startOKBStoresReportNotifications(){stopOKBStoresReportNotifications();if(!currentUser||!hasRoleFeature('stores_report'))return;refreshOKBStoresReportBadge();storesReportPollingTimer=setInterval(refreshOKBStoresReportBadge,15000);}
+function startOKBStoresReportNotifications(){stopOKBStoresReportNotifications();if(!currentUser||!hasRoleFeature('stores_report'))return;refreshOKBStoresReportBadge();storesReportPollingTimer=setInterval(refreshOKBStoresReportBadge,45000);}
 function setupOKBStoresReportBranchFilter(){
   const el=document.getElementById('storesReportBranch');if(!el)return;const cur=el.value||'all';
   const branches=(isAdmin()||isOperationManager()||isDoctorRole()||getRoleKey(currentUser?.role)==='account_manager')?PENDING_BRANCH_NAMES:getCurrentUserManagedBranches();
@@ -3044,9 +3147,9 @@ function hideAllPages() {
   });
 }
 
-function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); }
+async function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); const range=setDashboardCurrentMonthRange(); if(ordersDataScope!==`range:${range.key}`)await loadOrders({from:range.from,to:range.to,scope:range.key}); else renderOrders(); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; if(mode === 'company' && !hasRoleFeature('company_rank')){alert('صفحة Company Rank غير مضافة لصلاحيات حسابك');return;} closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 150); }
+async function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; if(mode === 'company' && !hasRoleFeature('company_rank')){alert('صفحة Company Rank غير مضافة لصلاحيات حسابك');return;} closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); try{await ensureChartLibrary();}catch(error){console.warn('Chart library load failed:',error);} setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 0); }
 function showDoctorRankPage() {
   if (!hasRoleFeature('doctor_rank_stores')) { alert('Doctor Rank غير مضاف لصلاحيات حسابك'); return; }
   closeOKBStoresMenu();
@@ -4167,6 +4270,21 @@ orderForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if(isDoctorRole() && !(editId && hasButtonPermission('btn_dashboard_edit'))){alert('حساب Doctor للعرض فقط ولا يمكنه إنشاء أوردر جديد');return;}
 
+  const submitButton = document.getElementById("submitBtn");
+  if (dashboardOrderSubmitInProgress) return;
+  dashboardOrderSubmitInProgress = true;
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "جاري الحفظ...";
+  }
+  const releaseDashboardSubmit = () => {
+    dashboardOrderSubmitInProgress = false;
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    }
+  };
+
   const empEl    = document.getElementById("employeeName");
   const docEl    = document.getElementById("doctorName");
   const custEl   = document.getElementById("customerName");
@@ -4180,44 +4298,47 @@ orderForm.addEventListener("submit", async (e) => {
   const paymentImageInput = document.getElementById("paymentImage");
   const existingPaymentImage = document.getElementById("existingPaymentImage")?.value || "";
   
-  const submitButton = document.getElementById("submitBtn");
-  
   const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
   const imageFile = paymentImageInput?.files[0];
 
-  if (!editId && await checkExistingCustomerPhones('dashboard', true)) return;
+  if (!editId) {
+    try {
+      if (await checkExistingCustomerPhones('dashboard', true)) { releaseDashboardSubmit(); return; }
+    } catch (error) {
+      releaseDashboardSubmit();
+      console.error('تعذر فحص بيانات العميل قبل الحفظ:', error);
+      alert('تعذر فحص بيانات العميل. برجاء المحاولة مرة أخرى.');
+      return;
+    }
+  }
   
   if (depositValue > 0 && !imageFile && !existingPaymentImage) {
     alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع هو ${money(depositValue)}`);
     if (paymentImageInput) paymentImageInput.focus();
+    releaseDashboardSubmit();
     return;
   }
   
   if (imageFile && !validateImageFile(imageFile)) {
+    releaseDashboardSubmit();
     return;
   }
-  
-  submitButton.disabled = true;
-  submitButton.textContent = "جاري الحفظ...";
 
   if (!hasProducts('dash')) {
     alert('أضف منتج واحد على الأقل في الأوردر');
-    submitButton.disabled = false;
-    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    releaseDashboardSubmit();
     return;
   }
   syncProductCartTotals('dash');
   if (!confirmDiscountBeforeOrderSave('dash')) {
-    submitButton.disabled = false;
-    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    releaseDashboardSubmit();
     return;
   }
   const qty        = Math.max(1, Number(document.getElementById("quantity")?.value || 1));
   const delivFee   = Number(document.getElementById("deliveryFee")?.value || 0);
   const totalPrice = Number(document.getElementById("price")?.value || 0);
   if (!validateLowValueOrderReason(totalPrice, notesEl)) {
-    submitButton.disabled = false;
-    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    releaseDashboardSubmit();
     return;
   }
   const dashboardEditingOrder = editId ? orders.find(order => String(order.id) === String(editId)) : null;
@@ -4249,8 +4370,7 @@ orderForm.addEventListener("submit", async (e) => {
       || !orderData.phone || !orderData.shipping_company || !orderData.area 
       || !hasValidDashboardPrice || !orderData.status) {
     alert("من فضلك املى كل البيانات");
-    submitButton.disabled = false;
-    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    releaseDashboardSubmit();
     return;
   }
 
@@ -4262,14 +4382,10 @@ orderForm.addEventListener("submit", async (e) => {
     if (editId) {
       const existingOrder = orders.find(x => String(x.id) === String(editId));
       if (existingOrder && !canCurrentUserEditRegisteredOrder(existingOrder)) {
-        submitButton.disabled = false;
-        submitButton.textContent = 'حفظ التعديل';
         return;
       }
       if (existingOrder && String(existingOrder.status || '').trim() === 'Signed' && !isAdmin()) {
         alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط');
-        submitButton.disabled = false;
-        submitButton.textContent = 'حفظ التعديل';
         return;
       }
       result = await supabaseClient.from("orders").update(orderData).eq("id", editId).select();
@@ -4321,15 +4437,14 @@ orderForm.addEventListener("submit", async (e) => {
     if(appliedDiscount>0) await logActivity('order_discount','تم تطبيق خصم على أوردر',`العميل: ${orderData.customer_name} | قيمة الخصم: ${money(appliedDiscount)} | الإجمالي بعد الخصم: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder));
     resetForm();
     duplicateCustomerAcknowledgedPhone.dashboard = [];
-    await loadOrders();
+    await loadDashboardMonthOrders();
     alert(wasEditingOrder ? "تم تعديل الاوردر بنجاح" : "تم الإضافة بنجاح");
     
   } catch (error) {
     console.error("❌ Error in form submission:", error);
     alert("مشكلة في الحفظ: " + error.message);
   } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = editId ? "حفظ التعديل" : "إضافة الأوردر";
+    releaseDashboardSubmit();
   }
 });
 
@@ -4480,7 +4595,7 @@ window.deleteOrder = async function (id) {
   }
   
   alert("تم حذف الأوردر بنجاح");
-  await loadOrders();
+  await loadDashboardMonthOrders();
 }
 
 // ===== دوال التحليلات المُصححة =====
@@ -5001,7 +5116,7 @@ async function refreshShippingRankData(ev) {
   const old=btn?.innerHTML;
   if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';}
   try {
-    await loadOrders();
+    await loadDashboardMonthOrders();
     renderShippingRank();
     renderShippingCharts();
   } finally {
@@ -5343,6 +5458,7 @@ function destroyChart(id) {
 }
 
 function makeChart(id, type, labels, datasets) {
+  if (typeof Chart === 'undefined') return;
   destroyChart(id);
   const ctx = $(id);
   charts[id] = new Chart(ctx, {
@@ -5380,7 +5496,7 @@ function setShippingCurrentMonthRange(force=false){
   if($("shippingFromDate"))$("shippingFromDate").value=range.from;
   if($("shippingToDate"))$("shippingToDate").value=range.to;
   const badge=$("shippingDateBadge");
-  if(badge){badge.textContent=`📅 الشهر الحالي: ${range.from} → ${range.to}`;badge.classList.add('visible');}
+  if(badge){badge.textContent='';badge.classList.remove('visible');}
 }
 
 function onShippingFilterChange() {
@@ -5445,6 +5561,7 @@ function getShippingFilteredOrders() {
 }
 
 function renderShippingCharts() {
+  if (typeof Chart === 'undefined') return;
   const src = getShippingFilteredOrders();
   destroyChart("shippingBarChart");
   destroyChart("shippingConversionLineChart");
@@ -7676,7 +7793,7 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
     closeImportModal();
     
     if (typeof loadOrders === "function") {
-      await loadOrders();
+      await loadDashboardMonthOrders();
     }
   } else {
     document.getElementById("startImportBtn").disabled = false;
@@ -7774,8 +7891,7 @@ async function openBranchPage(branchName) {
   branchEditId = null;
   branchEditExistingPaymentImage = '';
   branchPageNum = 1;
-  branchActiveDateFrom = null;
-  branchActiveDateTo = null;
+  setBranchCurrentMonthRange();
 
   hideAllPages();
 
@@ -7813,6 +7929,7 @@ async function openBranchPage(branchName) {
 }
 
 async function loadBranchOrders() {
+  const monthRange = getCurrentDashboardMonthRange();
   let allData = [];
   const pageSize = 1000;
   let from = 0;
@@ -7823,6 +7940,8 @@ async function loadBranchOrders() {
       .from('orders')
       .select('*')
       .eq('branch', currentBranchName)
+      .gte('created_at', `${shiftISODate(monthRange.from, -1)}T00:00:00.000Z`)
+      .lt('created_at', `${shiftISODate(monthRange.to, 2)}T00:00:00.000Z`)
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -7833,7 +7952,10 @@ async function loadBranchOrders() {
     from += pageSize;
   }
 
-  branchOrders = allData;
+  branchOrders = allData.filter(order => {
+    const localDate = getLocalDateISO(order.created_at);
+    return localDate >= monthRange.from && localDate <= monthRange.to;
+  });
   const validIds=new Set(branchOrders.map(o=>String(o.id)));
   branchSelectedOrderIds=new Set([...branchSelectedOrderIds].filter(id=>validIds.has(id)));
   await loadBranchDailyLocks();
@@ -7956,7 +8078,7 @@ async function confirmBranchCancelStatus(){
   const noteLine=`نوع الإلغاء: ${typeLabel}\nسبب الإلغاء: ${reason}${returnDateLine}`;
   const newNotes=appendVisibleOrderNote(order.notes||'',noteLine); const btn=$('branchCancelConfirmBtn'); if(btn){btn.disabled=true;btn.textContent='جاري الحفظ...';}
   const {error}=await supabaseClient.from('orders').update({status:dbStatus,notes:newNotes}).eq('id',orderId); if(btn){btn.disabled=false;btn.textContent='تأكيد الإلغاء';} if(error){alert('مشكلة في تعديل الحالة: '+error.message);return;}
-  await logActivity('order_cancelled',typeLabel,`العميل: ${order.customer_name||'—'} | الحالة: ${isReturn14?'مرتجع خلال 14 يوم':dbStatus} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadOrders(); alert(isReturn14?'تم تسجيل الأوردر مرتجع خلال 14 يوم وإضافته إلى خزنة اليوم':dbStatus==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
+  await logActivity('order_cancelled',typeLabel,`العميل: ${order.customer_name||'—'} | الحالة: ${isReturn14?'مرتجع خلال 14 يوم':dbStatus} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadDashboardMonthOrders(); alert(isReturn14?'تم تسجيل الأوردر مرتجع خلال 14 يوم وإضافته إلى خزنة اليوم':dbStatus==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
 }
 
 function openBranchShippingRankFromBranch() {
@@ -8200,7 +8322,7 @@ async function deleteSelectedBranchOrders(){
   await logActivity('order_deleted','حذف جماعي من صفحة الفرع',`الفرع: ${currentBranchName} | تم حذف: ${deletedCount}${failedCount?` | فشل: ${failedCount}`:''}`,{branch_name:currentBranchName});
   clearBranchOrderSelection();
   await loadBranchOrders();
-  if(typeof loadOrders==='function')await loadOrders();
+  if(typeof loadDashboardMonthOrders==='function')await loadDashboardMonthOrders();
   alert(failedCount?`تم حذف ${deletedCount} أوردر وفشل حذف ${failedCount}`:`✅ تم حذف ${deletedCount} أوردر بنجاح`);
 }
 
@@ -8251,6 +8373,12 @@ function applyBranchDateFilter() {
   const from = document.getElementById('bFromDate')?.value;
   const to = document.getElementById('bToDate')?.value;
   if (!from && !to) { alert('اختر تاريخ من أو إلى على الأقل'); return; }
+  const monthRange = getCurrentDashboardMonthRange();
+  if ((from && (from < monthRange.from || from > monthRange.to)) || (to && (to < monthRange.from || to > monthRange.to))) {
+    setBranchCurrentMonthRange();
+    alert('فيلتر صفحة الفرع مخصص للشهر الحالي فقط');
+    return;
+  }
   branchActiveDateFrom = from || null;
   branchActiveDateTo = to || null;
   branchPageNum = 1;
@@ -8267,18 +8395,11 @@ function applyBranchDateFilter() {
 }
 
 function resetBranchDateFilter() {
-  branchActiveDateFrom = null;
-  branchActiveDateTo = null;
-  const f = document.getElementById('bFromDate'); if (f) f.value = '';
-  const t = document.getElementById('bToDate'); if (t) t.value = '';
+  setBranchCurrentMonthRange();
   const search = document.getElementById('bSearchInput'); if (search) search.value = '';
   const status = document.getElementById('bFilterStatus'); if (status) status.value = 'الكل';
   const employee = document.getElementById('bFilterEmployee'); if (employee) employee.value = 'الكل';
   const badge = document.getElementById('bActiveDateBadge');
-  if (badge) {
-    badge.textContent = '📅 فيلتر تاريخ مفعّل';
-    badge.classList.remove('visible');
-  }
   branchPageNum = 1;
   renderBranchOrders();
 }
@@ -8374,6 +8495,18 @@ document.addEventListener('DOMContentLoaded', function() {
     e.preventDefault();
     if(isDoctorRole() && !(branchEditId && hasButtonPermission('btn_branch_edit'))){alert('حساب Doctor للعرض فقط ولا يمكنه إنشاء أوردر جديد');return;}
 
+    const submitBtn = branchForm.querySelector('button[type="submit"]');
+    if (branchOrderSubmitInProgress) return;
+    branchOrderSubmitInProgress = true;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'جاري الحفظ...'; }
+    const releaseBranchSubmit = () => {
+      branchOrderSubmitInProgress = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = branchEditId ? 'حفظ التعديل' : 'إضافة الأوردر';
+      }
+    };
+
     const empEl   = document.getElementById('bEmployeeName');
     const docEl   = document.getElementById('bDoctorName');
     const custEl  = document.getElementById('bCustomerName');
@@ -8384,21 +8517,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const depEl   = document.getElementById('bDeposit');
     const statEl  = document.getElementById('bStatus');
     const notesEl = document.getElementById('bOrderNotes');
-    const submitBtn = branchForm.querySelector('button[type="submit"]');
     const editingOrder = branchEditId ? branchOrders.find(o=>String(o.id)===String(branchEditId)) : null;
 
-    if (!editingOrder && await checkExistingCustomerPhones('branch', true)) return;
+    if (!editingOrder) {
+      try {
+        if (await checkExistingCustomerPhones('branch', true)) { releaseBranchSubmit(); return; }
+      } catch (error) {
+        releaseBranchSubmit();
+        console.error('تعذر فحص بيانات العميل قبل الحفظ من صفحة الفرع:', error);
+        alert('تعذر فحص بيانات العميل. برجاء المحاولة مرة أخرى.');
+        return;
+      }
+    }
 
     if (!hasProducts('branch')) {
       alert('أضف منتج واحد على الأقل في الأوردر');
+      releaseBranchSubmit();
       return;
     }
     syncProductCartTotals('branch');
-    if (!confirmDiscountBeforeOrderSave('branch')) return;
+    if (!confirmDiscountBeforeOrderSave('branch')) { releaseBranchSubmit(); return; }
     const bQty       = Math.max(1, Number(document.getElementById('bQuantity')?.value || 1));
     const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
     const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
-    if (!validateLowValueOrderReason(bTotalPrice, notesEl)) return;
+    if (!validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
 
     const orderData = {
       employee_name:    editingOrder?.employee_name || (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
@@ -8428,9 +8570,11 @@ document.addEventListener('DOMContentLoaded', function() {
       checkBranchDepositImageRequirement();
       alert(`⚠️ الأوردر مدفوع بمبلغ ${money(orderData.deposit)} — لازم ترفق سكرين شوت إثبات الدفع قبل حفظ الأوردر`);
       branchPaymentInput?.focus();
+      releaseBranchSubmit();
       return;
     }
     if (branchPaymentFile && !validateImageFile(branchPaymentFile)) {
+      releaseBranchSubmit();
       return;
     }
 
@@ -8439,10 +8583,9 @@ document.addEventListener('DOMContentLoaded', function() {
         || !orderData.phone || !orderData.shipping_company || !orderData.area
         || !hasValidBranchPrice || !orderData.status) {
       alert('من فضلك املى كل البيانات');
+      releaseBranchSubmit();
       return;
     }
-
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'جاري الحفظ...'; }
 
     try {
       const wasEditing=Boolean(editingOrder);
@@ -8450,7 +8593,6 @@ document.addEventListener('DOMContentLoaded', function() {
       let error;
       if(wasEditing){
         if(!canCurrentUserEditRegisteredOrder(editingOrder)){
-          if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='حفظ التعديل';}
           return;
         }
         const result=await supabaseClient.from('orders').update(orderData).eq('id',editingOrder.id).select().single();
@@ -8498,7 +8640,7 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (err) {
       alert('مشكلة في الحفظ: ' + err.message);
     } finally {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = branchEditId?'حفظ التعديل':'إضافة الأوردر'; }
+      releaseBranchSubmit();
     }
   });
 });
@@ -8656,7 +8798,7 @@ async function confirmTransfer() {
     closeTransferModal();
     clearBranchOrderSelection();
     await loadBranchOrders();
-    if (typeof loadOrders === 'function') await loadOrders();
+    if (typeof loadDashboardMonthOrders === 'function') await loadDashboardMonthOrders();
     alert(`✅ تم تحويل ${ids.length} أوردر إلى ${destinationBranch || shipping} بنجاح`);
   } catch (error) {
     console.error('Transfer failed:', error);
@@ -9348,7 +9490,7 @@ async function deleteSelectedKhaznaOrders() {
   await logActivity('order_deleted', 'حذف أوردرات محددة من الخزنة', `الفرع: ${currentBranchName || '—'} | العدد: ${selected.length}`, { branch_name: currentBranchName || null });
   khaznaSelectedIds.clear();
   await loadKhaznaData();
-  if (typeof loadOrders === 'function') await loadOrders();
+  if (typeof loadDashboardMonthOrders === 'function') await loadDashboardMonthOrders();
   alert(`✅ تم حذف ${selected.length} أوردر بنجاح.`);
 }
 
@@ -10892,7 +11034,7 @@ function startChatRealtime(){
       await refreshChatUnreadCount();
     })
     .subscribe();
-  chatPollingTimer=setInterval(refreshChatUnreadCount,15000);
+  chatPollingTimer=setInterval(refreshChatUnreadCount,45000);
 }
 
 async function initChatFeature(){
