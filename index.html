@@ -1433,11 +1433,10 @@
     <div class="permission-role-picker">
       <label for="permissionRoleSelect">Role</label>
       <select id="permissionRoleSelect" onchange="renderRolePermissionMatrix()"></select>
-      <span id="permissionSaveStatus"></span>
     </div>
     <div class="permission-features-grid" id="permissionFeaturesGrid"></div>
     <div class="permission-actions">
-      <button class="success" type="button" onclick="saveRolePermissions()">💾 حفظ الصلاحيات</button>
+      <div class="permission-save-zone"><span id="permissionSaveStatus" role="status"></span><button class="success" type="button" onclick="saveRolePermissions()">💾 حفظ الصلاحيات</button></div>
       <button class="soft" type="button" onclick="selectAllRolePermissions(true)">تحديد الكل</button>
       <button class="soft" type="button" onclick="selectAllRolePermissions(false)">إلغاء تحديد الكل</button>
       <button class="danger" type="button" onclick="resetSelectedRolePermissions()">إرجاع الصلاحيات الافتراضية</button>
