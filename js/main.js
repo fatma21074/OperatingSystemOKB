@@ -41,6 +41,17 @@ function setOkbSecureSession(token) {
 
 // ===== المتغيرات العامة =====
 let orders = [];
+// Report pages keep their own date-scoped datasets. This prevents a historical
+// report from being limited by the current-month dashboard cache.
+let shippingRankOrders = [];
+let shippingRankOrdersScope = '';
+let shippingRankLoadToken = 0;
+let doctorRankOrders = [];
+let doctorRankOrdersScope = '';
+let doctorRankLoadToken = 0;
+let dailyReportOrders = [];
+let dailyReportOrdersScope = '';
+let dailyReportLoadToken = 0;
 let users = [];
 let editId = null;
 let currentUser = null;
@@ -279,8 +290,8 @@ function setDashboardCurrentMonthRange() {
   activeDateTo = range.to;
   const from = document.getElementById('fromDate');
   const to = document.getElementById('toDate');
-  if (from) { from.value = range.from; from.min = range.from; from.max = range.to; }
-  if (to) { to.value = range.to; to.min = range.from; to.max = range.to; }
+  if (from) { from.value = range.from; from.removeAttribute('min'); from.removeAttribute('max'); }
+  if (to) { to.value = range.to; to.removeAttribute('min'); to.removeAttribute('max'); }
   const badge = document.getElementById('activeDateBadge');
   if (badge) {
     badge.textContent = '';
@@ -295,8 +306,8 @@ function setBranchCurrentMonthRange() {
   branchActiveDateTo = range.to;
   const from = document.getElementById('bFromDate');
   const to = document.getElementById('bToDate');
-  if (from) { from.value = range.from; from.min = range.from; from.max = range.to; }
-  if (to) { to.value = range.to; to.min = range.from; to.max = range.to; }
+  if (from) { from.value = range.from; from.removeAttribute('min'); from.removeAttribute('max'); }
+  if (to) { to.value = range.to; to.removeAttribute('min'); to.removeAttribute('max'); }
   const badge = document.getElementById('bActiveDateBadge');
   if (badge) {
     badge.textContent = '';
@@ -2430,16 +2441,11 @@ function isInDateRange(order) {
   return orderDate <= activeDateTo;
 }
 
-function applyDateFilter() {
+async function applyDateFilter() {
   const from = $("fromDate").value;
   const to = $("toDate").value;
   if (!from && !to) { alert("اختر تاريخ من أو إلى على الأقل"); return; }
-  const monthRange = getCurrentDashboardMonthRange();
-  if ((from && (from < monthRange.from || from > monthRange.to)) || (to && (to < monthRange.from || to > monthRange.to))) {
-    setDashboardCurrentMonthRange();
-    alert('فيلتر الداشبورد مخصص للشهر الحالي فقط');
-    return;
-  }
+  if (from && to && from > to) { alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية'); return; }
   activeDateFrom = from || null;
   activeDateTo = to || null;
   const badge = $("activeDateBadge");
@@ -2450,20 +2456,23 @@ function applyDateFilter() {
   badge.textContent = label;
   badge.classList.add("visible");
   resetAllPages();
-  renderOrders();
-  renderAnalytics();
-  renderRanks();
+  try {
+    await loadOrders({from:activeDateFrom||activeDateTo,to:activeDateTo||activeDateFrom,scope:`dashboard:${activeDateFrom||''}:${activeDateTo||''}`});
+  } catch(error) {
+    alert('تعذر تحميل بيانات الفترة المحددة: '+(error?.message||error));
+  }
 }
 
-function resetDateFilter() {
-  setDashboardCurrentMonthRange();
+async function resetDateFilter() {
+  const range=setDashboardCurrentMonthRange();
   if (searchInput) searchInput.value = "";
   if (filterStatus) filterStatus.value = "الكل";
   if (filterEmployee) filterEmployee.value = "الكل";
   const shippingFilterEl = document.getElementById("filterShippingCompany");
   if (shippingFilterEl) shippingFilterEl.value = "الكل";
   resetAllPages();
-  renderOrders(); renderAnalytics(); renderRanks();
+  if(ordersDataScope!==`range:${range.key}`) await loadOrders({from:range.from,to:range.to,scope:range.key});
+  else { renderOrders(); renderAnalytics(); renderRanks(); }
 }
 
 // ===== دوال تسجيل الدخول =====
@@ -2800,6 +2809,13 @@ function resetAppState() {
   shippingDateTo = null;
   shippingDateAutoCurrentMonth = true;
   shippingAutoMonthKey = '';
+  shippingRankOrders = [];
+  shippingRankOrdersScope = '';
+  doctorRankOrders = [];
+  doctorRankOrdersScope = '';
+  doctorWeeklyOrdersSource = [];
+  dailyReportOrders = [];
+  dailyReportOrdersScope = '';
 
   Object.keys(pageState).forEach(k => pageState[k] = 1);
 
@@ -2875,6 +2891,35 @@ async function loadOrders(options = {}) {
   renderOrders(); 
   renderAnalytics(); 
   renderRanks();
+}
+
+async function fetchOrdersForReportRange(fromDate, toDate) {
+  const requestedFrom = String(fromDate || '').trim();
+  const requestedTo = String(toDate || '').trim();
+  if (!requestedFrom || !requestedTo) throw new Error('اختار تاريخ من وإلى');
+  if (requestedFrom > requestedTo) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+
+  const rows = [];
+  const pageSize = 1000;
+  let offset = 0;
+  while (true) {
+    let query = supabaseClient
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .gte('created_at', `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
+      .lt('created_at', `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return rows.filter(order => {
+    const localDate = getLocalDateISO(order.created_at);
+    return localDate >= requestedFrom && localDate <= requestedTo;
+  });
 }
 
 async function loadUsers() {
@@ -3149,24 +3194,26 @@ function hideAllPages() {
 
 async function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); const range=setDashboardCurrentMonthRange(); if(ordersDataScope!==`range:${range.key}`)await loadOrders({from:range.from,to:range.to,scope:range.key}); else renderOrders(); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
-async function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; if(mode === 'company' && !hasRoleFeature('company_rank')){alert('صفحة Company Rank غير مضافة لصلاحيات حسابك');return;} closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); try{await ensureChartLibrary();}catch(error){console.warn('Chart library load failed:',error);} setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 0); }
-function showDoctorRankPage() {
+async function showShippingRankPage(mode = 'branch') { if (!canViewShippingRank()) return; if(mode === 'company' && !hasRoleFeature('company_rank')){alert('صفحة Company Rank غير مضافة لصلاحيات حسابك');return;} closeShippingRankMenu(); branchShippingRankOverride = null; shippingRankMode=mode === 'company' ? 'company' : 'branch'; selectedShippingCompanies=[]; pageState.shippingRank=1; setShippingCurrentMonthRange(true); hideAllPages(); $("shippingRankPage").classList.remove("hidden"); setActiveMenu("shippingRankPage"); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); try{await Promise.all([ensureChartLibrary(),loadShippingRankRange()]);}catch(error){console.warn('Shipping Rank load failed:',error);alert('تعذر تحميل بيانات Shipping Rank: '+(error?.message||error));} setTimeout(() => { renderShippingRank(); renderShippingCharts(); window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); const appContent = document.querySelector('.app-content'); if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, 0); }
+async function showDoctorRankPage() {
   if (!hasRoleFeature('doctor_rank_stores')) { alert('Doctor Rank غير مضاف لصلاحيات حسابك'); return; }
   closeOKBStoresMenu();
   hideAllPages();
   $("doctorRankPage").classList.remove("hidden");
   setActiveMenu("doctorRankPage");
   initializeDoctorRankFilters();
+  try { await loadDoctorRankRange(); }
+  catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); }
   renderDoctorRank();
 }
-function showBranchRankPage() {
+async function showBranchRankPage() {
   if(!hasRoleFeature('daily_report')) return;
   hideAllPages();
   $("branchRankPage").classList.remove("hidden");
   setActiveMenu("branchRankPage");
   applyDailyReportBranchCardVisibility();
-  if (!$("reportFromDate").value || !$("reportToDate").value) setReportMode("daily");
-  else { updateReportTabs(); renderReport(); }
+  if (!$("reportFromDate").value || !$("reportToDate").value) await setReportMode("daily");
+  else { updateReportTabs(); try { await loadDailyReportRange(); } catch(error) { alert('تعذر تحميل بيانات Daily Report: '+(error?.message||error)); } renderReport(); }
 }
 function showUsersPage() {
   if (!hasRoleFeature('users')) return;
@@ -4790,11 +4837,30 @@ function initializeDoctorRankFilters(force = false) {
   if (branch && force) branch.value = 'all';
 }
 
+async function loadDoctorRankRange(options = {}) {
+  const from = document.getElementById('doctorRankFromDate')?.value || '';
+  const to = document.getElementById('doctorRankToDate')?.value || '';
+  const scope = `${from}:${to}`;
+  if (!options.force && doctorRankOrdersScope === scope) return doctorRankOrders;
+  const token = ++doctorRankLoadToken;
+  const actionButtons = document.querySelectorAll('.doctor-weekly-btn,.doctor-rank-smart-export-btn');
+  actionButtons.forEach(button => button.disabled = true);
+  try {
+    const data = await fetchOrdersForReportRange(from, to);
+    if (token !== doctorRankLoadToken) return doctorRankOrders;
+    doctorRankOrders = data;
+    doctorRankOrdersScope = scope;
+    return data;
+  } finally {
+    if (token === doctorRankLoadToken) actionButtons.forEach(button => button.disabled = false);
+  }
+}
+
 function getDoctorRankFilteredOrders() {
   const from = document.getElementById('doctorRankFromDate')?.value || '';
   const to = document.getElementById('doctorRankToDate')?.value || '';
   const branch = document.getElementById('doctorRankBranchFilter')?.value || 'all';
-  return orders.filter(order => {
+  return doctorRankOrders.filter(order => {
     const day = getLocalDateISO(order.created_at);
     const orderBranch = getProductReportOrderBranch(order);
     if (from && day < from) return false;
@@ -5129,7 +5195,7 @@ async function refreshShippingRankData(ev) {
   const old=btn?.innerHTML;
   if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';}
   try {
-    await loadDashboardMonthOrders();
+    await loadShippingRankRange({ force:true });
     renderShippingRank();
     renderShippingCharts();
   } finally {
@@ -5207,19 +5273,23 @@ function updateDoctorRankSelectionUI(visibleRows=[]) {
 function openSelectedDoctorsWeeklyComparison(){if(!selectedDoctorRankNames.size){alert('حدد دكتورًا واحدًا على الأقل');return;}toggleDoctorWeeklyComparison(true);}
 function invalidateDoctorWeeklyComparisonSelection(){doctorWeeklyComparisonData=null;document.getElementById('doctorWeeklyResults')?.classList.add('hidden');document.getElementById('doctorWeeklyEmpty')?.classList.remove('hidden');const btn=document.getElementById('doctorWeeklyExportBtn');if(btn)btn.disabled=true;}
 
-function applyDoctorRankFilters() {
+async function applyDoctorRankFilters() {
   const from = document.getElementById('doctorRankFromDate')?.value || '';
   const to = document.getElementById('doctorRankToDate')?.value || '';
   if (from && to && from > to) { alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية'); return; }
   pageState.doctorRank = 1;
+  try { await loadDoctorRankRange({ force:true }); }
+  catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); return; }
   renderDoctorRank();
 }
 
-function resetDoctorRankFilters() {
+async function resetDoctorRankFilters() {
   initializeDoctorRankFilters(true);
   const search = document.getElementById('doctorRankSearch');
   if (search) search.value = '';
   pageState.doctorRank = 1;
+  try { await loadDoctorRankRange({ force:true }); }
+  catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); return; }
   renderDoctorRank();
 }
 
@@ -5227,7 +5297,7 @@ async function refreshDoctorRankData(button) {
   const old = button?.innerHTML;
   if (button) { button.disabled = true; button.innerHTML = 'جاري التحديث...'; }
   try {
-    await Promise.all([loadOrders(), loadDoctors()]);
+    await Promise.all([loadDoctorRankRange({ force:true }), loadDoctors()]);
     pageState.doctorRank = 1;
     renderDoctorRank();
     if (!document.getElementById('doctorWeeklyPanel')?.classList.contains('hidden')) populateDoctorWeeklyOptions();
@@ -5272,6 +5342,7 @@ function doctorRankStatusBadge(order) {
 }
 
 let doctorWeeklyComparisonData = null;
+let doctorWeeklyOrdersSource = [];
 
 function doctorWeeklyDate(value) {
   const parts = String(value || '').split('-').map(Number);
@@ -5333,7 +5404,7 @@ function resetDoctorWeeklyComparison() {
 
 function getDoctorWeeklyOrders(doctor, from, to) {
   const branch = document.getElementById('doctorRankBranchFilter')?.value || 'all';
-  return orders.filter(order => {
+  return doctorWeeklyOrdersSource.filter(order => {
     if (normalizeDoctorRankName(order.doctor_name) !== normalizeDoctorRankName(doctor)) return false;
     const day = getLocalDateISO(order.created_at);
     const orderBranch = getProductReportOrderBranch(order);
@@ -5418,12 +5489,26 @@ function doctorWeeklyMetricDefinitions(){return[
 function evaluateDoctorWeekly(first,second){const conversion=second.conversion-first.conversion,cancel=second.cancelRate-first.cancelRate,returned=second.returnRate-first.returnRate;if(conversion>0&&cancel<=0&&returned<=0)return{label:'تحسن',tone:'good'};if(conversion<0||cancel>0||returned>0)return{label:'يحتاج مراجعة',tone:'bad'};return{label:'مستقر',tone:'neutral'};}
 function formatDoctorWeeklyMetric(value,metric){return metric.money?money(value):metric.rate?`${Number(value).toFixed(1)}%`:num(value);}
 
-function compareDoctorWeeks(){
+async function compareDoctorWeeks(){
   const selected=getSelectedDoctorRankRows();
   const w1f=document.getElementById('doctorWeek1From')?.value||'',w1t=document.getElementById('doctorWeek1To')?.value||'',w2f=document.getElementById('doctorWeek2From')?.value||'',w2t=document.getElementById('doctorWeek2To')?.value||'';
   if(!selected.length){alert('حدد دكتورًا واحدًا على الأقل من جدول Doctor Performance');return;}
   if(!w1f||!w1t||!w2f||!w2t){alert('أكمل تواريخ الأسبوعين');return;}
   if(w1f>w1t||w2f>w2t){alert('تاريخ بداية الأسبوع يجب أن يسبق تاريخ نهايته');return;}
+  const compareButton=document.querySelector('[onclick="compareDoctorWeeks()"]');
+  const oldButtonText=compareButton?.innerHTML;
+  if(compareButton){compareButton.disabled=true;compareButton.innerHTML='جاري تحميل المقارنة...';}
+  try {
+    doctorWeeklyOrdersSource=await fetchOrdersForReportRange(
+      [w1f,w2f].sort()[0],
+      [w1t,w2t].sort().reverse()[0]
+    );
+  } catch(error) {
+    alert('تعذر تحميل بيانات المقارنة الأسبوعية: '+(error?.message||error));
+    return;
+  } finally {
+    if(compareButton){compareButton.disabled=false;compareButton.innerHTML=oldButtonText||'Compare 🔍';}
+  }
   const doctors=selected.map(row=>{const week1Orders=getDoctorWeeklyOrders(row.doctor,w1f,w1t),week2Orders=getDoctorWeeklyOrders(row.doctor,w2f,w2t),week1=getDoctorWeeklyMetrics(week1Orders),week2=getDoctorWeeklyMetrics(week2Orders);return{doctor:row.doctor,code:row.code||'',week1Orders,week2Orders,week1,week2,evaluation:evaluateDoctorWeekly(week1,week2)};});
   const branchSelect=document.getElementById('doctorRankBranchFilter'),branch=branchSelect?.selectedOptions?.[0]?.textContent||'كل الفروع';
   const allWeek1=doctors.flatMap(item=>item.week1Orders),allWeek2=doctors.flatMap(item=>item.week2Orders),total1=getDoctorWeeklyMetrics(allWeek1),total2=getDoctorWeeklyMetrics(allWeek2),metrics=doctorWeeklyMetricDefinitions();
@@ -5487,8 +5572,8 @@ function makeChart(id, type, labels, datasets) {
   });
 }
 
-function applyShippingDateFilter() {
-  onShippingFilterChange();
+async function applyShippingDateFilter() {
+  await onShippingFilterChange();
 }
 
 function getCurrentShippingMonthRange(){
@@ -5512,7 +5597,20 @@ function setShippingCurrentMonthRange(force=false){
   if(badge){badge.textContent='';badge.classList.remove('visible');}
 }
 
-function onShippingFilterChange() {
+async function loadShippingRankRange(options = {}) {
+  const from = document.getElementById('shippingFromDate')?.value || shippingDateFrom || '';
+  const to = document.getElementById('shippingToDate')?.value || shippingDateTo || '';
+  const scope = `${from}:${to}`;
+  if (!options.force && shippingRankOrdersScope === scope) return shippingRankOrders;
+  const token = ++shippingRankLoadToken;
+  const data = await fetchOrdersForReportRange(from, to);
+  if (token !== shippingRankLoadToken) return shippingRankOrders;
+  shippingRankOrders = data;
+  shippingRankOrdersScope = scope;
+  return data;
+}
+
+async function onShippingFilterChange() {
   shippingDateAutoCurrentMonth = false;
   shippingAutoMonthKey = '';
   shippingDateFrom = $("shippingFromDate")?.value || null;
@@ -5528,18 +5626,22 @@ function onShippingFilterChange() {
   } else {
     badge.classList.remove("visible");
   }
+  try { await loadShippingRankRange({ force:true }); }
+  catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   renderShippingRank(); renderShippingCharts();
 }
 
-function resetShippingDateFilter() {
+async function resetShippingDateFilter() {
   setShippingCurrentMonthRange(true);
+  try { await loadShippingRankRange({ force:true }); }
+  catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   renderShippingRank(); renderShippingCharts();
 }
 
 function getShippingFilteredOrders() {
-  if (!orders || !orders.length) return [];
+  if (!shippingRankOrders || !shippingRankOrders.length) return [];
 
-  let src = orders;
+  let src = shippingRankOrders;
 
   if (branchShippingRankOverride) {
     const branchName = branchShippingRankOverride;
@@ -6129,9 +6231,37 @@ function getOperationReportAllowedBranches() {
   );
 }
 
-function getOperationReportOrders(from,to,branchKeys) {
+function getOperationReportOrders(from,to,branchKeys,sourceOrders=orders) {
   const allowed=new Set(branchKeys||[]);
-  return (orders||[]).filter(order=>{
+  return (sourceOrders||[]).filter(order=>{
+    const branch=getProductReportOrderBranch(order);
+    if(!allowed.has(branch))return false;
+    const day=getLocalDateISO(order.created_at);
+    return (!from||day>=from)&&(!to||day<=to);
+  });
+}
+
+async function fetchOperationReportOrders(from,to,branchKeys) {
+  const allowed=new Set(branchKeys||[]);
+  const pageSize=1000;
+  let offset=0;
+  let result=[];
+  while(true){
+    const rangeTo=offset+pageSize-1;
+    let query=supabaseClient
+      .from('orders')
+      .select('*')
+      .order('created_at',{ascending:false});
+    // Use a UTC safety margin, then enforce the exact Cairo dates locally.
+    if(from)query=query.gte('created_at',`${shiftISODate(from,-1)}T00:00:00.000Z`);
+    if(to)query=query.lt('created_at',`${shiftISODate(to,2)}T00:00:00.000Z`);
+    const {data,error}=await query.range(offset,rangeTo);
+    if(error)throw new Error(`تعذر تحميل بيانات مقارنة التقرير: ${error.message||error}`);
+    result=result.concat(data||[]);
+    if(!data||data.length<pageSize)break;
+    offset+=pageSize;
+  }
+  return result.filter(order=>{
     const branch=getProductReportOrderBranch(order);
     if(!allowed.has(branch))return false;
     const day=getLocalDateISO(order.created_at);
@@ -6248,11 +6378,14 @@ async function exportOperationManagerReport(button) {
   const previousFrom=previousRange.from;
   const previousTo=previousRange.to;
   const keys=branches.map(item=>item.key);
-  const currentOrders=getOperationReportOrders(from,to,keys);
-  const previousOrders=getOperationReportOrders(previousFrom,previousTo,keys);
-  if(!currentOrders.length&&!previousOrders.length){alert('لا توجد بيانات في الفترة المحددة أو الفترة السابقة');return;}
   const old=button?.innerHTML;if(button){button.disabled=true;button.innerHTML='جاري تجهيز التقرير...';}
   try{
+    const reportFrom=previousFrom&&previousFrom<from?previousFrom:from;
+    const reportTo=previousTo&&previousTo>to?previousTo:to;
+    const reportOrders=await fetchOperationReportOrders(reportFrom,reportTo,keys);
+    const currentOrders=getOperationReportOrders(from,to,keys,reportOrders);
+    const previousOrders=getOperationReportOrders(previousFrom,previousTo,keys,reportOrders);
+    if(!currentOrders.length&&!previousOrders.length){alert('لا توجد بيانات في الفترة المحددة أو الفترة السابقة');return;}
     const workbook=new ExcelJS.Workbook();
     workbook.creator=currentUser?.name||currentUser?.username||'OKB CRM';workbook.created=new Date();
     const currentTotal=getOperationReportMetrics(currentOrders),previousTotal=getOperationReportMetrics(previousOrders);
@@ -7138,9 +7271,22 @@ window.deleteShippingSystem = async function (id) {
 // ===== دوال التقارير =====
 let reportMode = "daily";
 
-function dateToStr(d) { return d.toISOString().split("T")[0]; }
+function dateToStr(d) { return getLocalDateISO(d); }
 
-function setReportMode(mode) {
+async function loadDailyReportRange(options = {}) {
+  const from = document.getElementById('reportFromDate')?.value || '';
+  const to = document.getElementById('reportToDate')?.value || '';
+  const scope = `${from}:${to}`;
+  if (!options.force && dailyReportOrdersScope === scope) return dailyReportOrders;
+  const token = ++dailyReportLoadToken;
+  const data = await fetchOrdersForReportRange(from, to);
+  if (token !== dailyReportLoadToken) return dailyReportOrders;
+  dailyReportOrders = data;
+  dailyReportOrdersScope = scope;
+  return data;
+}
+
+async function setReportMode(mode) {
   reportMode = mode;
   const today = new Date();
   let from = new Date(today);
@@ -7153,6 +7299,8 @@ function setReportMode(mode) {
   $("reportFromDate").value = dateToStr(from);
   $("reportToDate").value = dateToStr(to);
   updateReportTabs();
+  try { await loadDailyReportRange({ force:true }); }
+  catch (error) { alert('تعذر تحميل بيانات Daily Report: ' + (error?.message || error)); return; }
   renderReport();
 }
 
@@ -7163,21 +7311,23 @@ function updateReportTabs() {
   });
 }
 
-function applyReportFilter() {
+async function applyReportFilter() {
   const from = $("reportFromDate").value;
   const to = $("reportToDate").value;
   if (!from || !to) { alert("اختار تاريخ من وإلى"); return; }
   if (from > to) { alert("تاريخ من لازم يكون قبل أو يساوي تاريخ إلى"); return; }
+  try { await loadDailyReportRange({ force:true }); }
+  catch (error) { alert('تعذر تحميل بيانات Daily Report: ' + (error?.message || error)); return; }
   renderReport();
 }
 
-function resetReportFilter() { setReportMode(reportMode); }
+async function resetReportFilter() { await setReportMode(reportMode); }
 async function refreshCurrentReport(ev) {
   const btn=ev?.currentTarget||document.getElementById('refreshCurrentReportBtn');
   const old=btn?.innerHTML;
   if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';}
   try {
-    await loadOrders();
+    await loadDailyReportRange({ force:true });
     renderReport();
   } finally {
     if(btn){btn.disabled=false;btn.innerHTML=old||'↻ Refresh';}
@@ -7210,11 +7360,10 @@ function getReportOrders() {
   if (!from || !to) return [];
   const scoped = isDailyReportBranchScopedUser();
   const allowedBranches = getDailyReportAllowedBranchKeys();
-  return orders.filter(o => {
+  return dailyReportOrders.filter(o => {
     if (scoped && !allowedBranches.includes(getProductReportOrderBranch(o))) return false;
-    const raw = o.created_at;
-    if (!raw) return false;
-    const d = raw.split("T")[0];
+    if (!o.created_at) return false;
+    const d = getLocalDateISO(o.created_at);
     return d >= from && d <= to;
   });
 }
@@ -8001,8 +8150,10 @@ async function openBranchPage(branchName) {
   document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
 }
 
-async function loadBranchOrders() {
+async function loadBranchOrders(options = {}) {
   const monthRange = getCurrentDashboardMonthRange();
+  const requestedFrom = String(options.from || branchActiveDateFrom || monthRange.from).trim();
+  const requestedTo = String(options.to || branchActiveDateTo || monthRange.to).trim();
   let allData = [];
   const pageSize = 1000;
   let from = 0;
@@ -8013,8 +8164,8 @@ async function loadBranchOrders() {
       .from('orders')
       .select('*')
       .eq('branch', currentBranchName)
-      .gte('created_at', `${shiftISODate(monthRange.from, -1)}T00:00:00.000Z`)
-      .lt('created_at', `${shiftISODate(monthRange.to, 2)}T00:00:00.000Z`)
+      .gte('created_at', `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
+      .lt('created_at', `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`)
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -8027,7 +8178,7 @@ async function loadBranchOrders() {
 
   branchOrders = allData.filter(order => {
     const localDate = getLocalDateISO(order.created_at);
-    return localDate >= monthRange.from && localDate <= monthRange.to;
+    return localDate >= requestedFrom && localDate <= requestedTo;
   });
   const validIds=new Set(branchOrders.map(o=>String(o.id)));
   branchSelectedOrderIds=new Set([...branchSelectedOrderIds].filter(id=>validIds.has(id)));
@@ -8154,7 +8305,7 @@ async function confirmBranchCancelStatus(){
   await logActivity('order_cancelled',typeLabel,`العميل: ${order.customer_name||'—'} | الحالة: ${isReturn14?'مرتجع خلال 14 يوم':dbStatus} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadDashboardMonthOrders(); alert(isReturn14?'تم تسجيل الأوردر مرتجع خلال 14 يوم وإضافته إلى خزنة اليوم':dbStatus==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
 }
 
-function openBranchShippingRankFromBranch() {
+async function openBranchShippingRankFromBranch() {
   if (!hasButtonPermission('btn_branch_shipping_rank')) { alert('زر Shipping Rank غير مضاف لصلاحيات حسابك'); return; }
   if (!currentBranchName) { alert('افتح صفحة فرع أولاً'); return; }
   branchShippingRankOverride = currentBranchName;
@@ -8167,6 +8318,8 @@ function openBranchShippingRankFromBranch() {
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   const appContent = document.querySelector('.app-content');
   if (appContent) appContent.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  try { await loadShippingRankRange(); }
+  catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   setTimeout(() => {
     renderShippingRank();
     renderShippingCharts();
@@ -8312,6 +8465,68 @@ function clearBranchOrderSelection(){
   syncBranchSelectionUI();
 }
 
+function ensureBranchBulkNoteModal(){
+  let modal=document.getElementById('branchBulkNoteModal');
+  if(modal)return modal;
+  modal=document.createElement('div');
+  modal.id='branchBulkNoteModal';
+  modal.className='branch-note-modal hidden';
+  modal.innerHTML=`<div class="branch-note-dialog" role="dialog" aria-modal="true" aria-labelledby="branchBulkNoteTitle">
+    <h3 id="branchBulkNoteTitle">📝 إضافة ملاحظة</h3>
+    <p id="branchBulkNoteScope">اكتب الملاحظة التي ستُضاف إلى الأوردرات المحددة.</p>
+    <textarea id="branchBulkNoteInput" rows="5" maxlength="1500" placeholder="اكتب الملاحظة هنا..."></textarea>
+    <div class="branch-note-actions"><button type="button" class="branch-note-save" id="branchBulkNoteSaveBtn" onclick="saveSelectedBranchNote()">حفظ الملاحظة</button><button type="button" class="soft" onclick="closeSelectedBranchNoteModal()">إلغاء</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function openSelectedBranchNoteModal(){
+  if(!branchSelectedOrderIds.size){alert('اختر أوردر واحدًا على الأقل');return;}
+  const modal=ensureBranchBulkNoteModal();
+  const scope=document.getElementById('branchBulkNoteScope');
+  const input=document.getElementById('branchBulkNoteInput');
+  if(scope)scope.textContent=`سيتم إضافة الملاحظة إلى ${num(branchSelectedOrderIds.size)} أوردر محدد، أسفل الملاحظات السابقة.`;
+  if(input)input.value='';
+  modal.classList.remove('hidden');
+  setTimeout(()=>input?.focus(),30);
+}
+
+function closeSelectedBranchNoteModal(){
+  document.getElementById('branchBulkNoteModal')?.classList.add('hidden');
+}
+
+async function saveSelectedBranchNote(){
+  const input=document.getElementById('branchBulkNoteInput');
+  const note=String(input?.value||'').trim();
+  if(!note){alert('برجاء كتابة الملاحظة');input?.focus();return;}
+  const selected=branchOrders.filter(order=>branchSelectedOrderIds.has(String(order.id)));
+  if(!selected.length){alert('الأوردرات المحددة غير موجودة');closeSelectedBranchNoteModal();clearBranchOrderSelection();return;}
+  const userName=String(currentUser?.name||currentUser?.username||'User').trim();
+  const timestamp=formatEnglishDateTime(new Date().toISOString());
+  const addition=`${userName}: ${note}\nالتاريخ: ${timestamp}`;
+  const button=document.getElementById('branchBulkNoteSaveBtn');
+  if(button){button.disabled=true;button.textContent='جاري الحفظ...';}
+  let saved=0;
+  const failed=[];
+  for(const order of selected){
+    const updatedNotes=appendVisibleOrderNote(order.notes||'',addition);
+    const {error}=await supabaseClient.from('orders').update({notes:updatedNotes}).eq('id',order.id);
+    if(error){failed.push(order);continue;}
+    order.notes=updatedNotes;
+    const dashboardOrder=orders.find(item=>String(item.id)===String(order.id));
+    if(dashboardOrder)dashboardOrder.notes=updatedNotes;
+    saved+=1;
+  }
+  if(button){button.disabled=false;button.textContent='حفظ الملاحظة';}
+  if(saved)await logActivity('order_note_added','إضافة ملاحظة للأوردرات المحددة',`الفرع: ${currentBranchName||'—'} | العدد: ${saved} | الملاحظة: ${note}`,{branch_name:currentBranchName||null});
+  closeSelectedBranchNoteModal();
+  clearBranchOrderSelection();
+  renderBranchOrders();
+  if(failed.length)alert(`تم حفظ الملاحظة في ${saved} أوردر، وتعذر حفظها في ${failed.length} أوردر`);
+  else alert(`✅ تم إضافة الملاحظة إلى ${saved} أوردر`);
+}
+
 function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   const count=branchSelectedOrderIds.size;
   const bar=document.getElementById('branchBulkActions');
@@ -8443,16 +8658,11 @@ function changeBranchPage(p) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function applyBranchDateFilter() {
+async function applyBranchDateFilter() {
   const from = document.getElementById('bFromDate')?.value;
   const to = document.getElementById('bToDate')?.value;
   if (!from && !to) { alert('اختر تاريخ من أو إلى على الأقل'); return; }
-  const monthRange = getCurrentDashboardMonthRange();
-  if ((from && (from < monthRange.from || from > monthRange.to)) || (to && (to < monthRange.from || to > monthRange.to))) {
-    setBranchCurrentMonthRange();
-    alert('فيلتر صفحة الفرع مخصص للشهر الحالي فقط');
-    return;
-  }
+  if (from && to && from > to) { alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية'); return; }
   branchActiveDateFrom = from || null;
   branchActiveDateTo = to || null;
   branchPageNum = 1;
@@ -8465,17 +8675,17 @@ function applyBranchDateFilter() {
     badge.textContent = label;
     badge.classList.add('visible');
   }
-  renderBranchOrders();
+  await loadBranchOrders({from:branchActiveDateFrom||branchActiveDateTo,to:branchActiveDateTo||branchActiveDateFrom});
 }
 
-function resetBranchDateFilter() {
-  setBranchCurrentMonthRange();
+async function resetBranchDateFilter() {
+  const range=setBranchCurrentMonthRange();
   const search = document.getElementById('bSearchInput'); if (search) search.value = '';
   const status = document.getElementById('bFilterStatus'); if (status) status.value = 'الكل';
   const employee = document.getElementById('bFilterEmployee'); if (employee) employee.value = 'الكل';
   const badge = document.getElementById('bActiveDateBadge');
   branchPageNum = 1;
-  renderBranchOrders();
+  await loadBranchOrders({from:range.from,to:range.to});
 }
 
 function editBranchOrder(id) {
@@ -12111,7 +12321,10 @@ async function refreshDashboardPage(button) {
   const oldText = button?.textContent || '↻ Refresh';
   if (button) { button.disabled = true; button.textContent = '↻ جاري التحديث...'; }
   try {
-    await Promise.all([loadOrders(), loadDoctors(), loadOKBItems(), loadShippingSystems()]);
+    const range=getCurrentDashboardMonthRange();
+    const from=activeDateFrom||range.from;
+    const to=activeDateTo||range.to;
+    await Promise.all([loadOrders({from,to,scope:`dashboard:${from}:${to}`}), loadDoctors(), loadOKBItems(), loadShippingSystems()]);
     renderOrders();
   } catch (error) {
     console.error('Dashboard refresh error:', error);
