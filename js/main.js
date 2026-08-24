@@ -116,6 +116,10 @@ let pendingHeaderPollingTimer = null;
 let storesReportPollingTimer = null;
 let onlinePresenceChannel = null;
 let onlinePresenceUsers = new Map();
+let userLastSeenByKey = new Map();
+let lastSeenHeartbeatTimer = null;
+const LAST_SEEN_HEARTBEAT_MS = 60 * 1000;
+const LAST_SEEN_OFFLINE_AFTER_MS = 24 * 60 * 60 * 1000;
 const onlinePresenceSessionKey = (() => {
   const key = sessionStorage.getItem('okb_presence_session_key') || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   sessionStorage.setItem('okb_presence_session_key', key);
@@ -127,14 +131,20 @@ function renderOnlineUsersCount(){
 }
 function syncOnlinePresenceUsers(channel = onlinePresenceChannel){
   if (!channel) { onlinePresenceUsers = new Map(); renderOnlineUsersCount(); return; }
-  const users = new Map();
+  const presenceUsers = new Map();
   const state = channel.presenceState?.() || {};
   Object.values(state).flat().forEach(presence => {
     const userKey = String(presence?.user_id || presence?.username || presence?.session_key || '');
-    if (userKey && !users.has(userKey)) users.set(userKey, presence);
+    if (userKey && !presenceUsers.has(userKey)) presenceUsers.set(userKey, presence);
   });
-  onlinePresenceUsers = users;
+  onlinePresenceUsers.forEach((presence,key)=>{
+    if(presenceUsers.has(key))return;
+    const leftAt=new Date().toISOString();
+    [presence?.username,presence?.user_name].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean).forEach(identity=>userLastSeenByKey.set(identity,leftAt));
+  });
+  onlinePresenceUsers = presenceUsers;
   renderOnlineUsersCount();
+  if (Array.isArray(users) && !document.getElementById('usersPage')?.classList.contains('hidden')) renderUsers();
 }
 async function stopOnlinePresence(){
   const channel = onlinePresenceChannel;
@@ -145,6 +155,43 @@ async function stopOnlinePresence(){
   }
   onlinePresenceUsers = new Map();
   renderOnlineUsersCount();
+}
+function stopLastSeenHeartbeat(){
+  if(lastSeenHeartbeatTimer){
+    clearInterval(lastSeenHeartbeatTimer);
+    lastSeenHeartbeatTimer=null;
+  }
+}
+async function touchCurrentUserLastSeen(){
+  if(!currentUser?.id)return null;
+  try{
+    const {data,error}=await supabaseClient.rpc('okb_touch_last_seen');
+    if(error)throw error;
+    const seenAt=Array.isArray(data)?data[0]:data;
+    const normalizedSeenAt=typeof seenAt==='string'
+      ? seenAt
+      : (seenAt?.last_seen_at||new Date().toISOString());
+    [currentUser.username,currentUser.name]
+      .map(value=>String(value||'').trim().toLowerCase())
+      .filter(Boolean)
+      .forEach(key=>userLastSeenByKey.set(key,normalizedSeenAt));
+    const ownUser=Array.isArray(users)?users.find(user=>String(user?.id||'')===String(currentUser.id)):null;
+    if(ownUser)ownUser.last_seen_at=normalizedSeenAt;
+    if(!document.getElementById('usersPage')?.classList.contains('hidden'))renderUsers();
+    return normalizedSeenAt;
+  }catch(error){
+    console.debug('Last seen heartbeat unavailable:',error?.message||error);
+    return null;
+  }
+}
+function startLastSeenHeartbeat(){
+  stopLastSeenHeartbeat();
+  if(!currentUser)return;
+  touchCurrentUserLastSeen();
+  lastSeenHeartbeatTimer=setInterval(()=>{
+    touchCurrentUserLastSeen();
+    if(!document.getElementById('usersPage')?.classList.contains('hidden'))renderUsers();
+  },LAST_SEEN_HEARTBEAT_MS);
 }
 async function startOnlinePresence(){
   await stopOnlinePresence();
@@ -173,7 +220,10 @@ window.addEventListener('pagehide', () => {
   try { onlinePresenceChannel?.untrack(); } catch(e) {}
 });
 window.addEventListener('pageshow', event => {
-  if (event.persisted && currentUser) startOnlinePresence();
+  if (event.persisted && currentUser) { startOnlinePresence(); startLastSeenHeartbeat(); }
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&currentUser)touchCurrentUserLastSeen();
 });
 function activityLogSeenStorageKey(){
   return `okb_activity_log_seen_${currentUser?.username || currentUser?.id || 'admin'}`;
@@ -431,6 +481,9 @@ async function loadActivityLogs(){
   if(type!=='all') query=query.eq('action_type',type);
   if(from) query=query.gte('action_date',from);
   if(to) query=query.lte('action_date',to);
+  // Search before LIMIT so an older Ticket ID inside the selected dates remains visible.
+  const serverSearch=q.replace(/[,()%]/g,' ').replace(/\s+/g,' ').trim();
+  if(serverSearch) query=query.or(`ticket_id.ilike.%${serverSearch}%,customer_name.ilike.%${serverSearch}%,user_name.ilike.%${serverSearch}%,username.ilike.%${serverSearch}%,action_title.ilike.%${serverSearch}%,action_details.ilike.%${serverSearch}%,branch_name.ilike.%${serverSearch}%`);
   const {data,error}=await query;
   if(error){ if(list) list.innerHTML='<div class="activity-log-empty">تعذر تحميل السجل: '+escapeHTML(error.message)+'</div>'; return; }
   activityLogs=(data||[])
@@ -1823,7 +1876,7 @@ const ORDER_META_PREFIX = "[ORDER_META:";
 const ORDER_META_REGEX = /\n?\[ORDER_META:([\s\S]*?)\]\s*$/;
 
 function getOrderMeta(order) {
-  const notes = String(order?.notes || "");
+  const notes = String(order?.notes || "").replace(COLLECT_META_REGEX,'').trim();
   const match = notes.match(ORDER_META_REGEX);
   if (!match) return { discount: 0, ticket_seq_v2: false };
   try {
@@ -1842,9 +1895,12 @@ function stripOrderMeta(notes) {
 }
 
 function buildNotesWithOrderMeta(notes, meta) {
-  const cleanNotes = stripOrderMeta(String(notes || "").replace(COLLECT_META_REGEX, "").trim());
+  const source=String(notes||'');
+  const collectMatch=source.match(COLLECT_META_REGEX);
+  const cleanNotes = stripOrderMeta(source.replace(COLLECT_META_REGEX, "").trim());
   const safeMeta = { ...(meta || {}), discount: Number(meta?.discount || 0) };
-  return `${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
+  const orderBlock=`${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
+  return collectMatch ? `${orderBlock}\n${COLLECT_META_PREFIX}${collectMatch[1]}]` : orderBlock;
 }
 
 function getOrderFlagMeta(order) {
@@ -1922,6 +1978,7 @@ function applyAdminOrderDateChange(orderData, existingOrder, inputId) {
 // stored, e.g. price 812 + deposit 700 although the original total was 1512.
 function getEffectiveOrderPrice(order) {
   const storedPrice = Math.max(0, Number(order?.price || 0));
+  if(getOrderMeta(order).admin_financial_override===true)return storedPrice;
   const deposit = Math.max(0, Number(order?.deposit || 0));
   const history = getCollectMeta(order).history;
   const savedOriginals = history
@@ -1950,19 +2007,23 @@ function stripCollectMeta(notes) {
 }
 
 function buildNotesWithCollectMeta(notes, meta) {
+  const withoutCollect=String(notes||'').replace(COLLECT_META_REGEX,'').trim();
   const orderMeta = (() => {
-    const match = String(notes || '').match(ORDER_META_REGEX);
+    const match = withoutCollect.match(ORDER_META_REGEX);
     if (!match) return {};
     try { return JSON.parse(match[1]) || {}; } catch (e) { return {}; }
   })();
-  const cleanNotes = stripCollectMeta(notes);
+  const cleanNotes = stripOrderMeta(withoutCollect);
   const safeMeta = {
     count: Number(meta?.count || 0),
     history: Array.isArray(meta?.history) ? meta.history : [],
     urgent: meta?.urgent === true || orderMeta.urgent === true,
     replacement: meta?.replacement === true || orderMeta.replacement === true
   };
-  return `${cleanNotes}${cleanNotes ? "\n" : ""}${COLLECT_META_PREFIX}${JSON.stringify(safeMeta)}]`;
+  const orderBlock=Object.keys(orderMeta).length
+    ? `${cleanNotes}${cleanNotes?'\n':''}${ORDER_META_PREFIX}${JSON.stringify(orderMeta)}]`
+    : cleanNotes;
+  return `${orderBlock}${orderBlock ? "\n" : ""}${COLLECT_META_PREFIX}${JSON.stringify(safeMeta)}]`;
 }
 
 function canCurrentUserCollect(order) {
@@ -2622,6 +2683,8 @@ async function logout() {
   stopActivityLogNotifications();
   stopRolePermissionsSync();
   stopChatRealtime();
+  await touchCurrentUserLastSeen();
+  stopLastSeenHeartbeat();
   await stopOnlinePresence();
   sessionStorage.removeItem("okb_current_user");
   sessionStorage.removeItem("okb_access_token");
@@ -2732,6 +2795,7 @@ document.querySelectorAll('[data-page="usersPage"]').forEach(el => {
 });
 startActivityLogNotifications();
 startOnlinePresence();
+startLastSeenHeartbeat();
 startPendingHeaderNotifications();
 startOKBStoresReportNotifications();
 if (!document.getElementById('ordersPage')?.classList.contains('hidden') && typeof renderOrders === 'function') renderOrders();
@@ -2789,6 +2853,7 @@ function resetAppState() {
   stopRolePermissionsSync();
   stopPendingHeaderNotifications();
   stopOKBStoresReportNotifications();
+  stopLastSeenHeartbeat();
   orders = [];
   users = [];
   branchs = [];
@@ -2922,10 +2987,18 @@ async function fetchOrdersForReportRange(fromDate, toDate) {
 }
 
 async function loadUsers() {
-  const { data, error } = await supabaseClient.from("user")
-    .select("id,name,username,role,active,managed_branches,system_permissions")
-    .order("name", { ascending: true });
+  let {data,error}=await supabaseClient.from("user").select("id,name,username,role,active,managed_branches,system_permissions,last_seen_at").order("name",{ascending:true});
+  if(error&&(/last_seen_at/i.test(String(error.message||''))||['42703','PGRST204'].includes(String(error.code||'')))){
+    ({data,error}=await supabaseClient.from("user").select("id,name,username,role,active,managed_branches,system_permissions").order("name",{ascending:true}));
+  }
   if (error) { alert("مشكلة في تحميل المستخدمين: " + error.message); return; }
+  userLastSeenByKey=new Map();
+  (data||[]).forEach(user=>{
+    if(!user.last_seen_at)return;
+    [user.username,user.name].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean).forEach(key=>{
+      userLastSeenByKey.set(key,user.last_seen_at);
+    });
+  });
   users = data || []; 
   renderUsers();
 }
@@ -3459,8 +3532,15 @@ function syncProductCartTotals(scope) {
   const delivery = Number(document.getElementById(prefix + 'DeliveryInput')?.value || 0);
   const discount = Math.max(0, Number(document.getElementById(prefix + 'DiscountInput')?.value || 0));
   const deposit = Number(document.getElementById(prefix + 'DepositInput')?.value || 0);
-  const grand = Math.max(0, productsTotal + delivery - discount);
-  const remaining = Math.max(0, grand - deposit);
+  const totalInput=document.getElementById(prefix+'GrandTotal');
+  const editingOrder=scope==='branch'
+    ? branchOrders.find(order=>String(order.id)===String(branchEditId||''))
+    : orders.find(order=>String(order.id)===String(editId||''));
+  const adminOverride=isAdmin()&&Boolean(editingOrder)&&totalInput?.dataset?.adminOverride!==undefined;
+  const grand=adminOverride?Math.max(0,Number(totalInput.dataset.adminOverride||0)):Math.max(0,productsTotal+delivery-discount);
+  const collectHistory=editingOrder?getCollectMeta(editingOrder).history:[];
+  const alreadyCollected=collectHistory.length?Math.max(0,Number(collectHistory[collectHistory.length-1]?.sales||0)):0;
+  const remaining = Math.max(0, grand - deposit - alreadyCollected);
 
   const grandEl = document.getElementById(prefix + 'GrandTotal');
   const remainingEl = document.getElementById(prefix + 'RemainingTotal');
@@ -3518,6 +3598,13 @@ function applyManualGrandTotal(scope) {
   if (!totalInput || !discountInput) return;
   const originalTotal = cartProductsTotal(scope) + Number(document.getElementById(prefix + 'DeliveryInput')?.value || 0);
   let requestedTotal = Math.max(0, Number(totalInput.value || 0));
+  const editing=scope==='branch'?Boolean(branchEditId):Boolean(editId);
+  if(isAdmin()&&editing){
+    totalInput.dataset.adminOverride=String(requestedTotal);
+    discountInput.value=Math.max(0,originalTotal-requestedTotal);
+    syncProductCartTotals(scope);
+    return;
+  }
   if (requestedTotal > originalTotal) {
     requestedTotal = originalTotal;
     totalInput.value = originalTotal;
@@ -3644,9 +3731,11 @@ function clearProductCart(scope) {
   const delivery = document.getElementById(prefix + 'DeliveryInput');
   const discount = document.getElementById(prefix + 'DiscountInput');
   const deposit = document.getElementById(prefix + 'DepositInput');
+  const grandTotal=document.getElementById(prefix+'GrandTotal');
   if (delivery) delivery.value = '';
   if (discount) discount.value = '';
   if (deposit) deposit.value = '';
+  if(grandTotal)delete grandTotal.dataset.adminOverride;
   const productSelect = document.getElementById(prefix + 'ProductNameInput');
   const productPrice = document.getElementById(prefix + 'ProductPriceInput');
   const productQty = document.getElementById(prefix + 'ProductQtyInput');
@@ -3686,6 +3775,14 @@ function setProductCartFromOrder(scope, order) {
   if (discountEl) discountEl.value = Number(meta.discount || 0) || '';
   if (depositEl) depositEl.value = Number(order?.deposit || 0) || '';
   renderProductCart(scope);
+  if(isAdmin()){
+    const totalEl=document.getElementById(prefix+'GrandTotal');
+    const exactTotal=Math.max(0,Number(order?.price||0));
+    if(totalEl){totalEl.value=exactTotal;totalEl.dataset.adminOverride=String(exactTotal);}
+    const hiddenPrice=document.getElementById(scope==='branch'?'bPrice':'price');
+    if(hiddenPrice)hiddenPrice.value=exactTotal;
+    syncProductCartTotals(scope);
+  }
 }
 
 function hasProducts(scope) {
@@ -4365,6 +4462,7 @@ orderForm.addEventListener("submit", async (e) => {
   const notesEl  = document.getElementById("orderNotes");
   const paymentImageInput = document.getElementById("paymentImage");
   const existingPaymentImage = document.getElementById("existingPaymentImage")?.value || "";
+  const dashboardEditingOrder = editId ? orders.find(order => String(order.id) === String(editId)) : null;
   
   const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
   const imageFile = paymentImageInput?.files[0];
@@ -4380,7 +4478,7 @@ orderForm.addEventListener("submit", async (e) => {
     }
   }
   
-  if (depositValue > 0 && !imageFile && !existingPaymentImage) {
+  if (depositValue > 0 && !imageFile && !existingPaymentImage && !(isAdmin()&&editId)) {
     alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع هو ${money(depositValue)}`);
     if (paymentImageInput) paymentImageInput.focus();
     releaseDashboardSubmit();
@@ -4405,11 +4503,10 @@ orderForm.addEventListener("submit", async (e) => {
   const qty        = Math.max(1, Number(document.getElementById("quantity")?.value || 1));
   const delivFee   = Number(document.getElementById("deliveryFee")?.value || 0);
   const totalPrice = Number(document.getElementById("price")?.value || 0);
-  if (!validateLowValueOrderReason(totalPrice, notesEl)) {
+  if (!(isAdmin()&&dashboardEditingOrder) && !validateLowValueOrderReason(totalPrice, notesEl)) {
     releaseDashboardSubmit();
     return;
   }
-  const dashboardEditingOrder = editId ? orders.find(order => String(order.id) === String(editId)) : null;
   const selectedAdminBranch = isAdmin() ? getBranchNameFromShippingCompany(shipEl.value) : '';
 
   const orderData = {
@@ -4427,10 +4524,14 @@ orderForm.addEventListener("submit", async (e) => {
     delivery_fee:     delivFee,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: !editId, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked) }),
+    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder) }),
     product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts),
     branch:           isAdmin() ? (selectedAdminBranch || dashboardEditingOrder?.branch || null) : (dashboardEditingOrder?.branch || null)
   };
+  if(dashboardEditingOrder){
+    const existingCollectMeta=getCollectMeta(dashboardEditingOrder);
+    if(existingCollectMeta.history?.length)orderData.notes=buildNotesWithCollectMeta(orderData.notes,existingCollectMeta);
+  }
   const changedOrderDate = applyAdminOrderDateChange(orderData, dashboardEditingOrder, 'adminOrderDate');
 
   const hasValidDashboardPrice = Number.isFinite(Number(orderData.price)) && Number(orderData.price) >= 0;
@@ -4578,6 +4679,10 @@ function isOrderCreatedBySecretary(order) {
 
 function canCurrentUserEditRegisteredOrder(order, showMessage = true) {
   if (isAdmin()) return true;
+  if(String(order?.status||'').trim().toLowerCase()==='signed'){
+    if(showMessage)alert('لا يمكن تعديل أوردر Signed. التعديل متاح للأدمن فقط.');
+    return false;
+  }
   const creator = String(order?.employee_name || '').trim();
   const userName = String(currentUser?.name || '').trim();
   if (creator && userName && creator.localeCompare(userName, undefined, { sensitivity: 'base' }) === 0) return true;
@@ -6674,9 +6779,31 @@ function getRoleDisplayName(role) {
   return map[String(role || "").toLowerCase()] || ROLE_PERMISSION_ROLES.find(item=>item.key===key)?.label || role || "";
 }
 
+function getOnlinePresenceForUser(user){
+  const candidates=[user?.id,user?.username,user?.name].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean);
+  return [...onlinePresenceUsers.values()].find(presence=>{
+    const values=[presence?.user_id,presence?.username,presence?.user_name].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean);
+    return candidates.some(candidate=>values.includes(candidate));
+  })||null;
+}
+
+function getUserLastSeenHtml(user){
+  const presence=getOnlinePresenceForUser(user);
+  if(presence)return `<span class="user-last-seen is-online"><i></i><b>Online</b></span>`;
+  const keys=[user?.username,user?.name].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean);
+  const seen=[user?.last_seen_at,...keys.map(key=>userLastSeenByKey.get(key))]
+    .filter(Boolean)
+    .sort((a,b)=>(parsePreciseServerDate(b)?.getTime()||0)-(parsePreciseServerDate(a)?.getTime()||0))[0];
+  const seenDate=seen?parsePreciseServerDate(seen):null;
+  if(seenDate&&Date.now()-seenDate.getTime()<=LAST_SEEN_OFFLINE_AFTER_MS){
+    return `<span class="user-last-seen has-last-seen" title="آخر اتصال حقيقي"><i></i><span>Last Seen: ${escapeHTML(formatEnglishDateTime(seen))}</span></span>`;
+  }
+  return `<span class="user-last-seen is-offline"><i></i><b>Offline</b></span>`;
+}
+
 function renderUsers() {
   if (!users.length) {
-    usersTableBody.innerHTML = `<tr><td colspan="6" class="empty">No users found</td></tr>`;
+    usersTableBody.innerHTML = `<tr><td colspan="7" class="empty">No users found</td></tr>`;
     return;
   }
   usersTableBody.innerHTML = users.map(u => {
@@ -6705,6 +6832,7 @@ function renderUsers() {
       <td style="font-size:12px;">${managedBranchesText}</td>
       <td><span class="chip ${u.active === false ? 'chip-cancelled' : 'chip-confirmed'}">${u.active === false ? "false" : "true"}</span></td>
       <td><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${actions}</div></td>
+      <td>${getUserLastSeenHtml(u)}</td>
     </tr>
   `;
   }).join("");
@@ -8899,7 +9027,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const bQty       = Math.max(1, Number(document.getElementById('bQuantity')?.value || 1));
     const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
     const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
-    if (!validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
+    if (!(isAdmin()&&editingOrder) && !validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
 
     const orderData = {
       employee_name:    editingOrder?.employee_name || (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
@@ -8916,16 +9044,20 @@ document.addEventListener('DOMContentLoaded', function() {
       delivery_fee:     bDelivFee,
       status:           editingOrder ? (hasButtonPermission('btn_branch_edit') ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
-      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked) }),
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(editingOrder) }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
     };
+    if(editingOrder){
+      const existingCollectMeta=getCollectMeta(editingOrder);
+      if(existingCollectMeta.history?.length)orderData.notes=buildNotesWithCollectMeta(orderData.notes,existingCollectMeta);
+    }
     const changedOrderDate = applyAdminOrderDateChange(orderData, editingOrder, 'adminBranchOrderDate');
 
     const branchPaymentInput = document.getElementById('bPaymentImage');
     const branchPaymentFile = branchPaymentInput?.files?.[0];
-    if (Number(orderData.deposit || 0) > 0 && !branchPaymentFile && !branchEditExistingPaymentImage) {
+    if (Number(orderData.deposit || 0) > 0 && !branchPaymentFile && !branchEditExistingPaymentImage && !(isAdmin()&&editingOrder)) {
       checkBranchDepositImageRequirement();
       alert(`⚠️ الأوردر مدفوع بمبلغ ${money(orderData.deposit)} — لازم ترفق سكرين شوت إثبات الدفع قبل حفظ الأوردر`);
       branchPaymentInput?.focus();
