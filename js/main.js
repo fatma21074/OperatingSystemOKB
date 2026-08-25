@@ -7308,16 +7308,37 @@ function getDoctorNames() {
 }
 
 function renderDoctorOptions() {
-  if (!doctorName) return;
-  const current = doctorName.value;
+  const masterByName = new Map();
+  (doctorsList || []).forEach(doctor => {
+    const name = String(doctor?.name || '').trim();
+    if (name) masterByName.set(name, doctor);
+  });
+  // Keep historic doctor names available as a safe fallback if the master request
+  // is briefly delayed, while the master doctors table remains the primary source.
+  (orders || []).forEach(order => {
+    const name = String(order?.doctor_name || '').trim();
+    if (name && !masterByName.has(name)) masterByName.set(name, { name, code: '' });
+  });
+  const doctors = Array.from(masterByName.values()).sort((a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''), 'ar')
+  );
+  const optionMarkup = doctors.map(doctor => {
+    const name = String(doctor?.name || '').trim();
+    const code = String(doctor?.code || doctor?.doctor_code || '').trim();
+    const label = code ? `${name} - ${code}` : name;
+    return `<option value="${escapeHTML(name)}">${escapeHTML(label)}</option>`;
+  }).join('');
 
-  doctorName.innerHTML = `<option value="">اختر اسم الدكتور</option>` +
-    doctorsList.map(d => {
-      const label = d.code ? `${d.name} - ${d.code}` : d.name;
-      return `<option value="${d.name}">${label}</option>`;
-    }).join("");
-
-  doctorName.value = current;
+  ['doctorName', 'bDoctorName'].forEach(selectId => {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = `<option value="">اختر اسم الدكتور</option>${optionMarkup}`;
+    if (doctors.some(doctor => String(doctor.name) === String(current))) select.value = current;
+    else select.value = '';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  refreshOrderSearchableSelects();
 }
 
 function renderDoctorsSettings() {
@@ -8389,10 +8410,10 @@ async function openBranchPage(branchName) {
   if (uName) { const el = document.getElementById('branchUserNameInline'); if(el) el.textContent = uName.textContent; }
   if (uRole) { const el = document.getElementById('branchUserRoleInline'); if(el) el.textContent = uRole.textContent; }
 
-  const bDoc = document.getElementById('bDoctorName');
-  if (bDoc) {
-    bDoc.innerHTML = '<option value="">اختر اسم الدكتور</option>' + doctorsList.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
-  }
+  // Always rebuild both doctor selectors from the latest master data. If doctors
+  // are still loading, renderDoctorOptions refreshes this branch selector again
+  // automatically as soon as the request completes.
+  renderDoctorOptions();
   if (!okbItems.length) await loadOKBItems();
   else renderOrderProductOptions();
   setBranchShippingSelectToCurrentBranch();
