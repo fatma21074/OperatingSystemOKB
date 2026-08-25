@@ -533,6 +533,7 @@
     <button class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
     <button class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Stores Report</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
     <button class="okb-stores-report-btn doctor-rank-page-item hidden" id="doctorRankStoresMenuBtn" type="button" onclick="showDoctorRankPage()"><span>👨‍⚕️ Doctor Rank</span></button>
+    <button class="okb-stores-report-btn branches-treasury-page-item hidden" id="branchesTreasuryMenuBtn" type="button" onclick="showBranchesTreasuryPage()"><span>🏦 خزنة الفروع</span></button>
   </div>
 </div>
 <button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
@@ -1500,9 +1501,13 @@
     <button class="smart-add-btn" onclick="addProductItem('branch')" type="button">+ أضف</button>
   </div>
   <div class="smart-cart-list" id="branchProductCartList"></div>
+  <div class="smart-cart-fixed-totals" aria-label="ملخص المنتجات الثابت">
+    <div class="smart-cart-fixed-total"><span>إجمالي قيمة المنتجات</span><b id="branchProductsFixedTotal">0</b></div>
+    <div class="smart-cart-fixed-total"><span>إجمالي عدد القطع</span><b id="branchItemsFixedQty">0</b></div>
+  </div>
   <div class="smart-summary-grid">
     <div><label>خدمة التوصيل</label><input id="branchDeliveryInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
-    <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
+    <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="applyDiscountToGrandTotal('branch')"/></div>
     <div><label>المدفوع</label><input id="branchDepositInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch');checkBranchDepositImageRequirement();"/></div>
     <div><label>الإجمالي (قابل للتعديل)</label><input class="smart-total-input" id="branchGrandTotal" type="number" min="0" step="0.01" value="0" oninput="applyManualGrandTotal('branch')" /></div>
     <div><label>المتبقي</label><div class="smart-total-card" id="branchRemainingTotal">0</div></div>
@@ -1643,6 +1648,41 @@
       <select id="pendingBranchFilter" class="hidden" onchange="renderPendingOrders()"><option value="all">كل الفروع</option></select>
     </div>
     <div id="pendingOrdersList" class="pending-list"><div class="pending-loading">جاري تحميل الأوردرات المتأخرة...</div></div>
+  </div>
+</section>
+
+<!-- ===== All Branches Treasury ===== -->
+<section class="hidden" id="branchesTreasuryPage">
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div><h1 style="margin:0;font-size:20px;">🏦 خزنة الفروع</h1><p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">مراجعة مالية موحدة ودقيقة للفروع الأربعة</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" onclick="refreshBranchesTreasury(this)" class="btn-filter">↻ Refresh</button><button type="button" onclick="showInitialPermittedPage()" class="btn-reset-date">← رجوع</button></div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="toolbar" style="margin-bottom:0;">
+      <div class="date-filter-group"><label>من</label><input id="btFromDate" type="date"></div>
+      <div class="date-filter-group"><label>إلى</label><input id="btToDate" type="date"></div>
+      <select id="btBranchFilter"><option value="الكل">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="btStatusFilter"><option value="Signed">Signed</option><option value="الكل">كل الحالات المالية</option><option value="Returned14">مرتجع خلال 14 يوم</option></select>
+      <input id="btSearch" class="barcode-search-input" placeholder="بحث بالعميل، الموبايل، الدكتور، الموظف، Ticket ID، رقم الأوردر أو Barcode..." type="text" oninput="renderBranchesTreasury()">
+      <button class="btn-filter" type="button" onclick="loadBranchesTreasury()">Filter 🔍</button>
+      <button class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
+      <button id="btSummaryBtn" type="button" onclick="printBranchesTreasurySummary()" style="padding:8px 14px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;font-weight:900;cursor:pointer;">📊 Summary Report</button>
+      <button id="btPrintBtn" type="button" onclick="printBranchesTreasuryReport()" style="padding:8px 14px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:800;cursor:pointer;">🖨️ طباعة التقرير</button>
+    </div>
+  </div>
+  <div class="branches-treasury-stats">
+    <div class="card"><small>إجمالي مبيعات التوصيل</small><strong id="btTotalSales">0</strong></div>
+    <div class="card"><small>إجمالي مصروفات الشحنات</small><strong id="btShipping">0</strong></div>
+    <div class="card"><small>مرتجع خلال 14 يوم</small><strong id="btReturn14">0</strong></div>
+    <div class="card"><small>إجمالي إثبات الدفع</small><strong id="btTransfers">0</strong><span>تحويلات السكرتارية: <b id="btUpfrontTransfers">0</b></span><span>تحويلات التحصيل من المندوب: <b id="btCollectionTransfers">0</b></span></div>
+    <div class="card"><small>صافي الكاش</small><strong id="btNetCash">0</strong></div>
+    <div class="card"><small>عدد الأوردرات</small><strong id="btOrderCount">0</strong></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><h3 style="margin:0;font-size:15px;">📋 أوردرات الفترة المحددة</h3><div class="hidden" id="btBulkActions" style="display:flex;gap:8px;align-items:center;"><span id="btSelectedCount">0 محدد</span><button type="button" onclick="printSelectedBranchesTreasury()" class="btn-filter">🖨️ طباعة الكل</button><button type="button" id="btDeleteSelectedBtn" onclick="deleteSelectedBranchesTreasury()" style="background:#dc2626;color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;">🗑️ حذف المحدد</button><button type="button" id="btDeleteProofBtn" onclick="deleteSelectedBranchesTreasuryProof()" style="background:#7c3aed;color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;">🖼️ حذف إثبات التحصيل</button></div></div>
+    <div class="table-wrap"><table><thead><tr><th><input id="btSelectAll" type="checkbox" onchange="toggleAllBranchesTreasury(this.checked)"></th><th>#</th><th>Ticket ID</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th><th>الفرع</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثباتات الدفع</th><th>مصروف الشحنة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th></tr></thead><tbody id="btOrdersBody"></tbody></table></div>
   </div>
 </section>
 

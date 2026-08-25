@@ -1,6 +1,8 @@
 const OKB_SUPABASE_URL = "https://nsynylbqrkdftnyqrgkn.supabase.co";
 const OKB_SUPABASE_KEY = "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv";
 const OKB_LOGIN_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-login`;
+let okbSessionRefreshTimer = null;
+let okbSessionRefreshPromise = null;
 let supabaseClient = createOkbSupabaseClient();
 const optionalScriptLoads = new Map();
 
@@ -28,16 +30,88 @@ function ensureChartLibrary() {
 
 function createOkbSupabaseClient(accessToken = "") {
   const options = accessToken
-    ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
+    ? { global: { headers: { Authorization: `Bearer ${accessToken}` }, fetch: okbFetchWithSessionRetry } }
     : {};
   const client = window.supabase.createClient(OKB_SUPABASE_URL, OKB_SUPABASE_KEY, options);
   if (accessToken && client.realtime?.setAuth) client.realtime.setAuth(accessToken);
   return client;
 }
 
-function setOkbSecureSession(token) {
+function setOkbSecureSession(token, expiresAt = 0) {
   supabaseClient = createOkbSupabaseClient(token);
+  if (expiresAt) scheduleOkbSessionRefresh(expiresAt);
 }
+
+function stopOkbSessionRefresh() {
+  if (okbSessionRefreshTimer) clearTimeout(okbSessionRefreshTimer);
+  okbSessionRefreshTimer = null;
+}
+
+function scheduleOkbSessionRefresh(expiresAt) {
+  stopOkbSessionRefresh();
+  const expiry = Number(expiresAt || sessionStorage.getItem('okb_access_expires_at') || 0);
+  if (!expiry) return;
+  const delay = Math.max(1000, (expiry * 1000) - Date.now() - (10 * 60 * 1000));
+  okbSessionRefreshTimer = setTimeout(() => refreshOkbSecureSession().catch(handleOkbSessionExpiry), delay);
+}
+
+async function refreshOkbSecureSession() {
+  if (okbSessionRefreshPromise) return okbSessionRefreshPromise;
+  const oldToken = sessionStorage.getItem('okb_access_token');
+  if (!oldToken) throw new Error('لا توجد جلسة لتجديدها');
+  okbSessionRefreshPromise = (async () => {
+    const response = await fetch(OKB_LOGIN_ENDPOINT, {
+      method:'POST', cache:'no-store',
+      headers:{ 'Content-Type':'application/json', apikey:OKB_SUPABASE_KEY },
+      body:JSON.stringify({ action:'refresh', token:oldToken })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.token || !result?.expires_at) throw new Error(result?.error || 'تعذر تجديد الجلسة');
+    sessionStorage.setItem('okb_access_token', result.token);
+    sessionStorage.setItem('okb_access_expires_at', String(result.expires_at));
+    setOkbSecureSession(result.token, result.expires_at);
+    return result.token;
+  })().finally(() => { okbSessionRefreshPromise = null; });
+  return okbSessionRefreshPromise;
+}
+
+function handleOkbSessionExpiry(error) {
+  console.warn('Secure session refresh failed:', error);
+  stopOkbSessionRefresh();
+  sessionStorage.removeItem('okb_access_token');
+  sessionStorage.removeItem('okb_access_expires_at');
+  sessionStorage.removeItem('okb_current_user');
+  if (typeof app !== 'undefined') app?.classList.add('hidden');
+  if (typeof loginPage !== 'undefined') loginPage?.classList.remove('hidden');
+  if (typeof showLoginMessage === 'function') showLoginMessage('انتهت الجلسة الآمنة. سجل الدخول مرة أخرى للمتابعة.');
+}
+
+async function okbFetchWithSessionRetry(input, init = {}) {
+  let response = await fetch(input, init);
+  if (response.status !== 401) return response;
+  const message = await response.clone().text().catch(() => '');
+  if (!/jwt\s*expired|token.*expired/i.test(message)) return response;
+  try {
+    const token = await refreshOkbSecureSession();
+    const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+    headers.set('Authorization', `Bearer ${token}`);
+    response = await fetch(input, { ...init, headers });
+  } catch (error) {
+    handleOkbSessionExpiry(error);
+  }
+  return response;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const expiresAt = Number(sessionStorage.getItem('okb_access_expires_at') || 0);
+  if (!expiresAt) return;
+  if ((expiresAt * 1000) - Date.now() <= 15 * 60 * 1000) {
+    refreshOkbSecureSession().catch(handleOkbSessionExpiry);
+  } else {
+    scheduleOkbSessionRefresh(expiresAt);
+  }
+});
 
 // ===== المتغيرات العامة =====
 let orders = [];
@@ -1234,6 +1308,7 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'branch_mansoura', label:'فرع المنصورة', group:'OKB Stores' },
   { key:'stores_report', label:'OKB Stores Report', group:'OKB Stores' },
   { key:'doctor_rank_stores', label:'Doctor Rank', group:'OKB Stores' },
+  { key:'branches_treasury', label:'🏦 خزنة الفروع', group:'OKB Stores' },
   { key:'pending', label:'Pending', group:'Main' },
   { key:'branch_stock', label:'Branch Stock', group:'Main' },
   { key:'settings_root', label:'Settings', group:'Settings' },
@@ -1313,6 +1388,7 @@ function getDefaultRolePermissions(role) {
     daily_report:true,
     chat:true,
     doctor_rank_stores:false,
+    branches_treasury:false,
     activity_log:false,
     product_reports:operation || branchRole || accounting,
     btn_dashboard_export:!doctor,
@@ -1399,7 +1475,7 @@ function stopRolePermissionsSync() {
 function currentPageStillAllowed() {
   const checks = [
     ['ordersPage','dashboard'], ['shippingRankPage','shipping_rank'],
-    ['pendingPage','pending'], ['okbStoresReportPage','stores_report'], ['branchStockPage','branch_stock'],
+    ['pendingPage','pending'], ['okbStoresReportPage','stores_report'], ['branchesTreasuryPage','branches_treasury'], ['branchStockPage','branch_stock'],
     ['branchsPage','settings_page'], ['usersPage','users'],
     ['branchRankPage','daily_report'], ['doctorRankPage','doctor_rank_stores'],
     ['activityLogPage','activity_log'], ['productReportsPage','product_reports'], ['chatPage','chat']
@@ -1901,6 +1977,10 @@ function buildNotesWithOrderMeta(notes, meta) {
   const safeMeta = { ...(meta || {}), discount: Number(meta?.discount || 0) };
   const orderBlock=`${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
   return collectMatch ? `${orderBlock}\n${COLLECT_META_PREFIX}${collectMatch[1]}]` : orderBlock;
+}
+
+function getOrderEditCount(order) {
+  return Math.max(0, Number(getOrderMeta(order).edit_count || 0));
 }
 
 function getOrderFlagMeta(order) {
@@ -2659,7 +2739,7 @@ async function login() {
     return;
   }
   const u = result.user;
-  setOkbSecureSession(result.token);
+  setOkbSecureSession(result.token, result.expires_at);
 
   resetAppState();
 
@@ -2679,6 +2759,7 @@ async function login() {
 }
 
 async function logout() {
+  stopOkbSessionRefresh();
   await logActivity("logout", "تسجيل خروج", "قام المستخدم بتسجيل الخروج من السيستم");
   stopActivityLogNotifications();
   stopRolePermissionsSync();
@@ -2705,8 +2786,18 @@ async function checkLogin() {
   const expiresAt = Number(sessionStorage.getItem("okb_access_expires_at") || 0);
   const sessionIsValid = Boolean(s && token && expiresAt > Math.floor(Date.now() / 1000) + 30);
   if (sessionIsValid) {
-    setOkbSecureSession(token);
+    setOkbSecureSession(token, expiresAt);
     currentUser = JSON.parse(s);
+    // Renew a nearly-expired restored session before any doctors/orders requests start.
+    // This avoids opening the app with a token that expires during initial data loading.
+    if ((expiresAt * 1000) - Date.now() <= 15 * 60 * 1000) {
+      try {
+        await refreshOkbSecureSession();
+      } catch (error) {
+        handleOkbSessionExpiry(error);
+        return;
+      }
+    }
     await openAuthenticatedApp("فتح السيستم", "تم فتح السيستم واستعادة جلسة المستخدم");
   } else {
     sessionStorage.removeItem("okb_current_user");
@@ -2741,6 +2832,8 @@ const storesBtn = document.getElementById('okbStoresHeaderBtn');
 if (storesBtn) storesBtn.style.display = hasRoleFeature('okb_stores') ? 'inline-flex' : 'none';
 const storesReportBtn = document.getElementById('okbStoresReportMenuBtn');
 if (storesReportBtn) storesReportBtn.style.display = hasRoleFeature('stores_report') ? '' : 'none';
+const branchesTreasuryBtn = document.getElementById('branchesTreasuryMenuBtn');
+if (branchesTreasuryBtn) branchesTreasuryBtn.classList.toggle('hidden', !hasRoleFeature('branches_treasury'));
 const branchStockBtn = document.getElementById('branchStockHeaderBtn');
 if (branchStockBtn) branchStockBtn.style.display = hasRoleFeature('branch_stock') ? 'inline-flex' : 'none';
 const pendingBtn = document.getElementById('pendingHeaderBtn');
@@ -2783,6 +2876,7 @@ document.querySelectorAll('.settings-page-item').forEach(el => el.classList.togg
 document.querySelectorAll('.users-page-item').forEach(el => el.classList.toggle('hidden', !canOpenUsers));
 document.querySelectorAll('.daily-report-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDailyReport));
 document.querySelectorAll('.doctor-rank-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDoctorRank));
+document.querySelectorAll('.branches-treasury-page-item').forEach(el => el.classList.toggle('hidden', !hasRoleFeature('branches_treasury')));
 document.querySelectorAll('.permission-page-item').forEach(el => el.classList.toggle('hidden', !isAdmin()));
 document.querySelectorAll('.chat-page-item').forEach(el => el.classList.toggle('hidden', !hasRoleFeature('chat')));
 if (settingsHeaderWrap) settingsHeaderWrap.style.display = hasRoleFeature('settings_root') ? 'inline-flex' : 'none';
@@ -3032,8 +3126,20 @@ async function loadOKBItems() {
 
 async function loadDoctors() {
   const { data, error } = await supabaseClient.from("doctors").select("*").order("name", { ascending: true });
-  if (error) { console.warn("doctors table not found or error:", error.message); doctorsList = []; renderDoctorsSettings(); renderDoctorOptions(); if ($('productReportDoctor')) populateProductReportFilters(); return; }
+  if (error) {
+    console.warn("Doctors load failed:", error.message);
+    if (!doctorsList.length) {
+      try {
+        const cachedDoctors = JSON.parse(localStorage.getItem('okb_doctors_cache') || '[]');
+        if (Array.isArray(cachedDoctors)) doctorsList = cachedDoctors;
+      } catch (cacheError) { console.warn('Doctors cache read failed:', cacheError); }
+    }
+    renderDoctorsSettings(); renderDoctorOptions(); if ($('productReportDoctor')) populateProductReportFilters();
+    if (!doctorsList.length && /jwt\s*expired|token.*expired/i.test(String(error.message || ''))) handleOkbSessionExpiry(error);
+    return;
+  }
   doctorsList = data || [];
+  try { localStorage.setItem('okb_doctors_cache', JSON.stringify(doctorsList)); } catch (cacheError) {}
   renderDoctorsSettings();
   renderDoctorOptions();
   if ($('productReportDoctor')) populateProductReportFilters();
@@ -3258,7 +3364,7 @@ async function exportOKBStoresReportExcel(){
 }
 
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
@@ -3526,6 +3632,19 @@ function cartProductsTotal(scope) {
   return getCartArray(scope).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0);
 }
 
+function cartItemsQuantity(scope){
+  return getCartArray(scope).reduce((sum,p)=>sum+Math.max(0,Number(p.qty||0)),0);
+}
+
+function applyDiscountToGrandTotal(scope){
+  const prefix=cartPrefix(scope);
+  const totalInput=document.getElementById(prefix+'GrandTotal');
+  if(isAdmin()&&totalInput?.dataset?.adminOverride!==undefined){
+    delete totalInput.dataset.adminOverride;
+  }
+  syncProductCartTotals(scope);
+}
+
 function syncProductCartTotals(scope) {
   const prefix = cartPrefix(scope);
   const productsTotal = cartProductsTotal(scope);
@@ -3549,6 +3668,12 @@ function syncProductCartTotals(scope) {
     else grandEl.textContent = money(grand);
   }
   if (remainingEl) remainingEl.textContent = money(remaining);
+  if(scope==='branch'){
+    const fixedProductsTotal=document.getElementById('branchProductsFixedTotal');
+    const fixedItemsQty=document.getElementById('branchItemsFixedQty');
+    if(fixedProductsTotal)fixedProductsTotal.textContent=money(productsTotal);
+    if(fixedItemsQty)fixedItemsQty.textContent=num(cartItemsQuantity(scope));
+  }
   renderAutomaticDiscountMessage(scope, discount, productsTotal + delivery, grand);
 
   if (scope === 'branch') {
@@ -4524,7 +4649,7 @@ orderForm.addEventListener("submit", async (e) => {
     delivery_fee:     delivFee,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder) }),
+    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), edit_count: dashboardEditingOrder ? getOrderEditCount(dashboardEditingOrder) + 1 : 0, discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder) }),
     product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts),
     branch:           isAdmin() ? (selectedAdminBranch || dashboardEditingOrder?.branch || null) : (dashboardEditingOrder?.branch || null)
   };
@@ -9044,7 +9169,7 @@ document.addEventListener('DOMContentLoaded', function() {
       delivery_fee:     bDelivFee,
       status:           editingOrder ? (hasButtonPermission('btn_branch_edit') ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
-      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(editingOrder) }),
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(editingOrder) }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
@@ -10450,6 +10575,7 @@ let _collectOrderSrc  = null;
 let _collectPaymentMethod = 'COD';
 let _collectExistingProof = '';
 let _collectIsFullyPrepaid = false;
+let _collectLockedSalesValue = 0;
 
 function buildCollectionTimestamp(dateKey) {
   const selected = String(dateKey || '').trim();
@@ -10567,6 +10693,14 @@ async function openCollectModal(orderId, customerName, price, deposit, src) {
     : (normalRemaining > 0 ? normalRemaining : (calculationPrice || ''));
 
   document.getElementById('collectSalesInput').value = salesValue;
+  _collectLockedSalesValue = Number(salesValue || 0);
+  const collectSalesInput = document.getElementById('collectSalesInput');
+  if (collectSalesInput) {
+    collectSalesInput.readOnly = !isAdmin();
+    collectSalesInput.setAttribute('aria-readonly', isAdmin() ? 'false' : 'true');
+    collectSalesInput.style.cursor = isAdmin() ? 'text' : 'not-allowed';
+    collectSalesInput.style.opacity = isAdmin() ? '1' : '0.82';
+  }
   document.getElementById('collectShippingInput').value = last ? Number(last.shipping || 0) : '';
 
   const paidAmount = Math.max(Number(deposit || 0), 0);
@@ -10691,7 +10825,9 @@ async function confirmCollectOrder() {
   if (!canCollectOrders()) { alert('زر التحصيل غير مضاف لصلاحيات حسابك'); return; }
   if (!_collectOrderId) return;
 
-  const sales    = parseFloat(document.getElementById('collectSalesInput').value)    || 0;
+  const sales    = isAdmin()
+    ? (parseFloat(document.getElementById('collectSalesInput').value) || 0)
+    : Math.max(0, Number(_collectLockedSalesValue || 0));
   const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
   const net      = sales - shipping;
   const customerLabel = document.getElementById('collectCustomerLabel').textContent;
@@ -11884,6 +12020,7 @@ function generateReceiptHTML(order, branchName) {
   const productsTotal = products.reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.qty || 1)), 0) || Math.max(0, price - delivFee + discount);
   const ticketId  = getTicketId(order);
   const barcode1  = getOrderBarcode(order);
+  const editCount = getOrderEditCount(order);
   
   // ✅ توليد باركود SVG
   const barcodeSvg = generateCode128BarcodeSVG(barcode1);
@@ -12039,7 +12176,10 @@ function generateReceiptHTML(order, branchName) {
   <div class="barcode-svg">${barcodeSvg}</div>
   <div class="barcode-text">${barcode1}</div>
 
-  <div style="text-align:center;font-size:12px;color:#555;margin-top:6px;">Printed: ${printDate}</div>
+  <div style="display:flex;direction:rtl;justify-content:flex-start;align-items:center;gap:8px;text-align:right;font-family:Arial,sans-serif;font-size:11px;color:#555;margin-top:6px;">
+    <strong style="color:#000;direction:ltr;">E - ${editCount}</strong>
+    <span>Printed: ${printDate}</span>
+  </div>
   <div style="margin-bottom:16px;"></div>
 </body>
 </html>`;
@@ -12064,6 +12204,153 @@ document.addEventListener('DOMContentLoaded', function() {
 // التي تستخدم matchesOrderSearch بدلاً من البحث اليدوي
 
 // 👇 دي النسخة المحدثة
+// ===== خزنة الفروع المجمعة =====
+let branchesTreasuryOrders = [];
+let branchesTreasurySelectedIds = new Set();
+
+function getBranchesTreasuryFilters() {
+  return {
+    from: document.getElementById('btFromDate')?.value || '',
+    to: document.getElementById('btToDate')?.value || '',
+    branch: document.getElementById('btBranchFilter')?.value || 'الكل',
+    status: document.getElementById('btStatusFilter')?.value || 'Signed',
+    search: String(document.getElementById('btSearch')?.value || '').trim().toLowerCase()
+  };
+}
+
+function getBranchesTreasuryVisibleOrders(ignoreStatus = false) {
+  const filters = getBranchesTreasuryFilters();
+  return branchesTreasuryOrders.filter(order => {
+    const branch = pendingOrderBranch(order);
+    const financialStatus = order.status === 'Signed' || isReturnWithin14Days(order);
+    if (!financialStatus) return false;
+    if (filters.branch !== 'الكل' && branch !== filters.branch) return false;
+    if (!ignoreStatus && filters.status === 'Signed' && order.status !== 'Signed') return false;
+    if (!ignoreStatus && filters.status === 'Returned14' && !isReturnWithin14Days(order)) return false;
+    if (filters.search) {
+      const searchable = [order.customer_name, order.phone, order.phone2, order.doctor_name, order.employee_name,
+        order.order_number, getTicketId(order), getOrderBarcode(order), branch, order.status, cleanVisibleOrderNotes(order.notes || '')]
+        .map(value => String(value || '').toLowerCase()).join(' ');
+      if (!searchable.includes(filters.search) && !matchesOrderSearch(order, filters.search)) return false;
+    }
+    return true;
+  });
+}
+
+async function showBranchesTreasuryPage() {
+  if (!hasRoleFeature('branches_treasury')) { alert('خزنة الفروع غير مضافة لصلاحيات حسابك'); return; }
+  closeOKBStoresMenu();
+  hideAllPages();
+  document.getElementById('branchesTreasuryPage')?.classList.remove('hidden');
+  setActiveMenu('branchesTreasuryPage');
+  const today = getLocalDateISO();
+  if (!document.getElementById('btFromDate')?.value) document.getElementById('btFromDate').value = today;
+  if (!document.getElementById('btToDate')?.value) document.getElementById('btToDate').value = today;
+  document.getElementById('btStatusFilter').value = 'Signed';
+  branchesTreasurySelectedIds.clear();
+  await loadBranchesTreasury();
+}
+
+async function loadBranchesTreasury() {
+  if (!hasRoleFeature('branches_treasury')) return;
+  const { from, to } = getBranchesTreasuryFilters();
+  if (!from || !to) { alert('اختر تاريخ البداية والنهاية'); return; }
+  if (from > to) { alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية'); return; }
+  let allData = [], offset = 0;
+  while (true) {
+    const { data, error } = await supabaseClient.from('orders').select('*')
+      .in('branch', PENDING_BRANCH_NAMES).in('status', ['Signed', 'Returned'])
+      .order('created_at', { ascending:false }).range(offset, offset + 999);
+    if (error) { alert('تعذر تحميل خزنة الفروع: ' + error.message); return; }
+    allData = allData.concat(data || []);
+    if (!data || data.length < 1000) break;
+    offset += 1000;
+  }
+  branchesTreasuryOrders = allData.filter(order => isOrderInAccountingDateRange(order, from, to));
+  branchesTreasurySelectedIds.clear();
+  renderBranchesTreasury();
+}
+
+async function refreshBranchesTreasury(button) {
+  const old = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'جاري التحديث...'; }
+  try { await loadBranchesTreasury(); }
+  finally { if (button) { button.disabled = false; button.textContent = old || '↻ Refresh'; } }
+}
+
+function resetBranchesTreasury() {
+  const today = getLocalDateISO();
+  document.getElementById('btFromDate').value = today;
+  document.getElementById('btToDate').value = today;
+  document.getElementById('btBranchFilter').value = 'الكل';
+  document.getElementById('btStatusFilter').value = 'Signed';
+  document.getElementById('btSearch').value = '';
+  loadBranchesTreasury();
+}
+
+function calculateBranchesTreasury(rows) {
+  const signed = rows.filter(order => order.status === 'Signed');
+  const returned14 = rows.filter(isReturnWithin14Days);
+  const totalSales = signed.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
+  const shipping = signed.reduce((sum, order) => sum + Number(getLatestCollectEntry(order)?.shipping || 0), 0);
+  const return14 = returned14.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
+  const upfront = signed.reduce((sum, order) => sum + getOrderUpfrontTransferTotal(order), 0);
+  const collection = signed.reduce((sum, order) => sum + getOrderCollectionTransferTotal(order), 0);
+  const cod = signed.reduce((sum, order) => sum + getOrderCodCashTotal(order), 0);
+  return { totalSales, shipping, return14, upfront, collection, transfers:upfront + collection, cod, net:cod - return14 - shipping, count:rows.length };
+}
+
+function renderBranchesTreasury() {
+  const rows = getBranchesTreasuryVisibleOrders();
+  const visibleIds = new Set(rows.map(order => String(order.id)));
+  [...branchesTreasurySelectedIds].forEach(id => { if (!visibleIds.has(id)) branchesTreasurySelectedIds.delete(id); });
+  // الكروت تعرض الصورة المالية الكاملة للفترة والفرع حتى مع تثبيت الجدول افتراضياً على Signed.
+  const totals = calculateBranchesTreasury(getBranchesTreasuryVisibleOrders(true));
+  const values = { btTotalSales:totals.totalSales, btShipping:totals.shipping, btReturn14:totals.return14, btTransfers:totals.transfers,
+    btUpfrontTransfers:totals.upfront, btCollectionTransfers:totals.collection, btNetCash:totals.net, btOrderCount:totals.count };
+  Object.entries(values).forEach(([id,value]) => { const el=document.getElementById(id); if(el) el.textContent=id==='btOrderCount'?enNumber(value):enMoney(value); });
+  const body = document.getElementById('btOrdersBody');
+  if (!body) return;
+  body.innerHTML = rows.length ? rows.map((order,index) => {
+    const last = getLatestCollectEntry(order), price=getEffectiveOrderPrice(order), paid=Math.max(0,Number(order.deposit||0)+Number(last?.sales||0));
+    const statusClass=order.status==='Signed'?'chip-signed':'chip-returned';
+    return `<tr><td><input class="bt-order-check" type="checkbox" data-id="${order.id}" ${branchesTreasurySelectedIds.has(String(order.id))?'checked':''} onchange="toggleBranchesTreasuryOrder('${order.id}',this.checked)"></td>
+      <td>${index+1}</td><td><button class="product-ticket-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">${escapeHTML(getTicketId(order)||'—')}</button></td>
+      <td>${escapeHTML(order.customer_name||'')}</td><td>${escapeHTML(order.phone||'')}</td><td>${escapeHTML(order.doctor_name||'—')}</td><td>${escapeHTML(pendingOrderBranch(order)||'—')}</td>
+      <td>${enMoney(price)}</td><td>${paid?enMoney(paid):'—'}</td><td>${Math.max(0,price-paid)?enMoney(Math.max(0,price-paid)):'—'}</td><td>${getPaymentProofsCellHtml(order)}</td>
+      <td>${enMoney(Number(last?.shipping||0))}</td><td><span class="chip ${statusClass}">${escapeHTML(getOrderDisplayStatus(order))}</span></td><td>${formatEnglishDateTime(getOrderAccountingDateISO(order))}</td>
+      <td><div style="display:flex;gap:5px;"><button class="product-ticket-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">Ticket ID</button><button type="button" onclick="printBranchesTreasuryOrder('${order.id}')" class="view-payment-btn">🖨️ طباعة</button></div></td></tr>`;
+  }).join('') : '<tr><td colspan="15" class="empty">لا توجد أوردرات مطابقة للفلاتر</td></tr>';
+  syncBranchesTreasurySelection(rows);
+}
+
+function toggleBranchesTreasuryOrder(id, checked) { checked ? branchesTreasurySelectedIds.add(String(id)) : branchesTreasurySelectedIds.delete(String(id)); syncBranchesTreasurySelection(getBranchesTreasuryVisibleOrders()); }
+function toggleAllBranchesTreasury(checked) { getBranchesTreasuryVisibleOrders().forEach(order => checked ? branchesTreasurySelectedIds.add(String(order.id)) : branchesTreasurySelectedIds.delete(String(order.id))); renderBranchesTreasury(); }
+function syncBranchesTreasurySelection(rows=[]) {
+  const selected=rows.filter(order=>branchesTreasurySelectedIds.has(String(order.id))), bar=document.getElementById('btBulkActions');
+  bar?.classList.toggle('hidden',!selected.length); const count=document.getElementById('btSelectedCount'); if(count)count.textContent=`${selected.length} محدد`;
+  const del=document.getElementById('btDeleteSelectedBtn'); if(del)del.classList.toggle('hidden',!isAdmin()||!selected.length);
+  const proof=document.getElementById('btDeleteProofBtn'); if(proof)proof.classList.toggle('hidden',!(selected.length===1&&hasButtonPermission('btn_delete_collection_proof')&&getOrderCollectionProofUrl(selected[0])));
+  const master=document.getElementById('btSelectAll'); if(master){master.checked=rows.length>0&&selected.length===rows.length;master.indeterminate=selected.length>0&&selected.length<rows.length;}
+}
+
+async function openBranchesTreasuryOrder(id) {
+  const order=branchesTreasuryOrders.find(item=>String(item.id)===String(id)); if(!order)return;
+  const branch=pendingOrderBranch(order); if(!branch){alert('تعذر تحديد فرع الأوردر');return;}
+  await openBranchPage(branch); setTimeout(()=>{const input=document.getElementById('bSearchInput');if(input){input.value=getTicketId(order);input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();}},250);
+}
+
+async function printBranchesTreasuryOrder(id) { const order=branchesTreasuryOrders.find(item=>String(item.id)===String(id));if(!order)return;const ready=await ensureOrderIdentifiers(order);const win=window.open('','_blank','width=400,height=700');if(!win){alert('المتصفح منع نافذة الطباعة');return;}win.document.write(generateReceiptHTML(ready,pendingOrderBranch(ready)));win.document.close();win.onload=()=>{win.focus();win.print();}; }
+async function printSelectedBranchesTreasury(){const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(!rows.length)return;const win=window.open('','_blank','width=420,height=760');if(!win){alert('المتصفح منع نافذة الطباعة');return;}let body='',head='';for(const order of rows){const ready=await ensureOrderIdentifiers(order),doc=new DOMParser().parseFromString(generateReceiptHTML(ready,pendingOrderBranch(ready)),'text/html');if(!head)head=doc.head.innerHTML;body+=`<section class="bt-multi-receipt">${doc.body.innerHTML}</section>`;}win.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">${head}<style>.bt-multi-receipt:not(:last-child){page-break-after:always;break-after:page}</style></head><body>${body}</body></html>`);win.document.close();win.onload=()=>{win.focus();win.print();};}
+
+async function deleteSelectedBranchesTreasury(){if(!isAdmin()){alert('الحذف متاح للأدمن فقط');return;}const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(!rows.length||!confirm(`حذف ${rows.length} أوردر نهائياً؟`))return;const {error}=await supabaseClient.from('orders').delete().in('id',rows.map(order=>order.id));if(error){alert(error.message);return;}await logActivity('order_deleted','حذف أوردرات من خزنة الفروع',`العدد: ${rows.length}`);await loadBranchesTreasury();}
+async function deleteSelectedBranchesTreasuryProof(){if(!hasButtonPermission('btn_delete_collection_proof'))return;const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(rows.length!==1)return;const order=rows[0],url=getOrderCollectionProofUrl(order);if(!url||!confirm('حذف إثبات التحصيل لهذا الأوردر؟'))return;const meta=getCollectMeta(order),history=(meta.history||[]).map(entry=>String(entry?.proof_url||'')===url?{...entry,proof_url:''}:entry),notes=buildNotesWithCollectMeta(order.notes||'',{...meta,history});const {error}=await supabaseClient.from('orders').update({notes}).eq('id',order.id);if(error){alert(error.message);return;}if(url!==getOrderUpfrontProofUrl(order))await deletePaymentImage(url);await logActivity('payment_proof_deleted','تم حذف إثبات التحصيل من خزنة الفروع',`Ticket ID: ${getTicketId(order)||'—'}`,getActivityOrderInfo(order));await loadBranchesTreasury();}
+
+function branchesTreasuryReportHTML(summaryOnly=false){const rows=getBranchesTreasuryVisibleOrders(),totals=calculateBranchesTreasury(rows),f=getBranchesTreasuryFilters(),branch=f.branch==='الكل'?'كل الفروع':f.branch;const details=summaryOnly?'':`<table><thead><tr><th>#</th><th>Ticket ID</th><th>العميل</th><th>الدكتور</th><th>الفرع</th><th>السعر</th><th>المدفوع</th><th>الشحن</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${rows.map((o,i)=>{const last=getLatestCollectEntry(o),paid=Number(o.deposit||0)+Number(last?.sales||0);return`<tr><td>${i+1}</td><td>${escapeHTML(getTicketId(o)||'—')}</td><td>${escapeHTML(o.customer_name||'')}</td><td>${escapeHTML(o.doctor_name||'—')}</td><td>${escapeHTML(pendingOrderBranch(o))}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(paid)}</td><td>${enMoney(Number(last?.shipping||0))}</td><td>${escapeHTML(getOrderDisplayStatus(o))}</td><td>${formatEnglishDateTime(getOrderAccountingDateISO(o))}</td></tr>`;}).join('')}</tbody></table>`;return`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>خزنة الفروع</title><style>body{font-family:Tahoma,Arial;padding:20px;color:#111}h1{text-align:center}.meta{text-align:center;margin:8px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.stat{border:1px solid #bbb;border-radius:8px;padding:12px;text-align:center}.stat b{display:block;font-size:20px;margin-top:5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:6px;text-align:center;font-size:11px}@media print{@page{size:A4 landscape;margin:8mm}}</style></head><body><h1>🏦 خزنة الفروع — ${escapeHTML(branch)}</h1><div class="meta">${f.from} → ${f.to}</div><div class="stats"><div class="stat">إجمالي مبيعات التوصيل<b>${enMoney(totals.totalSales)}</b></div><div class="stat">إجمالي مصروفات الشحنات<b>${enMoney(totals.shipping)}</b></div><div class="stat">مرتجع خلال 14 يوم<b>${enMoney(totals.return14)}</b></div><div class="stat">إجمالي إثبات الدفع<b>${enMoney(totals.transfers)}</b><small>السكرتارية: ${enMoney(totals.upfront)} | التحصيل من المندوب: ${enMoney(totals.collection)}</small></div><div class="stat">صافي الكاش<b>${enMoney(totals.net)}</b></div><div class="stat">عدد الأوردرات<b>${enNumber(totals.count)}</b></div></div>${details}</body></html>`;}
+function openBranchesTreasuryPrint(summary){const win=window.open('','_blank','width=1100,height=760');if(!win){alert('المتصفح منع نافذة الطباعة');return;}win.document.write(branchesTreasuryReportHTML(summary));win.document.close();win.onload=()=>{win.focus();win.print();};}
+function printBranchesTreasurySummary(){const status=document.getElementById('btStatusFilter'),previous=status?.value;if(status)status.value='الكل';openBranchesTreasuryPrint(true);if(status)status.value=previous||'Signed';}
+function printBranchesTreasuryReport(){openBranchesTreasuryPrint(false);}
+
 function getKhaznaFilteredOrders() {
   const search = (document.getElementById('khaznaBarcodeSearch')?.value || '').trim().toLowerCase();
   const statusFilter = document.getElementById('khaznaFilterStatus')?.value || 'الكل';
