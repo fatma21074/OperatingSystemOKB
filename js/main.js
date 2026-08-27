@@ -38,8 +38,28 @@ function createOkbSupabaseClient(accessToken = "") {
 }
 
 function setOkbSecureSession(token, expiresAt = 0) {
+  const previousClient = supabaseClient;
+  const restartRealtime = Boolean(currentUser);
+  if (restartRealtime) {
+    stopLiveBusinessSync(previousClient);
+    stopRolePermissionsSync();
+    try { previousClient?.removeAllChannels?.(); } catch (error) {}
+    activityLogRealtimeChannel = null;
+    rolePermissionsRealtimeChannel = null;
+    chatRealtimeChannel = null;
+    onlinePresenceChannel = null;
+  }
   supabaseClient = createOkbSupabaseClient(token);
   if (expiresAt) scheduleOkbSessionRefresh(expiresAt);
+  if (restartRealtime) {
+    setTimeout(() => {
+      startRolePermissionsSync();
+      startLiveBusinessSync();
+      startActivityLogNotifications();
+      startOnlinePresence().catch(error => console.error('Presence restart failed:', error));
+      startChatRealtime();
+    }, 0);
+  }
 }
 
 function stopOkbSessionRefresh() {
@@ -134,6 +154,11 @@ let selectedOrderIds = new Set();
 let dashboardOrderSubmitInProgress = false;
 let branchOrderSubmitInProgress = false;
 let ordersDataScope = 'none';
+let liveBusinessSyncChannel = null;
+let liveBusinessSyncReconnectTimer = null;
+let liveBusinessSyncRenderTimer = null;
+let liveBusinessSyncEverConnected = false;
+let liveBusinessSyncResyncInProgress = false;
 
 let branchs = [];
 let okbItems = [];
@@ -166,7 +191,8 @@ let shippingAutoMonthKey = '';
 
 // ===== KHAZNA PAGE - المتغيرات العامة =====
 let khaznaOrders = [];
-let khaznaShippingCost = 0;
+// null = الإجمالي التلقائي من الأوردرات، رقم = تصحيح إجمالي مؤقت للأدمن.
+let khaznaShippingCost = null;
 let khaznaSelectedIds = new Set();
 let khaznaLockInfo = null;
 let branchDailyLocks = {};
@@ -512,8 +538,8 @@ async function logActivity(actionType, actionTitle, actionDetails = '', extra = 
     return false;
   }
 }
-function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
-function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_note_added:'إضافة ملاحظة',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
+function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',khazna_shipping_adjusted:'🧾',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
+function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_note_added:'إضافة ملاحظة',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',khazna_shipping_adjusted:'تصحيح مصروفات الشحن',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
 function formatActivityTime(iso){
   const date=parsePreciseServerDate(iso);
   if(!date)return iso||'';
@@ -1340,7 +1366,6 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'btn_order_cancel', label:'إلغاء الأوردر', group:'الأوردر — طباعة وإلغاء' },
   { key:'btn_cancel_doctor_group', label:'إلغاء من الدكتور على الجروب', group:'أنواع الإلغاء' },
   { key:'btn_cancel_customer_courier', label:'إلغاء من العميل مع المندوب', group:'أنواع الإلغاء' },
-  { key:'btn_cancel_return_14', label:'مرتجع خلال 14 يوم', group:'أنواع الإلغاء' }
 ];
 const ROLE_BRANCH_FEATURES = {
   'مدينة نصر':'branch_nasr',
@@ -1504,13 +1529,179 @@ function startRolePermissionsSync() {
         setupUserView();
         if (!currentPageStillAllowed()) await showInitialPermittedPage();
       })
-      .on('postgres_changes', { event:'*', schema:'public', table:'role_permissions' }, async () => {
-        await loadRolePermissions();
-        setupUserView();
-        if (!currentPageStillAllowed()) await showInitialPermittedPage();
-      })
       .subscribe();
   }
+}
+
+// ===== Central live business synchronization =====
+function isLivePageVisible(pageId) {
+  const page = document.getElementById(pageId);
+  return Boolean(page && !page.classList.contains('hidden'));
+}
+
+function replaceLiveOrderInList(list, orderId, replacement, shouldInclude = true) {
+  if (!Array.isArray(list)) return list;
+  const id = String(orderId || '');
+  const existingIndex = list.findIndex(order => String(order?.id || '') === id);
+  const next = list.filter(order => String(order?.id || '') !== id);
+  if (replacement && shouldInclude) {
+    if (existingIndex >= 0) next.splice(Math.min(existingIndex, next.length), 0, replacement);
+    else next.unshift(replacement);
+  }
+  return next;
+}
+
+function isLiveOrderInsideDashboardScope(order) {
+  if (!order) return false;
+  if (isAccountSupervisor() && !isOrderInManagedBranches(order)) return false;
+  const currentMonth = getCurrentDashboardMonthRange();
+  const from = activeDateFrom || currentMonth.from;
+  const to = activeDateTo || currentMonth.to;
+  const date = getLocalDateISO(order.created_at);
+  return (!from || date >= from) && (!to || date <= to);
+}
+
+function isLiveOrderInsideBranchScope(order) {
+  if (!order || !currentBranchName || String(order.branch || '') !== String(currentBranchName)) return false;
+  const currentMonth = getCurrentDashboardMonthRange();
+  const from = branchActiveDateFrom || currentMonth.from;
+  const to = branchActiveDateTo || currentMonth.to;
+  const date = getLocalDateISO(order.created_at);
+  return (!from || date >= from) && (!to || date <= to);
+}
+
+function applyLiveOrderPayload(payload) {
+  const eventType = String(payload?.eventType || '').toUpperCase();
+  const row = eventType === 'DELETE' ? null : payload?.new;
+  const id = String(row?.id || payload?.old?.id || '');
+  if (!id) return;
+
+  orders = replaceLiveOrderInList(orders, id, row, Boolean(row && isLiveOrderInsideDashboardScope(row)));
+  branchOrders = replaceLiveOrderInList(branchOrders, id, row, Boolean(row && isLiveOrderInsideBranchScope(row)));
+  khaznaOrders = replaceLiveOrderInList(khaznaOrders, id, row, Boolean(row && khaznaOrders.some(order => String(order.id) === id)));
+  branchesTreasuryOrders = replaceLiveOrderInList(branchesTreasuryOrders, id, row, Boolean(row && branchesTreasuryOrders.some(order => String(order.id) === id)));
+  pendingOrders = replaceLiveOrderInList(pendingOrders, id, row, Boolean(row && pendingOrders.some(order => String(order.id) === id)));
+
+  scheduleLiveBusinessRender();
+}
+
+function scheduleLiveBusinessRender() {
+  if (liveBusinessSyncRenderTimer) clearTimeout(liveBusinessSyncRenderTimer);
+  liveBusinessSyncRenderTimer = setTimeout(async () => {
+    liveBusinessSyncRenderTimer = null;
+    if (isLivePageVisible('ordersPage')) {
+      renderOrders();
+      renderAnalytics();
+      renderRanks();
+    }
+    if (isLivePageVisible('branchPage')) renderBranchOrders();
+
+    const financialRefreshes = [];
+    if (isLivePageVisible('khaznaPage')) financialRefreshes.push(loadKhaznaData());
+    if (isLivePageVisible('branchesTreasuryPage')) financialRefreshes.push(loadBranchesTreasury());
+    if (isLivePageVisible('pendingPage')) financialRefreshes.push(loadPendingOrders(false));
+    financialRefreshes.push(refreshPendingHeaderCount());
+    await Promise.allSettled(financialRefreshes);
+  }, 250);
+}
+
+async function applyLiveUserPayload(payload) {
+  const row = payload?.eventType === 'DELETE' ? null : payload?.new;
+  const changedId = String(row?.id || payload?.old?.id || '');
+  if (!changedId) return;
+  if (currentUser && String(currentUser.id) === changedId) {
+    if (!row || row.active === false) {
+      handleOkbSessionExpiry(new Error('تم إيقاف حساب المستخدم'));
+      return;
+    }
+    currentUser = {
+      ...currentUser,
+      name: row.name ?? currentUser.name,
+      username: row.username ?? currentUser.username,
+      role: row.role ?? currentUser.role,
+      active: row.active ?? currentUser.active,
+      managed_branches: row.managed_branches ?? currentUser.managed_branches,
+      system_permissions: row.system_permissions ?? currentUser.system_permissions
+    };
+    sessionStorage.setItem('okb_current_user', JSON.stringify(currentUser));
+    await loadRolePermissions();
+    setupUserView();
+    if (!currentPageStillAllowed()) await showInitialPermittedPage();
+  }
+  if (isAdmin() || isExecutiveAssistant()) await loadUsers();
+}
+
+async function resyncLiveBusinessData() {
+  if (!currentUser || liveBusinessSyncResyncInProgress) return;
+  liveBusinessSyncResyncInProgress = true;
+  try {
+    const tasks = [loadOKBItems(), loadRolePermissions()];
+    if (isLivePageVisible('ordersPage')) {
+      const range = getCurrentDashboardMonthRange();
+      const from = activeDateFrom || range.from;
+      const to = activeDateTo || range.to;
+      tasks.push(loadOrders({ from, to, scope:`dashboard:${from}:${to}` }));
+    }
+    if (isLivePageVisible('branchPage')) tasks.push(loadBranchOrders());
+    if (isLivePageVisible('khaznaPage')) tasks.push(loadKhaznaData());
+    if (isLivePageVisible('branchesTreasuryPage')) tasks.push(loadBranchesTreasury());
+    if (isLivePageVisible('pendingPage')) tasks.push(loadPendingOrders(false));
+    tasks.push(refreshPendingHeaderCount());
+    if (isAdmin() || isExecutiveAssistant()) tasks.push(loadUsers());
+    await Promise.allSettled(tasks);
+    setupUserView();
+  } finally {
+    liveBusinessSyncResyncInProgress = false;
+  }
+}
+
+function stopLiveBusinessSync(client = supabaseClient) {
+  if (liveBusinessSyncReconnectTimer) clearTimeout(liveBusinessSyncReconnectTimer);
+  if (liveBusinessSyncRenderTimer) clearTimeout(liveBusinessSyncRenderTimer);
+  liveBusinessSyncReconnectTimer = null;
+  liveBusinessSyncRenderTimer = null;
+  if (liveBusinessSyncChannel && client?.removeChannel) {
+    try { client.removeChannel(liveBusinessSyncChannel); } catch (error) {}
+  }
+  liveBusinessSyncChannel = null;
+}
+
+function scheduleLiveBusinessReconnect() {
+  if (!currentUser || liveBusinessSyncReconnectTimer) return;
+  liveBusinessSyncReconnectTimer = setTimeout(() => {
+    liveBusinessSyncReconnectTimer = null;
+    startLiveBusinessSync();
+  }, 3000);
+}
+
+function startLiveBusinessSync() {
+  stopLiveBusinessSync();
+  if (!currentUser || !supabaseClient?.channel) return;
+  liveBusinessSyncChannel = supabaseClient
+    .channel(`okb-live-business-${currentUser.id}-${Date.now()}`)
+    .on('postgres_changes', { event:'*', schema:'public', table:'orders' }, applyLiveOrderPayload)
+    .on('postgres_changes', { event:'*', schema:'public', table:'items' }, () => {
+      clearTimeout(startLiveBusinessSync.itemsTimer);
+      startLiveBusinessSync.itemsTimer = setTimeout(() => loadOKBItems(), 250);
+    })
+    .on('postgres_changes', { event:'*', schema:'public', table:'user' }, payload => {
+      applyLiveUserPayload(payload).catch(error => console.error('Live user sync failed:', error));
+    })
+    .on('postgres_changes', { event:'*', schema:'public', table:'role_permissions' }, async () => {
+      await loadRolePermissions();
+      setupUserView();
+      if (!currentPageStillAllowed()) await showInitialPermittedPage();
+    })
+    .subscribe((status, error) => {
+      if (status === 'SUBSCRIBED') {
+        const wasConnected = liveBusinessSyncEverConnected;
+        liveBusinessSyncEverConnected = true;
+        if (wasConnected) resyncLiveBusinessData().catch(err => console.error('Live resync failed:', err));
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.error('Live business sync connection error:', status, error);
+        scheduleLiveBusinessReconnect();
+      }
+    });
 }
 
 function populatePermissionRoleSelect() {
@@ -2107,8 +2298,7 @@ function buildNotesWithCollectMeta(notes, meta) {
 }
 
 function canCurrentUserCollect(order) {
-  if (isAdmin()) return true;
-  return getCollectMeta(order).count < 2;
+  return String(order?.status || '').trim() !== 'Signed';
 }
 
 function isFinalizedDeliveredOrder(order) {
@@ -2163,6 +2353,7 @@ async function showReturnedOrderCollectionBlockedMessage(order) {
 
 function getCollectButtonHtml(order, src) {
   if (!canCollectOrders()) return "";
+  if (String(order?.status || '').trim() === 'Signed') return "";
   if (isReturnedOrCancelledOrder(order)) return "";
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) {
     return disabledActionButton('$ تحصيل');
@@ -2170,9 +2361,7 @@ function getCollectButtonHtml(order, src) {
   const meta = getCollectMeta(order);
   const count = Number(meta.count || 0);
 
-  if (!isAdmin() && count >= 2) return "";
-
-  const isSecondEmployeeTry = !isAdmin() && count === 1;
+  const isSecondEmployeeTry = false;
   const collectPrefix = count > 0 ? String(count) : '$';
   const label = `${collectPrefix} تحصيل`;
   const opacity = isSecondEmployeeTry ? "opacity:.5;" : "";
@@ -2688,6 +2877,7 @@ async function openAuthenticatedApp(activityTitle, activityDetails) {
   await loadRolePermissions();
   setupUserView();
   startRolePermissionsSync();
+  startLiveBusinessSync();
   await showInitialPermittedPage();
 
   // All heavy datasets load in parallel after the interface is already visible.
@@ -2761,6 +2951,7 @@ async function login() {
 async function logout() {
   stopOkbSessionRefresh();
   await logActivity("logout", "تسجيل خروج", "قام المستخدم بتسجيل الخروج من السيستم");
+  stopLiveBusinessSync();
   stopActivityLogNotifications();
   stopRolePermissionsSync();
   stopChatRealtime();
@@ -4003,13 +4194,13 @@ async function printBranchKhaznaReportForCashier() {
       return;
     }
 
-    const totalSales = reportOrders.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
-    const shippingTotal = reportOrders.reduce((sum, order) => {
-      const last = getLatestCollectEntry(order);
-      return sum + Number(last?.shipping || 0);
-    }, 0);
-    const transfersTotal = reportOrders.reduce((sum, order) => sum + getOrderProofPaymentTotal(order), 0);
-    const net = totalSales - shippingTotal - transfersTotal;
+    await loadKhaznaShippingOverride(from, to);
+    const financial = calculateFinancialSummary(reportOrders, { shippingOverride: khaznaShippingCost });
+    const totalSales = financial.totalSales;
+    const shippingTotal = financial.shippingExpenses;
+    const transfersTotal = financial.totalTransfers;
+    const codCash = financial.codCash;
+    const net = financial.recordedNetCash;
     const printDate = new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
 
     const orderRows = reportOrders.map((o,i) => `
@@ -4020,8 +4211,8 @@ async function printBranchKhaznaReportForCashier() {
         <td style="padding:4px;">${escapeHTML(o.doctor_name || '—')}</td>
         <td style="padding:4px;font-weight:700;direction:ltr;">${escapeHTML(getTicketId(o) || '—')}</td>
         <td style="padding:4px;font-size:10px;">${escapeHTML(o.product_names || '—')}</td>
-        <td style="padding:4px;text-align:right;">${enMoney(o.price)}</td>
-        <td style="padding:4px;text-align:right;">${Number(o.deposit||0) > 0 ? enMoney(o.deposit) : '—'}</td>
+        <td style="padding:4px;text-align:right;">${enMoney(getEffectiveOrderPrice(o))}</td>
+        <td style="padding:4px;text-align:right;">${enMoney(Number(o.deposit||0) + Number(getLatestCollectEntry(o)?.sales||0))}</td>
         <td style="padding:4px;text-align:center;"><span style="background:#e5e7eb;padding:2px 6px;border-radius:4px;font-size:10px;">${escapeHTML(o.status||'')}</span></td>
       </tr>`).join('');
 
@@ -4102,7 +4293,7 @@ async function printBranchKhaznaReportForCashier() {
     <tbody>${orderRows}</tbody>
   </table>
   <div style="margin-top:20px;border-top:2px solid #000;padding-top:10px;font-weight:bold;font-size:15px;direction:ltr;text-align:right;">
-    Net = ${enMoney(totalSales)} - ${enMoney(shippingTotal)} - ${enMoney(transfersTotal)} = <span style="color:#10b981;">${enMoney(net)}</span>
+    Net Cash = ${enMoney(codCash)} COD - ${enMoney(shippingTotal)} Shipping = <span style="color:#10b981;">${enMoney(net)}</span>
   </div>
   </div>
 <script>
@@ -4132,17 +4323,8 @@ async function printBranchKhaznaReportForCashier() {
     const element = document.getElementById('reportPdfArea');
     if (!element) return;
 
-    // Fit to One Page Width: نفس عرض A4 Landscape مع ارتفاع تلقائي حسب كل البيانات
-    const marginMm = 5;
-    const pageWidthMm = 297;
-    const contentWidthPx = Math.max(element.scrollWidth, element.offsetWidth, 1);
-    const contentHeightPx = Math.max(element.scrollHeight, element.offsetHeight, 1);
-    const usableWidthMm = pageWidthMm - (marginMm * 2);
-    const fittedHeightMm = (contentHeightPx / contentWidthPx) * usableWidthMm;
-    const pageHeightMm = Math.max(210, Math.ceil(fittedHeightMm + (marginMm * 2)));
-
     const options = {
-      margin: [marginMm, marginMm, marginMm, marginMm],
+      margin: [5, 5, 5, 5],
       filename: reportFileBase + '.pdf',
       image: { type: 'jpeg', quality: 0.99 },
       html2canvas: {
@@ -4152,15 +4334,15 @@ async function printBranchKhaznaReportForCashier() {
         scrollY: 0,
         backgroundColor: '#ffffff',
         logging: false,
-        windowWidth: contentWidthPx
+        windowWidth: Math.max(element.scrollWidth, element.offsetWidth, 1)
       },
       jsPDF: {
         unit: 'mm',
-        format: [pageWidthMm, pageHeightMm],
+        format: 'a4',
         orientation: 'landscape',
         compress: true
       },
-      pagebreak: { mode: ['avoid-all'] }
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.stat-box'] }
     };
 
     html2pdf().set(options).from(element).save();
@@ -4217,7 +4399,7 @@ async function printBranchSummaryReportForCashier() {
         .from('orders')
         .select('*')
         .eq('branch', currentBranchName)
-        .in('status', ['Signed', 'Returned'])
+        .eq('status', 'Signed')
         .order('created_at', { ascending: false })
         .range(rangeFrom, rangeTo);
 
@@ -4227,27 +4409,21 @@ async function printBranchSummaryReportForCashier() {
       rangeFrom += pageSize;
     }
 
-    const reportOrders = allData.filter(o =>
-      (o.status === 'Signed' || isReturnWithin14Days(o)) &&
-      isOrderInAccountingDateRange(o, from || null, to || null)
-    );
+    const reportOrders = allData.filter(o => o.status === 'Signed' && isOrderInAccountingDateRange(o, from || null, to || null));
     if (!reportOrders.length) {
-      alert(`لا توجد أوردرات Signed أو مرتجع خلال 14 يوم لفرع ${currentBranchName} في الفترة ${from} → ${to}`);
+      alert(`لا توجد أوردرات Signed لفرع ${currentBranchName} في الفترة ${from} → ${to}`);
       return;
     }
 
-    const signedReportOrders = reportOrders.filter(o => o.status === 'Signed');
-    const return14Orders = reportOrders.filter(isReturnWithin14Days);
-    const totalSales = signedReportOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-    const totalReturn14 = return14Orders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-    const totalExpenses = signedReportOrders.reduce((sum, order) => {
-      const last = getLatestCollectEntry(order);
-      return sum + Number(last?.shipping || 0);
-    }, 0);
-    const secretaryTransfers = signedReportOrders.reduce((sum, order) => sum + getOrderUpfrontTransferTotal(order), 0);
-    const collectionTransfers = signedReportOrders.reduce((sum, order) => sum + getOrderCollectionTransferTotal(order), 0);
-    const totalTransfers = secretaryTransfers + collectionTransfers;
-    const netDaily = totalSales - totalReturn14 - totalExpenses - totalTransfers;
+    if (!inKhazna) await loadKhaznaShippingOverride(from, to);
+    const financial = calculateFinancialSummary(reportOrders, { shippingOverride: khaznaShippingCost });
+    const totalSales = financial.totalSales;
+    const totalExpenses = financial.shippingExpenses;
+    const secretaryTransfers = financial.secretaryTransfers;
+    const collectionTransfers = financial.collectionTransfers;
+    const totalTransfers = financial.totalTransfers;
+    const codCash = financial.codCash;
+    const netDaily = financial.recordedNetCash;
     const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
 
     const reportHTML = `<!DOCTYPE html>
@@ -4303,7 +4479,6 @@ async function printBranchSummaryReportForCashier() {
   <div class="divider"></div>
 
   <div class="row"><span>إجمالي المبيعات</span><span class="value">${enMoney(totalSales)} EGP</span></div>
-  <div class="row return-row"><span>مرتجع خلال 14 يوم</span><span class="value">- ${enMoney(totalReturn14)} EGP</span></div>
   <div class="row"><span>إجمالي المصروفات</span><span class="value">${enMoney(totalExpenses)} EGP</span></div>
   <div class="row"><span>إجمالي التحويلات</span><span class="value">${enMoney(totalTransfers)} EGP</span></div>
   <div class="row" style="padding:3px 10px 3px 0;font-size:10px;font-weight:700;"><span>(تحويلات السكرتارية)</span><span class="value" style="font-size:10px;">${enMoney(secretaryTransfers)} EGP</span></div>
@@ -4311,8 +4486,10 @@ async function printBranchSummaryReportForCashier() {
 
   <div class="divider-solid"></div>
 
-  <div class="row net"><span>صافي اليومية</span><span class="value">${enMoney(netDaily)} EGP</span></div>
-  <div class="formula">${enMoney(totalSales)} - ${enMoney(totalReturn14)} - ${enMoney(totalExpenses)} - ${enMoney(totalTransfers)} = ${enMoney(netDaily)}</div>
+  <div class="row"><span>COD النقدي المسجل</span><span class="value">${enMoney(codCash)} EGP</span></div>
+  <div class="row net"><span>صافي الكاش</span><span class="value">${enMoney(netDaily)} EGP</span></div>
+  <div class="formula">${enMoney(codCash)} COD - ${enMoney(totalExpenses)} مصروفات = ${enMoney(netDaily)}</div>
+  ${financial.hasBlockingErrors ? `<div class="row return-row"><span>فرق المراجعة</span><span class="value">${enMoney(Math.abs(financial.reconciliationGap))} EGP</span></div>` : ''}
 
   <div class="divider"></div>
   <div class="footer">تاريخ الطباعة<br>${printDate}</div>
@@ -5127,7 +5304,7 @@ function getDoctorRankRows() {
     const total = tickets.length;
     const signed = countStatus(tickets, 'Signed');
     const delivering = countStatus(tickets, 'Delivering');
-    const returnedTickets = tickets.filter(order => ['Returned', 'مرتجع خلال 14 يوم'].includes(getOrderDisplayStatus(order) || order.status));
+    const returnedTickets = tickets.filter(order => (getOrderDisplayStatus(order) || order.status) === 'Returned');
     const returned = returnedTickets.length;
     const salesReturned = returnedTickets.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
     const cancelGroup = countStatus(tickets, 'Cancel');
@@ -5469,7 +5646,7 @@ function renderDoctorRank() {
   const filteredOrders = getDoctorRankFilteredOrders();
   const total = filteredOrders.length;
   const signed = countStatus(filteredOrders, 'Signed');
-  const returnedOrders = filteredOrders.filter(order => ['Returned', 'مرتجع خلال 14 يوم'].includes(getOrderDisplayStatus(order) || order.status));
+  const returnedOrders = filteredOrders.filter(order => (getOrderDisplayStatus(order) || order.status) === 'Returned');
   const returned = returnedOrders.length;
   const salesReturned = returnedOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
   const cancel = countStatus(filteredOrders, 'Cancel');
@@ -5656,7 +5833,7 @@ function getDoctorWeeklyMetrics(list) {
   const total = list.length;
   const signed = countStatus(list,'Signed');
   const delivering = countStatus(list,'Delivering');
-  const returned = countStatus(list,'Returned') + countStatus(list,'مرتجع خلال 14 يوم');
+  const returned = countStatus(list,'Returned');
   const cancel = countStatus(list,'Cancel');
   return {total,signed,delivering,returned,cancel,revenue:list.reduce((sum,order)=>sum+getEffectiveOrderPrice(order),0),conversion:percentNum(signed,total),returnRate:percentNum(returned,total),cancelRate:percentNum(cancel,total)};
 }
@@ -6189,7 +6366,7 @@ function smartExportPerformanceRows(filtered, key, label, statusColumns) {
   return [...groups.entries()].map(([name, list]) => {
     const total = list.length;
     const signed = list.filter(o => smartExportStatus(o) === 'Signed').length;
-    const returned = list.filter(o => smartExportStatus(o) === 'Returned' || smartExportStatus(o) === 'مرتجع خلال 14 يوم').length;
+    const returned = list.filter(o => smartExportStatus(o) === 'Returned').length;
     const cancel = list.filter(o => smartExportStatus(o) === 'Cancel').length;
     const statusCounts = statusColumns.map(status => list.filter(o => smartExportStatus(o) === status).length);
     return [
@@ -6212,7 +6389,7 @@ function exportSmartOperationSummary(scope) {
   const context = smartExportContext(scope, filtered);
   const workbook = XLSX.utils.book_new();
   const usedNames = new Set();
-  const statusOrder = ['Delivering', 'Signed', 'Returned', 'مرتجع خلال 14 يوم', 'Cancel', 'Fake Doctor', 'Fake Delivery update', 'Picked-up', 'Transit', 'In transit', 'Returning'];
+  const statusOrder = ['Delivering', 'Signed', 'Returned', 'Cancel', 'Fake Doctor', 'Fake Delivery update', 'Picked-up', 'Transit', 'In transit', 'Returning'];
   const statuses = [...new Set(filtered.map(smartExportStatus))].sort((a, b) => {
     const ai = statusOrder.indexOf(a), bi = statusOrder.indexOf(b);
     return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
@@ -6512,7 +6689,7 @@ function getOperationReportMetrics(list) {
   const statusOf=order=>getOrderDisplayStatus(order)||String(order?.status||'');
   const signed=source.filter(order=>statusOf(order)==='Signed');
   const delivering=source.filter(order=>statusOf(order)==='Delivering');
-  const returned=source.filter(order=>['Returned','مرتجع خلال 14 يوم'].includes(statusOf(order)));
+  const returned=source.filter(order=>statusOf(order)==='Returned');
   const cancelled=source.filter(order=>statusOf(order)==='Cancel');
   const total=source.length;
   const conversionBase=Math.max(0,total-cancelled.length);
@@ -6759,7 +6936,7 @@ async function exportDoctorRank() {
   const filteredOrders = getDoctorRankFilteredOrders();
   const total = filteredOrders.length;
   const signed = countStatus(filteredOrders, 'Signed');
-  const returnedOrders = filteredOrders.filter(order => ['Returned', 'مرتجع خلال 14 يوم'].includes(getOrderDisplayStatus(order) || order.status));
+  const returnedOrders = filteredOrders.filter(order => (getOrderDisplayStatus(order) || order.status) === 'Returned');
   const returned = returnedOrders.length;
   const salesReturned = returnedOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
   const cancel = countStatus(filteredOrders, 'Cancel');
@@ -8514,14 +8691,9 @@ function appendVisibleOrderNote(notes, addition) {
   return clean;
 }
 
-function isReturnWithin14Days(order) {
-  return /نوع الإلغاء:\s*مرتجع خلال 14 يوم/i.test(String(order?.notes || ''));
-}
-
 const BRANCH_CANCEL_TYPE_PERMISSIONS = [
   { value:'Cancel', feature:'btn_cancel_doctor_group', label:'الغاء من الدكتور علي الجروب' },
-  { value:'Returned', feature:'btn_cancel_customer_courier', label:'الغاء من العميل مع المندوب' },
-  { value:'Returned14', feature:'btn_cancel_return_14', label:'مرتجع خلال 14 يوم' }
+  { value:'Returned', feature:'btn_cancel_customer_courier', label:'الغاء من العميل مع المندوب' }
 ];
 function getPermittedBranchCancelTypes(){
   return BRANCH_CANCEL_TYPE_PERMISSIONS.filter(item => hasButtonPermission(item.feature));
@@ -8531,21 +8703,16 @@ function canUseBranchCancelType(value){
   return Boolean(item && hasButtonPermission(item.feature));
 }
 
-function getReturnWithin14DaysDateISO(order) {
-  const notes = String(order?.notes || '');
-  const match = notes.match(/تاريخ مرتجع خلال 14 يوم:\s*([^\s]+)/i);
-  return match?.[1] || order?.updated_at || order?.created_at || '';
-}
-
 function getOrderDisplayStatus(order) {
-  return isReturnWithin14Days(order) ? 'مرتجع خلال 14 يوم' : String(order?.status || '');
+  return String(order?.status || '');
 }
 
 function matchesOrderStatusFilter(order, filterValue) {
   if (!filterValue || filterValue === 'الكل') return true;
   if (filterValue === 'PaymentProof') return hasAnyOrderPaymentProof(order);
-  if (filterValue === 'Returned14') return isReturnWithin14Days(order);
-  if (filterValue === 'Returned') return order?.status === 'Returned' && !isReturnWithin14Days(order);
+  if (filterValue === 'SecretaryTransfers') return getOrderUpfrontTransferTotal(order) > FINANCIAL_TOLERANCE;
+  if (filterValue === 'CollectionTransfers') return getOrderCollectionTransferTotal(order) > FINANCIAL_TOLERANCE;
+  if (filterValue === 'Returned') return order?.status === 'Returned';
   return order?.status === filterValue;
 }
 
@@ -8565,7 +8732,7 @@ function openBranchCancelStatusModal(orderId) {
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. لا يمكن تعديل حالة الأوردر.'); return; }
   if (isFinalizedDeliveredOrder(order)) { showDeliveredOrderLockedMessage(); return; }
   let modal=$('branchCancelStatusModal');
-  if(!modal){ modal=document.createElement('div'); modal.id='branchCancelStatusModal'; modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;align-items:center;justify-content:center;padding:18px;'; modal.innerHTML=`<div style="width:470px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl"><h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary)">إلغاء الأوردر</h3><p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px"></p><label for="branchCancelTypeSelect" style="display:block;margin-bottom:7px;color:var(--text-muted);font-size:12px;font-weight:900">نوع الإلغاء</label><select id="branchCancelTypeSelect" style="width:100%;margin-bottom:14px"><option value="Cancel">الغاء من الدكتور علي الجروب</option><option value="Returned">الغاء من العميل مع المندوب</option><option value="Returned14">مرتجع خلال 14 يوم</option></select><label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800">سبب الإلغاء <span style="color:#EF4444">*</span></label><textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px"></textarea><div style="display:flex;gap:10px;justify-content:flex-start"><button id="branchCancelConfirmBtn" onclick="confirmBranchCancelStatus()" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:900">تأكيد الإلغاء</button><button onclick="closeBranchCancelStatusModal()" style="background:var(--bg-soft);color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px 18px;font-weight:800">إغلاق</button></div></div>`; document.body.appendChild(modal); }
+  if(!modal){ modal=document.createElement('div'); modal.id='branchCancelStatusModal'; modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;align-items:center;justify-content:center;padding:18px;'; modal.innerHTML=`<div style="width:470px;max-width:96vw;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.45);direction:rtl"><h3 style="margin:0 0 8px;font-size:17px;color:var(--text-primary)">إلغاء الأوردر</h3><p id="branchCancelModalCustomer" style="margin:0 0 14px;color:var(--text-muted);font-size:13px"></p><label for="branchCancelTypeSelect" style="display:block;margin-bottom:7px;color:var(--text-muted);font-size:12px;font-weight:900">نوع الإلغاء</label><select id="branchCancelTypeSelect" style="width:100%;margin-bottom:14px"><option value="Cancel">الغاء من الدكتور علي الجروب</option><option value="Returned">الغاء من العميل مع المندوب</option></select><label style="display:block;margin-bottom:6px;color:var(--text-muted);font-size:12px;font-weight:800">سبب الإلغاء <span style="color:#EF4444">*</span></label><textarea id="branchCancelReasonInput" rows="4" placeholder="اكتب سبب الإلغاء..." style="width:100%;resize:vertical;margin-bottom:12px"></textarea><div style="display:flex;gap:10px;justify-content:flex-start"><button id="branchCancelConfirmBtn" onclick="confirmBranchCancelStatus()" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:900">تأكيد الإلغاء</button><button onclick="closeBranchCancelStatusModal()" style="background:var(--bg-soft);color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px 18px;font-weight:800">إغلاق</button></div></div>`; document.body.appendChild(modal); }
   modal.dataset.orderId=orderId; $('branchCancelModalCustomer').textContent=`العميل: ${order.customer_name||'—'} | الحالة الحالية: ${order.status||'—'}`; $('branchCancelReasonInput').value='';
   const typeSelect=$('branchCancelTypeSelect');
   if(typeSelect){typeSelect.innerHTML=permittedTypes.map(item=>`<option value="${item.value}">${escapeHTML(item.label)}</option>`).join('');typeSelect.value=permittedTypes[0].value;}
@@ -8578,14 +8745,12 @@ async function confirmBranchCancelStatus(){
   if(!canUseBranchCancelType(target)){alert('نوع الإلغاء المحدد غير مضاف لصلاحيات حسابك');return;}
   if(!orderId)return; if(!reason){alert('لازم تكتب سبب الإلغاء');reasonEl?.focus();return;}
   const order=branchOrders.find(x=>String(x.id)===String(orderId)); if(!order)return;
-  const isReturn14=target==='Returned14';
-  const dbStatus=isReturn14?'Returned':target;
-  const typeLabel=target==='Cancel'?'الغاء من الدكتور في الجروب':isReturn14?'مرتجع خلال 14 يوم':'الغاء من العميل مع المندوب';
-  const returnDateLine=isReturn14?`\nتاريخ مرتجع خلال 14 يوم: ${new Date().toISOString()}`:'';
-  const noteLine=`نوع الإلغاء: ${typeLabel}\nسبب الإلغاء: ${reason}${returnDateLine}`;
+  const dbStatus=target;
+  const typeLabel=target==='Cancel'?'الغاء من الدكتور في الجروب':'الغاء من العميل مع المندوب';
+  const noteLine=`نوع الإلغاء: ${typeLabel}\nسبب الإلغاء: ${reason}`;
   const newNotes=appendVisibleOrderNote(order.notes||'',noteLine); const btn=$('branchCancelConfirmBtn'); if(btn){btn.disabled=true;btn.textContent='جاري الحفظ...';}
   const {error}=await supabaseClient.from('orders').update({status:dbStatus,notes:newNotes}).eq('id',orderId); if(btn){btn.disabled=false;btn.textContent='تأكيد الإلغاء';} if(error){alert('مشكلة في تعديل الحالة: '+error.message);return;}
-  await logActivity('order_cancelled',typeLabel,`العميل: ${order.customer_name||'—'} | الحالة: ${isReturn14?'مرتجع خلال 14 يوم':dbStatus} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadDashboardMonthOrders(); alert(isReturn14?'تم تسجيل الأوردر مرتجع خلال 14 يوم وإضافته إلى خزنة اليوم':dbStatus==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
+  await logActivity('order_cancelled',typeLabel,`العميل: ${order.customer_name||'—'} | الحالة: ${dbStatus} | السبب: ${reason}`,getActivityOrderInfo(order)); closeBranchCancelStatusModal(); await loadBranchOrders(); await loadDashboardMonthOrders(); alert(dbStatus==='Cancel'?'تم تحويل حالة الأوردر إلى Cancel':'تم تحويل حالة الأوردر إلى Returned');
 }
 
 async function openBranchShippingRankFromBranch() {
@@ -9457,9 +9622,6 @@ function getOrderDateKey(order) {
 }
 
 function getOrderAccountingDateISO(order) {
-  if (isReturnWithin14Days(order)) {
-    return String(getReturnWithin14DaysDateISO(order));
-  }
   const lastCollect = (typeof getLatestCollectEntry === 'function') ? getLatestCollectEntry(order) : null;
   if (order && String(order.status || '') === 'Signed' && lastCollect && lastCollect.at) {
     return String(lastCollect.at);
@@ -9622,6 +9784,28 @@ async function lockKhaznaDay() {
     alert('اختار يوم واحد فقط لقفل اليومية'); 
     return; 
   }
+
+  const daySignedOrders = (Array.isArray(khaznaOrders) ? khaznaOrders : []).filter(order =>
+    String(order?.status || '').trim() === 'Signed' && getOrderAccountingDateKey(order) === date
+  );
+  const financialAudit = calculateFinancialSummary(daySignedOrders, { shippingOverride: khaznaShippingCost });
+  if (financialAudit.hasBlockingErrors) {
+    const problemLines = financialAudit.problemOrders.slice(0, 12).map(item => {
+      const ticket = getTicketId(item.order) || item.order?.order_number || '—';
+      return `• Ticket ${ticket}: ${item.errors.join('، ') || item.warnings.join('، ')}`;
+    });
+    const extra = financialAudit.problemOrders.length > 12
+      ? `\n• ويوجد ${financialAudit.problemOrders.length - 12} أوردر إضافي يحتاج مراجعة`
+      : '';
+    alert(
+      `❌ لا يمكن قفل اليومية قبل حل الأخطاء المالية.\n\n` +
+      `فرق المراجعة: ${enMoney(Math.abs(financialAudit.reconciliationGap))}\n` +
+      `الأوردرات التي تحتاج مراجعة: ${financialAudit.problemOrders.length}\n\n` +
+      `${problemLines.join('\n')}${extra}`
+    );
+    renderKhaznaOrders();
+    return;
+  }
   
   const msg = `هل أنت متأكد من قفل يومية ${date} لفرع ${currentBranchName}؟\nسيتم قفل أوردرات Signed فقط في هذا اليوم، وأي حالة أخرى لن تتأثر.`;
   if (!confirm(msg)) return;
@@ -9713,7 +9897,7 @@ function openKhaznaPage() {
   document.getElementById('khaznaToDate').value = today;
   
   khaznaSelectedIds = new Set();
-  khaznaShippingCost = 0;
+  khaznaShippingCost = null;
   
   if (document.getElementById('khaznaBarcodeSearch')) {
     document.getElementById('khaznaBarcodeSearch').value = '';
@@ -9780,6 +9964,8 @@ async function loadKhaznaData() {
     .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
     .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
 
+  await loadKhaznaShippingOverride(from, to);
+
   khaznaSelectedIds = new Set();
   
   await refreshKhaznaLockState();
@@ -9788,13 +9974,41 @@ async function loadKhaznaData() {
   renderKhaznaOrders();
 }
 
+async function loadKhaznaShippingOverride(from, to) {
+  khaznaShippingCost = null;
+  if (!from || !to || from !== to || !currentBranchName) return;
+  try {
+    const { data, error } = await supabaseClient
+      .from('activity_logs')
+      .select('action_details,created_at,action_date')
+      .eq('action_type', 'khazna_shipping_adjusted')
+      .eq('branch_name', currentBranchName)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    for (const row of (data || [])) {
+      const text = String(row.action_details || '');
+      const marker = '[KHAZNA_SHIPPING_OVERRIDE]';
+      if (!text.startsWith(marker)) continue;
+      try {
+        const payload = JSON.parse(text.slice(marker.length));
+        if (String(payload.date || '') !== String(from)) continue;
+        khaznaShippingCost = payload.value === null ? null : Math.max(0, Number(payload.value || 0));
+        return;
+      } catch (_) {}
+    }
+  } catch (error) {
+    console.warn('تعذر تحميل تصحيح مصروفات الشحن:', error?.message || error);
+  }
+}
+
 function resetKhaznaFilter() {
   document.getElementById('khaznaFromDate').value = '';
   document.getElementById('khaznaToDate').value = '';
   document.getElementById('khaznaBadge').style.display = 'none';
   
   khaznaOrders = [];
-  khaznaShippingCost = 0;
+  khaznaShippingCost = null;
   khaznaSelectedIds = new Set();
   khaznaLockInfo = null;
   
@@ -9881,6 +10095,112 @@ function getOrderCodCashTotal(order) {
   return method === 'cod' ? Math.max(0, Number(last?.sales || 0)) : 0;
 }
 
+// ===== المحرك المالي المركزي للخزنة =====
+// هذا هو المصدر الوحيد لأرقام كروت الخزنة والتقارير والمراجعة المالية.
+const FINANCIAL_TOLERANCE = 0.01;
+
+function analyzeOrderFinancials(order) {
+  const status = String(order?.status || '').trim();
+  const price = Math.max(0, Number(getEffectiveOrderPrice(order) || 0));
+  const depositRaw = Number(order?.deposit || 0);
+  const deposit = Math.max(0, depositRaw);
+  const latest = getLatestCollectEntry(order);
+  const salesRaw = Number(latest?.sales || 0);
+  const collected = Math.max(0, salesRaw);
+  const shippingRaw = Number(latest?.shipping || 0);
+  const shipping = Math.max(0, shippingRaw);
+  const method = String(latest?.payment_method || '').trim().toLowerCase();
+  const upfrontProof = Boolean(getOrderUpfrontProofUrl(order));
+  const collectionProof = Boolean(getOrderCollectionProofUrl(order));
+  const isTransferMethod = method === 'instapay' || method === 'wallet';
+  const isCodMethod = method === 'cod';
+  const isPrepaidMethod = method === 'prepaid';
+  const secretaryTransfer = deposit > 0 && upfrontProof ? deposit : 0;
+  const collectionTransfer = isTransferMethod ? collected : 0;
+  const codCash = isCodMethod ? collected : 0;
+  const paidTotal = deposit + collected;
+  const balance = price - paidTotal;
+  const errors = [];
+  const warnings = [];
+
+  if (status === 'Signed') {
+    if (!latest) errors.push('الأوردر Signed بدون سجل تحصيل');
+    if (Math.abs(balance) > FINANCIAL_TOLERANCE) {
+      errors.push(balance > 0
+        ? `تحصيل ناقص بقيمة ${enMoney(balance)}`
+        : `تحصيل زائد بقيمة ${enMoney(Math.abs(balance))}`);
+    }
+    if (depositRaw < 0) errors.push('المدفوع عند الحفظ قيمة سالبة');
+    if (salesRaw < 0) errors.push('المحصّل من المندوب قيمة سالبة');
+    if (shippingRaw < 0) errors.push('مصروف الشحنة قيمة سالبة');
+    if (deposit > 0 && !upfrontProof) errors.push(`مدفوع سكرتارية ${enMoney(deposit)} بدون إثبات`);
+    if (upfrontProof && deposit <= 0) errors.push('إثبات سكرتارية موجود والمبلغ صفر');
+    if (isTransferMethod && collected > 0 && !collectionProof) errors.push('تحويل تحصيل بدون إثبات');
+    if (collectionProof && !isTransferMethod) warnings.push('إثبات تحصيل موجود وطريقة الدفع ليست تحويلًا');
+    if (isPrepaidMethod && collected > FINANCIAL_TOLERANCE) {
+      const actor = String(latest?.by || '').trim();
+      const at = latest?.at ? formatEnglishDateTime(latest.at) : '';
+      errors.push(`تحصيل ${enMoney(collected)} مسجل Prepaid رغم وجود مبلغ محصّل${actor ? ` — بواسطة ${actor}` : ''}${at ? ` — ${at}` : ''}`);
+    }
+    if (isPrepaidMethod && price - deposit > FINANCIAL_TOLERANCE) {
+      errors.push(`Prepaid غير صحيح: المتبقي قبل التحصيل ${enMoney(price - deposit)}`);
+    }
+    if (collected > 0 && !isCodMethod && !isTransferMethod && !isPrepaidMethod) errors.push('طريقة التحصيل غير محددة');
+    if (shipping > collected && collected > 0) warnings.push('مصروف الشحنة أكبر من المبلغ المحصّل');
+  }
+
+  return {
+    order, status, price, deposit, collected, shipping, method,
+    secretaryTransfer, collectionTransfer, totalTransfers: secretaryTransfer + collectionTransfer,
+    codCash, paidTotal, balance, errors, warnings,
+    isBalanced: status !== 'Signed' || (errors.length === 0 && Math.abs(balance) <= FINANCIAL_TOLERANCE)
+  };
+}
+
+function calculateFinancialSummary(list, options = {}) {
+  const signedAnalyses = (Array.isArray(list) ? list : [])
+    .filter(order => String(order?.status || '').trim() === 'Signed')
+    .map(analyzeOrderFinancials);
+  const sum = (key) => signedAnalyses.reduce((total, item) => total + Number(item[key] || 0), 0);
+  const totalSales = sum('price');
+  const secretaryTransfers = sum('secretaryTransfer');
+  const collectionTransfers = sum('collectionTransfer');
+  const totalTransfers = secretaryTransfers + collectionTransfers;
+  const codCash = sum('codCash');
+  const automaticShippingExpenses = sum('shipping');
+  const hasShippingOverride = options.shippingOverride !== null && options.shippingOverride !== undefined && options.shippingOverride !== '';
+  const shippingExpenses = hasShippingOverride
+    ? Math.max(0, Number(options.shippingOverride || 0))
+    : automaticShippingExpenses;
+  const expectedCod = totalSales - totalTransfers;
+  const recordedNetCash = codCash - shippingExpenses;
+  const expectedNetCash = expectedCod - shippingExpenses;
+  const reconciliationGap = expectedCod - codCash;
+  const problemOrders = signedAnalyses.filter(item => item.errors.length || item.warnings.length);
+  return {
+    signedAnalyses,
+    signedOrdersCount: signedAnalyses.length,
+    totalSales,
+    secretaryTransfers,
+    collectionTransfers,
+    totalTransfers,
+    codCash,
+    shippingExpenses,
+    automaticShippingExpenses,
+    hasShippingOverride,
+    expectedCod,
+    recordedNetCash,
+    expectedNetCash,
+    reconciliationGap,
+    problemOrders,
+    hasBlockingErrors: signedAnalyses.some(item => item.errors.length > 0) || Math.abs(reconciliationGap) > FINANCIAL_TOLERANCE
+  };
+}
+
+function getOrderFinancialAudit(order) {
+  return analyzeOrderFinancials(order);
+}
+
 function getKhaznaUpfrontTransfersTotal() {
   return khaznaOrders.reduce((sum, order) => sum + getOrderUpfrontTransferTotal(order), 0);
 }
@@ -9915,21 +10235,14 @@ function renderKhaznaStats() {
   renderKhaznaEmployeeFilter();
   
   const visibleKhaznaOrders = getKhaznaFilteredOrders();
-  const signedOrders = visibleKhaznaOrders.filter(o => o.status === 'Signed');
-  const return14Total = visibleKhaznaOrders
-    .filter(isReturnWithin14Days)
-    .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
-  const totalSales = signedOrders.reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
-  
-  const originalKhaznaOrdersForCalc = khaznaOrders;
-  khaznaOrders = visibleKhaznaOrders;
-  const shippingTotal = getKhaznaShippingTotal();
-  const upfrontTransfersTotal = getKhaznaUpfrontTransfersTotal();
-  const collectionTransfersTotal = getKhaznaCollectionTransfersTotal();
-  const transfersTotal = getKhaznaTransfersTotal();
-  const codCashTotal = getKhaznaCodCashTotal();
-  khaznaOrders = originalKhaznaOrdersForCalc;
-  const net = codCashTotal - return14Total - shippingTotal;
+  const financial = calculateFinancialSummary(visibleKhaznaOrders, { shippingOverride: khaznaShippingCost });
+  const totalSales = financial.totalSales;
+  const shippingTotal = financial.shippingExpenses;
+  const upfrontTransfersTotal = financial.secretaryTransfers;
+  const collectionTransfersTotal = financial.collectionTransfers;
+  const transfersTotal = financial.totalTransfers;
+  const codCashTotal = financial.codCash;
+  const net = financial.recordedNetCash;
 
   const fmt = v => enMoney(v);
   const setEl = (id, v) => { 
@@ -9938,14 +10251,13 @@ function renderKhaznaStats() {
   };
 
   setEl('kTotalSales', fmt(totalSales));
-  setEl('kReturn14Total', fmt(return14Total));
   setEl('kShippingCost', fmt(shippingTotal));
   setEl('kUpfrontTransfers', fmt(upfrontTransfersTotal));
   setEl('kCollectionTransfers', fmt(collectionTransfersTotal));
   setEl('kTransfers', fmt(transfersTotal));
   setEl('kCodCash', fmt(codCashTotal));
   setEl('kNetAmount', fmt(net));
-  setEl('kOrderCount', visibleKhaznaOrders.length);
+  setEl('kOrderCount', financial.signedOrdersCount);
   setEl('kMatchSales', fmt(codCashTotal));
   setEl('kMatchShipping', fmt(shippingTotal));
   setEl('kMatchTransfers', fmt(transfersTotal));
@@ -9953,8 +10265,12 @@ function renderKhaznaStats() {
 
   const statusEl = document.getElementById('kMatchStatus');
   if (statusEl) {
-    if (net > 0) {
-      statusEl.textContent = '✅ الخزنة في رصيد';
+    if (financial.hasBlockingErrors) {
+      statusEl.textContent = `⚠️ فرق مراجعة ${fmt(Math.abs(financial.reconciliationGap))} — ${financial.problemOrders.length} أوردر يحتاج مراجعة`;
+      statusEl.style.background = 'rgba(239,68,68,0.2)';
+      statusEl.style.color = '#ef4444';
+    } else if (net > 0) {
+      statusEl.textContent = '✅ الخزنة متطابقة وفي رصيد';
       statusEl.style.background = 'rgba(16,185,129,0.2)';
       statusEl.style.color = '#10b981';
     } else if (net < 0) {
@@ -9973,17 +10289,29 @@ function editShippingCost() {
   if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن فقط'); return; }
   if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
   document.getElementById('kShippingCostEdit').style.display = 'block';
-  document.getElementById('kShippingCostInput').value = khaznaShippingCost || '';
+  const displayedTotal = Number(String(document.getElementById('kShippingCost')?.textContent || '0').replace(/,/g, '')) || 0;
+  document.getElementById('kShippingCostInput').value = khaznaShippingCost ?? displayedTotal;
   document.getElementById('kShippingCostInput').focus();
 }
 
-function saveShippingCost() {
+async function saveShippingCost() {
   if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن فقط'); return; }
   if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
-  const val = Number(document.getElementById('kShippingCostInput').value || 0);
-  khaznaShippingCost = val;
+  const input = document.getElementById('kShippingCostInput');
+  const selectedDate = getKhaznaSelectedDate();
+  if (!selectedDate) { alert('تعديل إجمالي المصروفات يحتاج اختيار يوم واحد فقط'); return; }
+  const raw = String(input?.value || '').trim();
+  const previousTotal = calculateFinancialSummary(getKhaznaFilteredOrders(), { shippingOverride: khaznaShippingCost }).shippingExpenses;
+  khaznaShippingCost = raw === '' ? null : Math.max(0, Number(raw || 0));
   document.getElementById('kShippingCostEdit').style.display = 'none';
   renderKhaznaStats();
+  const newTotal = calculateFinancialSummary(getKhaznaFilteredOrders(), { shippingOverride: khaznaShippingCost }).shippingExpenses;
+  await logActivity(
+    'khazna_shipping_adjusted',
+    'تم تصحيح إجمالي مصروفات الشحنات',
+    `[KHAZNA_SHIPPING_OVERRIDE]${JSON.stringify({ date:selectedDate, value:khaznaShippingCost, previous:previousTotal, newTotal })}`,
+    {branch_name:currentBranchName || null}
+  );
 }
 
 function cancelShippingCost() {
@@ -10012,6 +10340,9 @@ function renderKhaznaOrders() {
     const remaining = getOrderOutstandingBalance(o);
     const latestCollect = getLatestCollectEntry(o);
     const shippingExpense = Number(latestCollect?.shipping || 0);
+    const financialAudit = getOrderFinancialAudit(o);
+    const hasFinancialIssue = financialAudit.errors.length > 0 || financialAudit.warnings.length > 0;
+    const financialIssueText = [...financialAudit.errors, ...financialAudit.warnings].join(' | ');
     
     let statusClass = 'chip-transit';
     if (o.status === 'Returned') statusClass = 'chip-returned';
@@ -10020,7 +10351,7 @@ function renderKhaznaOrders() {
     
     const lockedByDaily = isOrderLockedByDaily(o);
     
-    rows += `<tr>
+    rows += `<tr ${hasFinancialIssue ? `style="outline:1px solid #ef4444;outline-offset:-1px;background:rgba(239,68,68,.055);" title="${escapeHTML(financialIssueText)}"` : ''}>
       <td><input type="checkbox" class="khazna-check" data-id="${o.id}" ${khaznaSelectedIds.has(String(o.id)) ? 'checked' : ''} onchange="toggleKhaznaOrder(this,'${o.id}')"/></td>
       <td>${i + 1}</td>
       <td>${escapeHTML(o.customer_name || '')}</td>
@@ -10043,6 +10374,7 @@ function renderKhaznaOrders() {
             font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">
             🖨️ طباعة
           </button>
+          ${hasFinancialIssue ? `<span style="display:inline-flex;color:#ef4444;font-size:10px;font-weight:900;max-width:190px;white-space:normal;line-height:1.35;">⚠️ ${escapeHTML(financialIssueText)}</span>` : ''}
         </div>
       </td>
     </tr>`;
@@ -10217,20 +10549,14 @@ function printKhaznaReport() {
     return;
   }
 
-  const originalKhaznaOrdersForCalc = khaznaOrders;
-  khaznaOrders = reportOrders;
-  const totalSales = reportOrders
-    .filter(o => o.status === 'Signed')
-    .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
-  const return14Total = reportOrders
-    .filter(isReturnWithin14Days)
-    .reduce((s, o) => s + getEffectiveOrderPrice(o), 0);
-  const shippingTotal = getKhaznaShippingTotal();
-  const secretaryTransfers = getKhaznaUpfrontTransfersTotal();
-  const collectionTransfers = getKhaznaCollectionTransfersTotal();
-  const transfersTotal = secretaryTransfers + collectionTransfers;
-  const net = totalSales - return14Total - shippingTotal - transfersTotal;
-  khaznaOrders = originalKhaznaOrdersForCalc;
+  const financial = calculateFinancialSummary(reportOrders, { shippingOverride: khaznaShippingCost });
+  const totalSales = financial.totalSales;
+  const shippingTotal = financial.shippingExpenses;
+  const secretaryTransfers = financial.secretaryTransfers;
+  const collectionTransfers = financial.collectionTransfers;
+  const transfersTotal = financial.totalTransfers;
+  const codCash = financial.codCash;
+  const net = financial.recordedNetCash;
 
   const printDate = new Date().toLocaleDateString('en-GB') + ' ' +
     new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
@@ -10243,8 +10569,8 @@ function printKhaznaReport() {
       <td class="arabic-cell doctor-cell">${escapeHTML(o.doctor_name || '—')}</td>
       <td class="ticket-cell">${escapeHTML(o.order_number || '—')}</td>
       <td class="arabic-cell products-cell">${escapeHTML(o.product_names || '—')}</td>
-      <td class="money-cell">${enMoney(o.price)}</td>
-      <td class="money-cell">${Number(o.deposit || 0) > 0 ? enMoney(o.deposit) : '—'}</td>
+      <td class="money-cell">${enMoney(getEffectiveOrderPrice(o))}</td>
+      <td class="money-cell">${enMoney(Number(o.deposit || 0) + Number(getLatestCollectEntry(o)?.sales || 0))}</td>
       <td class="status-cell"><span>${escapeHTML(getOrderDisplayStatus(o))}</span></td>
     </tr>`).join('');
 
@@ -10256,7 +10582,7 @@ function printKhaznaReport() {
     'رقم الأوردر': o.order_number || '',
     'المنتجات': o.product_names || '',
     'السعر': getEffectiveOrderPrice(o),
-    'المدفوع': Number(o.deposit || 0),
+    'المدفوع': Number(o.deposit || 0) + Number(getLatestCollectEntry(o)?.sales || 0),
     'الحالة': getOrderDisplayStatus(o)
   }));
 
@@ -10486,7 +10812,7 @@ function printKhaznaReport() {
     </table>
 
     <div class="net-line">
-      Net = ${enMoney(totalSales)} - ${enMoney(shippingTotal)} - ${enMoney(transfersTotal)}
+      Net Cash = ${enMoney(codCash)} COD - ${enMoney(shippingTotal)} Shipping
       = <span style="color:#10b981;">${enMoney(net)}</span>
     </div>
   </div>
@@ -10529,17 +10855,8 @@ function printKhaznaReport() {
     const element = document.getElementById('reportPdfArea');
     if (!element) return;
 
-    // Fit to One Page Width: التقرير كله في صفحة PDF واحدة طويلة بدون فصل الصفوف
-    const marginMm = 5;
-    const pageWidthMm = 297;
-    const contentWidthPx = Math.max(element.scrollWidth, element.offsetWidth, 1);
-    const contentHeightPx = Math.max(element.scrollHeight, element.offsetHeight, 1);
-    const usableWidthMm = pageWidthMm - (marginMm * 2);
-    const fittedHeightMm = (contentHeightPx / contentWidthPx) * usableWidthMm;
-    const pageHeightMm = Math.max(210, Math.ceil(fittedHeightMm + (marginMm * 2)));
-
     const options = {
-      margin:[marginMm,marginMm,marginMm,marginMm],
+      margin:[5,5,5,5],
       filename:reportFileBase + '.pdf',
       image:{type:'jpeg', quality:0.99},
       html2canvas:{
@@ -10549,15 +10866,15 @@ function printKhaznaReport() {
         scrollY:0,
         backgroundColor:'#ffffff',
         logging:false,
-        windowWidth:contentWidthPx
+        windowWidth:Math.max(element.scrollWidth, element.offsetWidth, 1)
       },
       jsPDF:{
         unit:'mm',
-        format:[pageWidthMm,pageHeightMm],
+        format:'a4',
         orientation:'landscape',
         compress:true
       },
-      pagebreak:{mode:['avoid-all']}
+      pagebreak:{mode:['css','legacy'],avoid:['tr','.stat-box']}
     };
 
     html2pdf().set(options).from(element).save();
@@ -10625,6 +10942,81 @@ function selectCollectPaymentMethod(method) {
       ? (_collectExistingProof ? '✅ إثبات التحصيل الحالي محفوظ — يمكنك إرفاق صورة جديدة عند التصحيح.' : '⚠️ يجب إرفاق إثبات جديد خاص بالتحصيل قبل التأكيد.')
       : '';
   }
+  if (_collectOrderId) calcCollect();
+}
+
+function validateCollectionDraft(order, values = {}) {
+  const price = Math.max(0, Number(getEffectiveOrderPrice(order) || 0));
+  const depositRaw = Number(order?.deposit || 0);
+  const deposit = Math.max(0, depositRaw);
+  const salesRaw = Number(values.sales);
+  const shippingRaw = Number(values.shipping);
+  const sales = Number.isFinite(salesRaw) ? salesRaw : 0;
+  const shipping = Number.isFinite(shippingRaw) ? shippingRaw : 0;
+  const method = String(values.method || '').trim().toLowerCase();
+  const expectedCollection = Math.max(0, price - deposit);
+  const hasUpfrontProof = Boolean(getOrderUpfrontProofUrl(order));
+  const hasCollectionProof = Boolean(values.hasCollectionProof);
+  const isTransfer = method === 'instapay' || method === 'wallet';
+  const isCod = method === 'cod';
+  const isPrepaid = method === 'prepaid';
+  const errors = [];
+  const warnings = [];
+
+  if (price <= 0) errors.push('قيمة الأوردر صفر أو غير صالحة');
+  if (depositRaw < 0) errors.push('المدفوع عند حفظ الأوردر قيمة سالبة');
+  if (deposit - price > FINANCIAL_TOLERANCE) errors.push(`المدفوع عند الحفظ أكبر من قيمة الأوردر بـ ${enMoney(deposit - price)}`);
+  if (deposit > 0 && !hasUpfrontProof) errors.push(`مدفوع السكرتارية ${enMoney(deposit)} بدون إثبات دفع`);
+  if (hasUpfrontProof && deposit <= 0) errors.push('إثبات السكرتارية موجود لكن مبلغ المدفوع صفر');
+  if (sales < 0) errors.push('إجمالي مبيعات التوصيل لا يمكن أن يكون سالبًا');
+  if (shipping < 0) errors.push('مصروف الشحنة لا يمكن أن يكون سالبًا');
+  if (!isCod && !isTransfer && !isPrepaid) errors.push('اختر طريقة تحصيل صحيحة');
+
+  if (isPrepaid) {
+    if (expectedCollection > FINANCIAL_TOLERANCE) {
+      errors.push(`لا يمكن اختيار Prepaid: ما زال مطلوب تحصيل ${enMoney(expectedCollection)}`);
+    }
+    if (sales > FINANCIAL_TOLERANCE) {
+      errors.push(`Prepaid لا يقبل تحصيلًا جديدًا بقيمة ${enMoney(sales)}`);
+    }
+  } else if (Math.abs(sales - expectedCollection) > FINANCIAL_TOLERANCE) {
+    const difference = expectedCollection - sales;
+    errors.push(difference > 0
+      ? `التحصيل ناقص ${enMoney(difference)} — المطلوب ${enMoney(expectedCollection)}`
+      : `التحصيل زائد ${enMoney(Math.abs(difference))} — المطلوب ${enMoney(expectedCollection)}`);
+  }
+
+  if (isTransfer && sales > 0 && !hasCollectionProof) errors.push('تحويل التحصيل يحتاج إثبات دفع خاص بالمندوب');
+  if (isCod && hasCollectionProof) warnings.push('يوجد إثبات تحويل محفوظ بينما الطريقة المختارة COD');
+  if (shipping > sales && sales > 0) errors.push('مصروف الشحنة أكبر من إجمالي المبلغ المطلوب تحصيله');
+  if (!isPrepaid && sales - shipping < -FINANCIAL_TOLERANCE) errors.push('صافي المحصّل من المندوب أصبح بالسالب');
+
+  return { price, deposit, sales, shipping, method, expectedCollection, errors, warnings };
+}
+
+function renderCollectionValidation(validation) {
+  const panel = document.getElementById('collectValidationPanel');
+  if (!panel) return;
+  const errors = validation?.errors || [];
+  const warnings = validation?.warnings || [];
+  if (!errors.length && !warnings.length) {
+    panel.style.display = 'block';
+    panel.style.borderColor = 'rgba(16,185,129,.48)';
+    panel.style.background = 'rgba(16,185,129,.09)';
+    panel.style.color = '#6ee7b7';
+    panel.innerHTML = '✅ بيانات التحصيل متطابقة وجاهزة للحفظ';
+    return;
+  }
+  panel.style.display = 'block';
+  panel.style.borderColor = errors.length ? 'rgba(239,68,68,.55)' : 'rgba(245,158,11,.55)';
+  panel.style.background = errors.length ? 'rgba(239,68,68,.10)' : 'rgba(245,158,11,.10)';
+  panel.style.color = errors.length ? '#fecaca' : '#fde68a';
+  panel.innerHTML = [
+    errors.length ? '<strong style="color:#f87171">❌ أخطاء تمنع التحصيل:</strong>' : '',
+    ...errors.map(item => `<div>• ${escapeHTML(item)}</div>`),
+    warnings.length ? '<strong style="color:#fbbf24">⚠️ تنبيهات المراجعة:</strong>' : '',
+    ...warnings.map(item => `<div>• ${escapeHTML(item)}</div>`)
+  ].filter(Boolean).join('');
 }
 
 function previewCollectProof(input) {
@@ -10641,6 +11033,7 @@ function previewCollectProof(input) {
     }
     const hint = document.getElementById('collectProofHint');
     if (hint) hint.textContent = '✅ تم اختيار إثبات الدفع.';
+    calcCollect();
   };
   reader.readAsDataURL(file);
 }
@@ -10662,6 +11055,7 @@ function clearCollectProof() {
   if (hint && _collectPaymentMethod !== 'COD') hint.textContent = _collectExistingProof
     ? '✅ إثبات التحصيل الحالي محفوظ — يمكنك إرفاق صورة جديدة عند التصحيح.'
     : '⚠️ يجب إرفاق إثبات جديد خاص بالتحصيل قبل التأكيد.';
+  if (_collectOrderId) calcCollect();
 }
 
 function getLatestCollectPaymentMethod(order) {
@@ -10672,13 +11066,17 @@ function getLatestCollectPaymentMethod(order) {
 async function openCollectModal(orderId, customerName, price, deposit, src) {
   if (!canCollectOrders()) { alert('زر التحصيل غير مضاف لصلاحيات حسابك'); return; }
   const order = getOrderByIdAny(orderId);
+  if (order && String(order.status || '').trim() === 'Signed') {
+    alert('تم تسليم وتحصيل هذا الأوردر بالفعل. لا يمكن تحصيل أوردر Signed مرة أخرى.\nيجب على الأدمن تعديل حالة الأوردر أولاً.');
+    return;
+  }
   if (order && isReturnedOrCancelledOrder(order)) {
     await showReturnedOrderCollectionBlockedMessage(order);
     return;
   }
   if (order && isOrderLockedByDaily(order)) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
   if (order && !canCurrentUserCollect(order)) {
-    alert('تم استهلاك مرتين التحصيل المتاحة للموظف. أي تعديل جديد يتم من خلال الأدمن فقط.');
+    alert('تم تسليم وتحصيل هذا الأوردر بالفعل. لا يمكن تحصيل أوردر Signed مرة أخرى.\nيجب على الأدمن تعديل حالة الأوردر أولاً.');
     return;
   }
 
@@ -10792,6 +11190,8 @@ function closeCollectModal() {
   if (paymentSection) paymentSection.style.display = 'block';
   if (depositNotice) { depositNotice.style.display = 'none'; depositNotice.textContent = ''; }
   if (upfrontProofInfo) { upfrontProofInfo.style.display = 'none'; upfrontProofInfo.innerHTML = ''; }
+  const validationPanel = document.getElementById('collectValidationPanel');
+  if (validationPanel) { validationPanel.style.display = 'none'; validationPanel.innerHTML = ''; }
   clearCollectProof();
 }
 
@@ -10799,6 +11199,16 @@ function calcCollect() {
   const sales    = parseFloat(document.getElementById('collectSalesInput').value)    || 0;
   const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
   const net      = sales - shipping;
+  const order = _collectOrderId ? getOrderByIdAny(_collectOrderId) : null;
+  const proofInput = document.getElementById('collectProofInput');
+  const selectedProof = Boolean(proofInput?.files?.length);
+  const validation = order ? validateCollectionDraft(order, {
+    sales,
+    shipping,
+    method: _collectIsFullyPrepaid ? 'Prepaid' : (_collectPaymentMethod || ''),
+    hasCollectionProof: selectedProof || Boolean(_collectExistingProof)
+  }) : null;
+  if (validation) renderCollectionValidation(validation);
 
   const cSalesEl = document.getElementById('cSales');
   const cShippingEl = document.getElementById('cShipping');
@@ -10817,6 +11227,30 @@ function calcCollect() {
   const box    = document.getElementById('collectNetBox');
   const status = document.getElementById('cStatus');
   const netEl  = document.getElementById('cNet');
+  const netLabel = document.getElementById('collectNetLabel');
+
+  // Fully prepaid orders have no new courier collection. The only cash impact
+  // is the shipping expense, so present it explicitly instead of a fake deficit.
+  if (_collectIsFullyPrepaid && Math.abs(sales) <= FINANCIAL_TOLERANCE) {
+    if (netLabel) netLabel.textContent = '🚚 مصروف الشحن المطلوب خصمه';
+    if (cSalesEl) cSalesEl.textContent = '0.00 ج.م';
+    if (netEl) netEl.textContent = shipping.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
+    if (box) {
+      box.style.borderColor = 'rgba(16,185,129,0.45)';
+      box.style.background = 'rgba(16,185,129,0.07)';
+    }
+    if (netEl) netEl.style.color = '#10b981';
+    if (status) {
+      status.textContent = shipping > 0
+        ? '✅ Prepaid — سيتم خصم مصروف الشحن فقط'
+        : '✅ Prepaid — لا يوجد مبلغ مطلوب من المندوب';
+      status.style.background = 'rgba(16,185,129,0.15)';
+      status.style.color = '#10b981';
+    }
+    return;
+  }
+
+  if (netLabel) netLabel.textContent = '💵 المبلغ المحصّل من المندوب';
 
   if (net > 0) {
     box.style.borderColor  = 'rgba(16,185,129,0.4)';
@@ -10851,6 +11285,7 @@ async function confirmCollectOrder() {
     : Math.max(0, Number(_collectLockedSalesValue || 0));
   const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
   const net      = sales - shipping;
+  const isCleanFullyPrepaid = _collectIsFullyPrepaid && Math.abs(sales) <= FINANCIAL_TOLERANCE;
   const customerLabel = document.getElementById('collectCustomerLabel').textContent;
   const paymentMethod = _collectIsFullyPrepaid ? 'Prepaid' : (_collectPaymentMethod || 'COD');
   const proofInput = document.getElementById('collectProofInput');
@@ -10872,8 +11307,30 @@ async function confirmCollectOrder() {
   try {
     const currentOrder = getOrderByIdAny(_collectOrderId);
     if (currentOrder && !canCurrentUserCollect(currentOrder)) {
-      alert('تم استهلاك مرتين التحصيل المتاحة للموظف. أي تعديل جديد يتم من خلال الأدمن فقط.');
+      alert('تم تسليم وتحصيل هذا الأوردر بالفعل. لا يمكن تحصيل أوردر Signed مرة أخرى.\nيجب على الأدمن تعديل حالة الأوردر أولاً.');
       return;
+    }
+
+    const collectionValidation = currentOrder ? validateCollectionDraft(currentOrder, {
+      sales,
+      shipping,
+      method: paymentMethod,
+      hasCollectionProof: Boolean(proofFile || _collectExistingProof)
+    }) : { errors: ['تعذر تحميل بيانات الأوردر'], warnings: [] };
+    renderCollectionValidation(collectionValidation);
+    if (collectionValidation.errors.length) {
+      const validationMessage = collectionValidation.errors.join(' | ');
+      if (!isAdmin()) {
+        await logActivity(
+          'collection_validation_blocked',
+          'تم منع خطأ أثناء تحصيل أوردر',
+          `الأسباب: ${validationMessage} | الطريقة: ${paymentMethod} | المبيعات: ${money(sales)} | الشحن: ${money(shipping)}`,
+          getActivityOrderInfo(currentOrder)
+        );
+        alert(`❌ لا يمكن تأكيد التحصيل:\n${collectionValidation.errors.map(item => '• ' + item).join('\n')}\n\nراجع البيانات قبل المحاولة مرة أخرى.`);
+        return;
+      }
+      if (!confirm(`⚠️ أخطاء مالية في التحصيل:\n${collectionValidation.errors.map(item => '• ' + item).join('\n')}\n\nاعتماد الاستثناء سيُظهر الأوردر باللون الأحمر ويمنع قفل اليومية. هل تريد المتابعة كأدمن؟`)) return;
     }
 
     const collectDateInput = document.getElementById('collectDateInput');
@@ -10962,13 +11419,19 @@ async function confirmCollectOrder() {
     if (typeof renderOrders       === 'function') renderOrders();
     if (typeof renderAnalytics    === 'function') renderAnalytics();
 
-    await logActivity('order_collected','تم تحصيل أوردر',`إجمالي المبيعات: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي: ${money(net)} | الطريقة: ${paymentMethod} | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
+    const collectionActivityDetails = isCleanFullyPrepaid
+      ? `الأوردر مدفوع بالكامل مقدمًا | تحصيل جديد: 0 | مصروف الشحن المخصوم: ${money(shipping)} | أثر صافي الكاش: ${money(net)} | الطريقة: Prepaid | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`
+      : `إجمالي مبيعات التوصيل: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي المحصّل من المندوب: ${money(net)} | الطريقة: ${paymentMethod} | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`;
+    await logActivity('order_collected','تم تحصيل أوردر',collectionActivityDetails,getActivityOrderInfo(currentOrder));
     if (proofFile && proofUrl) {
       await logActivity('payment_proof_attached','تم إرفاق إثبات دفع أثناء التحصيل',`العميل: ${currentOrder?.customer_name || '—'} | طريقة الدفع: ${paymentMethod} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
     }
 
     const finalNotice = newCount >= 2 ? '\n\nتم تسليم وتحصيل هذا الأوردر، لا يجوز التعديل على أوردر تم تسليمه.' : '';
-    alert(`✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي المبيعات: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`);
+    const successMessage = isCleanFullyPrepaid
+      ? `✅ تم تأكيد الأوردر المدفوع بالكامل\n${customerLabel}\n\nالتحصيل الجديد من المندوب: 0 ج.م\nمصروف الشحن المخصوم: ${shipping.toLocaleString('ar-EG')} ج.م\nطريقة المعالجة: Prepaid\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`
+      : `✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي مبيعات التوصيل: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل من المندوب: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`;
+    alert(successMessage);
     closeCollectModal();
 
   } catch(err) {
@@ -10979,19 +11442,21 @@ async function confirmCollectOrder() {
 }
 
 // ===== مطابقة اليومية =====
+let expectedReconciliationNetCash = 0;
 function openDailyReconciliationModal() {
   const modal = document.getElementById('dailyReconciliationModal');
   modal.style.display = 'flex';
 
-  const salesEl  = document.getElementById('kCodCash');
   const shipEl   = document.getElementById('kShippingCost');
   const countEl  = document.getElementById('kOrderCount');
 
-  const salesVal  = parseFloat((salesEl  ? salesEl.textContent  : '0').replace(/[^\d.]/g,'')) || 0;
   const shipVal   = parseFloat((shipEl   ? shipEl.textContent   : '0').replace(/[^\d.]/g,'')) || 0;
   const countVal  = parseInt  ((countEl  ? countEl.textContent  : '0').replace(/[^\d]/g,''))  || 0;
+  const financial = calculateFinancialSummary(getKhaznaFilteredOrders(), { shippingOverride: khaznaShippingCost });
+  expectedReconciliationNetCash = financial.recordedNetCash;
 
-  document.getElementById('reconcileSales').value    = salesVal  || '';
+  document.getElementById('reconcileSales').value    = '';
+  document.getElementById('reconcileSales').placeholder = `أدخل COD الفعلي — المتوقع ${enMoney(financial.codCash)}`;
   document.getElementById('reconcileShipping').value = shipVal   || '';
   document.getElementById('rOrderCount').textContent = countVal;
 
@@ -11006,6 +11471,7 @@ function calcReconcile() {
   const sales    = parseFloat(document.getElementById('reconcileSales').value)    || 0;
   const shipping = parseFloat(document.getElementById('reconcileShipping').value) || 0;
   const net      = sales - shipping;
+  const difference = net - expectedReconciliationNetCash;
 
   document.getElementById('rSales').textContent    = sales.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
   document.getElementById('rShipping').textContent = shipping.toLocaleString('ar-EG', {minimumFractionDigits:2}) + ' ج.م';
@@ -11020,20 +11486,27 @@ function calcReconcile() {
   const status = document.getElementById('rStatus');
   const netEl  = document.getElementById('rNet');
 
-  if (net > 0) {
+  if (Math.abs(difference) <= FINANCIAL_TOLERANCE && sales > 0) {
     box.style.borderColor  = 'rgba(16,185,129,0.4)';
     box.style.background   = 'rgba(16,185,129,0.06)';
     netEl.style.color      = '#10b981';
     status.textContent     = '✅ مطابق — جاهز للتسليم';
     status.style.background= 'rgba(16,185,129,0.15)';
     status.style.color     = '#10b981';
-  } else if (net < 0) {
+  } else if (difference < -FINANCIAL_TOLERANCE) {
     box.style.borderColor  = 'rgba(239,68,68,0.4)';
     box.style.background   = 'rgba(239,68,68,0.06)';
     netEl.style.color      = '#ef4444';
-    status.textContent     = '⚠️ عجز في الخزنة';
+    status.textContent     = `⚠️ عجز ${enMoney(Math.abs(difference))}`;
     status.style.background= 'rgba(239,68,68,0.15)';
     status.style.color     = '#ef4444';
+  } else if (difference > FINANCIAL_TOLERANCE) {
+    box.style.borderColor  = 'rgba(245,158,11,0.5)';
+    box.style.background   = 'rgba(245,158,11,0.08)';
+    netEl.style.color      = '#f59e0b';
+    status.textContent     = `⚠️ زيادة ${enMoney(difference)}`;
+    status.style.background= 'rgba(245,158,11,0.18)';
+    status.style.color     = '#f59e0b';
   } else {
     box.style.borderColor  = 'rgba(100,116,139,0.3)';
     box.style.background   = 'var(--bg-soft)';
@@ -11442,7 +11915,7 @@ function renderCustomerProfile() {
         ${list.length ? list.map(renderCustomerProfileOrderRow).join('') : '<div class="customer-profile-empty">لا توجد أوردرات متاحة لهذا العميل ضمن صلاحيات حسابك</div>'}
       </div>
     </section>
-    <section id="customerOrderTimeline" class="customer-order-timeline"><div class="customer-profile-empty">اضغط «التفاصيل» أمام أي أوردر لعرض الـTimeline بالكامل.</div></section>`;
+    <section id="customerOrderTimeline" class="customer-order-timeline"><div class="customer-profile-empty">${isAdmin() ? 'اضغط «التفاصيل» أمام أي أوردر لعرض الـTimeline بالكامل.' : 'تفاصيل Timeline متاحة للأدمن فقط.'}</div></section>`;
 }
 
 function renderCustomerProfileOrderRow(order) {
@@ -11455,11 +11928,12 @@ function renderCustomerProfileOrderRow(order) {
     <div class="customer-order-main"><strong>${escapeHTML(order.doctor_name || 'بدون دكتور')}</strong><span>${escapeHTML(products)}</span><small>${escapeHTML(order.branch || order.shipping_company || '—')} • ${formatEnglishDateTime(order.created_at)}</small></div>
     <div class="customer-order-money"><span>الإجمالي <b>${money(total)}</b></span><span>المدفوع <b>${money(paid)}</b></span><span>المتبقي <b>${money(remaining)}</b></span></div>
     <span class="customer-order-status ${customerProfileStatusClass(order.status)}">${escapeHTML(getOrderDisplayStatus(order) || order.status || '—')}</span>
-    <div class="customer-order-actions"><button type="button" onclick="showCustomerOrderTimeline('${order.id}')">التفاصيل</button><button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button><button type="button" onclick="printCustomerProfileOrder('${order.id}')">طباعة</button></div>
+    <div class="customer-order-actions">${isAdmin() ? `<button type="button" onclick="showCustomerOrderTimeline('${order.id}')">التفاصيل</button>` : ''}<button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button><button type="button" onclick="printCustomerProfileOrder('${order.id}')">طباعة</button></div>
   </article>`;
 }
 
 function showCustomerOrderTimeline(orderId) {
+  if (!isAdmin()) { alert('تفاصيل Timeline متاحة للأدمن فقط'); return; }
   const order = customerProfileOrders.find(item => String(item.id) === String(orderId));
   const target = document.getElementById('customerOrderTimeline');
   if (!order || !target) return;
@@ -12033,7 +12507,10 @@ function generateReceiptHTML(order, branchName) {
   const price     = getEffectiveOrderPrice(order);
   const unitPrice = qty > 0 ? (price - delivFee) / qty : price;
   const deposit   = Number(order.deposit || 0);
-  const remaining = getOrderOutstandingBalance(order);
+  const isDeliveredReceipt = String(order?.status || '').trim() === 'Signed';
+  // When an admin reopens a delivered order by changing its status, the receipt
+  // shows the amount due again until the order is collected and Signed anew.
+  const reopenedRemaining = Math.max(0, price - deposit);
   const discount  = Number(getOrderMeta(order).discount || 0);
   const orderFlagLabels = getOrderFlagLabels(order);
   const receiptCustomerName = `${order.customer_name || ''}${orderFlagLabels.length ? ` - ${orderFlagLabels.join(' - ')}` : ''}`;
@@ -12178,7 +12655,7 @@ function generateReceiptHTML(order, branchName) {
     </tr>
     <tr style="background:#f0f0f0;">
       <td class="label bold">الباقي</td>
-      <td class="value bold">${remaining > 0 ? enMoney(remaining) + '.00' : '0.00'}</td>
+      <td class="value bold" ${isDeliveredReceipt ? 'style="color:#16a34a;font-size:14px;font-weight:900;"' : ''}>${isDeliveredReceipt ? 'تم التسليم' : (reopenedRemaining > 0 ? enMoney(reopenedRemaining) + '.00' : '0.00')}</td>
     </tr>
   </table>
 
@@ -12243,11 +12720,13 @@ function getBranchesTreasuryVisibleOrders(ignoreStatus = false) {
   const filters = getBranchesTreasuryFilters();
   return branchesTreasuryOrders.filter(order => {
     const branch = pendingOrderBranch(order);
-    const financialStatus = order.status === 'Signed' || isReturnWithin14Days(order);
-    if (!financialStatus) return false;
     if (filters.branch !== 'الكل' && branch !== filters.branch) return false;
-    if (!ignoreStatus && filters.status === 'Signed' && order.status !== 'Signed') return false;
-    if (!ignoreStatus && filters.status === 'Returned14' && !isReturnWithin14Days(order)) return false;
+    if (!ignoreStatus) {
+      if (filters.status === 'PaymentProof' && !hasAnyOrderPaymentProof(order)) return false;
+      if (filters.status === 'SecretaryTransfers' && getOrderUpfrontTransferTotal(order) <= FINANCIAL_TOLERANCE) return false;
+      if (filters.status === 'CollectionTransfers' && getOrderCollectionTransferTotal(order) <= FINANCIAL_TOLERANCE) return false;
+      if (!['الكل', 'PaymentProof', 'SecretaryTransfers', 'CollectionTransfers'].includes(filters.status) && order.status !== filters.status) return false;
+    }
     if (filters.search) {
       const searchable = [order.customer_name, order.phone, order.phone2, order.doctor_name, order.employee_name,
         order.order_number, getTicketId(order), getOrderBarcode(order), branch, order.status, cleanVisibleOrderNotes(order.notes || '')]
@@ -12280,7 +12759,7 @@ async function loadBranchesTreasury() {
   let allData = [], offset = 0;
   while (true) {
     const { data, error } = await supabaseClient.from('orders').select('*')
-      .in('branch', PENDING_BRANCH_NAMES).in('status', ['Signed', 'Returned'])
+      .in('branch', PENDING_BRANCH_NAMES)
       .order('created_at', { ascending:false }).range(offset, offset + 999);
     if (error) { alert('تعذر تحميل خزنة الفروع: ' + error.message); return; }
     allData = allData.concat(data || []);
@@ -12310,24 +12789,30 @@ function resetBranchesTreasury() {
 }
 
 function calculateBranchesTreasury(rows) {
-  const signed = rows.filter(order => order.status === 'Signed');
-  const returned14 = rows.filter(isReturnWithin14Days);
-  const totalSales = signed.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-  const shipping = signed.reduce((sum, order) => sum + Number(getLatestCollectEntry(order)?.shipping || 0), 0);
-  const return14 = returned14.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-  const upfront = signed.reduce((sum, order) => sum + getOrderUpfrontTransferTotal(order), 0);
-  const collection = signed.reduce((sum, order) => sum + getOrderCollectionTransferTotal(order), 0);
-  const cod = signed.reduce((sum, order) => sum + getOrderCodCashTotal(order), 0);
-  return { totalSales, shipping, return14, upfront, collection, transfers:upfront + collection, cod, net:cod - return14 - shipping, count:rows.length };
+  const financial = calculateFinancialSummary(rows);
+  return {
+    totalSales: financial.totalSales,
+    shipping: financial.shippingExpenses,
+    upfront: financial.secretaryTransfers,
+    collection: financial.collectionTransfers,
+    transfers: financial.totalTransfers,
+    cod: financial.codCash,
+    net: financial.recordedNetCash,
+    count: financial.signedOrdersCount,
+    reconciliationGap: financial.reconciliationGap,
+    problemOrders: financial.problemOrders,
+    hasBlockingErrors: financial.hasBlockingErrors
+  };
 }
 
 function renderBranchesTreasury() {
   const rows = getBranchesTreasuryVisibleOrders();
   const visibleIds = new Set(rows.map(order => String(order.id)));
   [...branchesTreasurySelectedIds].forEach(id => { if (!visibleIds.has(id)) branchesTreasurySelectedIds.delete(id); });
-  // الكروت تعرض الصورة المالية الكاملة للفترة والفرع حتى مع تثبيت الجدول افتراضياً على Signed.
-  const totals = calculateBranchesTreasury(getBranchesTreasuryVisibleOrders(true));
-  const values = { btTotalSales:totals.totalSales, btShipping:totals.shipping, btReturn14:totals.return14, btTransfers:totals.transfers,
+  // All cards and the table use the same filtered rows to keep the financial
+  // picture consistent when filtering secretary/courier transfers.
+  const totals = calculateBranchesTreasury(rows);
+  const values = { btTotalSales:totals.totalSales, btShipping:totals.shipping, btTransfers:totals.transfers,
     btUpfrontTransfers:totals.upfront, btCollectionTransfers:totals.collection, btNetCash:totals.net, btOrderCount:totals.count };
   Object.entries(values).forEach(([id,value]) => { const el=document.getElementById(id); if(el) el.textContent=id==='btOrderCount'?enNumber(value):enMoney(value); });
   const body = document.getElementById('btOrdersBody');
@@ -12336,11 +12821,11 @@ function renderBranchesTreasury() {
     const last = getLatestCollectEntry(order), price=getEffectiveOrderPrice(order), paid=Math.max(0,Number(order.deposit||0)+Number(last?.sales||0));
     const statusClass=order.status==='Signed'?'chip-signed':'chip-returned';
     return `<tr><td><input class="bt-order-check" type="checkbox" data-id="${order.id}" ${branchesTreasurySelectedIds.has(String(order.id))?'checked':''} onchange="toggleBranchesTreasuryOrder('${order.id}',this.checked)"></td>
-      <td>${index+1}</td><td><button class="product-ticket-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">${escapeHTML(getTicketId(order)||'—')}</button></td>
+      <td>${index+1}</td><td><strong>${escapeHTML(getTicketId(order)||'—')}</strong></td>
       <td>${escapeHTML(order.customer_name||'')}</td><td>${escapeHTML(order.phone||'')}</td><td>${escapeHTML(order.doctor_name||'—')}</td><td>${escapeHTML(pendingOrderBranch(order)||'—')}</td>
       <td>${enMoney(price)}</td><td>${paid?enMoney(paid):'—'}</td><td>${Math.max(0,price-paid)?enMoney(Math.max(0,price-paid)):'—'}</td><td>${getPaymentProofsCellHtml(order)}</td>
       <td>${enMoney(Number(last?.shipping||0))}</td><td><span class="chip ${statusClass}">${escapeHTML(getOrderDisplayStatus(order))}</span></td><td>${formatEnglishDateTime(getOrderAccountingDateISO(order))}</td>
-      <td><div style="display:flex;gap:5px;"><button class="product-ticket-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">Ticket ID</button><button type="button" onclick="printBranchesTreasuryOrder('${order.id}')" class="view-payment-btn">🖨️ طباعة</button></div></td></tr>`;
+      <td><div style="display:flex;gap:6px;align-items:center;"><button class="operation-manager-report-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">Ticket ID</button><button type="button" onclick="printBranchesTreasuryOrder('${order.id}')" class="operation-manager-report-btn">🖨️ طباعة</button></div></td></tr>`;
   }).join('') : '<tr><td colspan="15" class="empty">لا توجد أوردرات مطابقة للفلاتر</td></tr>';
   syncBranchesTreasurySelection(rows);
 }
@@ -12367,7 +12852,35 @@ async function printSelectedBranchesTreasury(){const rows=getBranchesTreasuryVis
 async function deleteSelectedBranchesTreasury(){if(!isAdmin()){alert('الحذف متاح للأدمن فقط');return;}const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(!rows.length||!confirm(`حذف ${rows.length} أوردر نهائياً؟`))return;const {error}=await supabaseClient.from('orders').delete().in('id',rows.map(order=>order.id));if(error){alert(error.message);return;}await logActivity('order_deleted','حذف أوردرات من خزنة الفروع',`العدد: ${rows.length}`);await loadBranchesTreasury();}
 async function deleteSelectedBranchesTreasuryProof(){if(!hasButtonPermission('btn_delete_collection_proof'))return;const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(rows.length!==1)return;const order=rows[0],url=getOrderCollectionProofUrl(order);if(!url||!confirm('حذف إثبات التحصيل لهذا الأوردر؟'))return;const meta=getCollectMeta(order),history=(meta.history||[]).map(entry=>String(entry?.proof_url||'')===url?{...entry,proof_url:''}:entry),notes=buildNotesWithCollectMeta(order.notes||'',{...meta,history});const {error}=await supabaseClient.from('orders').update({notes}).eq('id',order.id);if(error){alert(error.message);return;}if(url!==getOrderUpfrontProofUrl(order))await deletePaymentImage(url);await logActivity('payment_proof_deleted','تم حذف إثبات التحصيل من خزنة الفروع',`Ticket ID: ${getTicketId(order)||'—'}`,getActivityOrderInfo(order));await loadBranchesTreasury();}
 
-function branchesTreasuryReportHTML(summaryOnly=false){const rows=getBranchesTreasuryVisibleOrders(),totals=calculateBranchesTreasury(rows),f=getBranchesTreasuryFilters(),branch=f.branch==='الكل'?'كل الفروع':f.branch;const details=summaryOnly?'':`<table><thead><tr><th>#</th><th>Ticket ID</th><th>العميل</th><th>الدكتور</th><th>الفرع</th><th>السعر</th><th>المدفوع</th><th>الشحن</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${rows.map((o,i)=>{const last=getLatestCollectEntry(o),paid=Number(o.deposit||0)+Number(last?.sales||0);return`<tr><td>${i+1}</td><td>${escapeHTML(getTicketId(o)||'—')}</td><td>${escapeHTML(o.customer_name||'')}</td><td>${escapeHTML(o.doctor_name||'—')}</td><td>${escapeHTML(pendingOrderBranch(o))}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(paid)}</td><td>${enMoney(Number(last?.shipping||0))}</td><td>${escapeHTML(getOrderDisplayStatus(o))}</td><td>${formatEnglishDateTime(getOrderAccountingDateISO(o))}</td></tr>`;}).join('')}</tbody></table>`;return`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>خزنة الفروع</title><style>body{font-family:Tahoma,Arial;padding:20px;color:#111}h1{text-align:center}.meta{text-align:center;margin:8px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.stat{border:1px solid #bbb;border-radius:8px;padding:12px;text-align:center}.stat b{display:block;font-size:20px;margin-top:5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:6px;text-align:center;font-size:11px}@media print{@page{size:A4 landscape;margin:8mm}}</style></head><body><h1>🏦 خزنة الفروع — ${escapeHTML(branch)}</h1><div class="meta">${f.from} → ${f.to}</div><div class="stats"><div class="stat">إجمالي مبيعات التوصيل<b>${enMoney(totals.totalSales)}</b></div><div class="stat">إجمالي مصروفات الشحنات<b>${enMoney(totals.shipping)}</b></div><div class="stat">مرتجع خلال 14 يوم<b>${enMoney(totals.return14)}</b></div><div class="stat">إجمالي إثبات الدفع<b>${enMoney(totals.transfers)}</b><small>السكرتارية: ${enMoney(totals.upfront)} | التحصيل من المندوب: ${enMoney(totals.collection)}</small></div><div class="stat">صافي الكاش<b>${enMoney(totals.net)}</b></div><div class="stat">عدد الأوردرات<b>${enNumber(totals.count)}</b></div></div>${details}</body></html>`;}
+function getBranchesTreasuryBranchBreakdown(financialRows) {
+  return PENDING_BRANCH_NAMES.map(branchName => {
+    const branchRows = financialRows.filter(order => pendingOrderBranch(order) === branchName);
+    const summary = calculateBranchesTreasury(branchRows);
+    return { branchName, ...summary };
+  });
+}
+
+function branchesTreasuryReportHTML(summaryOnly = false) {
+  const rows = getBranchesTreasuryVisibleOrders();
+  // الكروت المالية لا تتغير عند استعراض Returned أو إثبات الدفع؛ مصدرها دائمًا Signed لنفس الفترة والفرع.
+  const financialRows = getBranchesTreasuryVisibleOrders(true);
+  const totals = calculateBranchesTreasury(financialRows);
+  const branchBreakdown = getBranchesTreasuryBranchBreakdown(financialRows);
+  const f = getBranchesTreasuryFilters();
+  const branch = f.branch === 'الكل' ? 'كل الفروع' : f.branch;
+  const branchCards = branchBreakdown.map(item => `
+    <div class="branch-finance-card cash-card"><span>${escapeHTML(item.branchName)} — الكاش</span><b>${enMoney(item.cod)}</b><small>صافي بعد الشحن: ${enMoney(item.net)}</small></div>
+    <div class="branch-finance-card transfer-card"><span>${escapeHTML(item.branchName)} — التحويلات</span><b>${enMoney(item.transfers)}</b><small>السكرتارية: ${enMoney(item.upfront)} | التحصيل: ${enMoney(item.collection)}</small></div>`).join('');
+  const details = summaryOnly ? '' : `<table><thead><tr><th>#</th><th>Ticket ID</th><th>العميل</th><th>الدكتور</th><th>الفرع</th><th>السعر</th><th>المدفوع</th><th>الشحن</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${rows.map((o, i) => {
+    const last = getLatestCollectEntry(o), paid = Number(o.deposit || 0) + Number(last?.sales || 0);
+    return `<tr><td>${i + 1}</td><td>${escapeHTML(getTicketId(o) || '—')}</td><td>${escapeHTML(o.customer_name || '')}</td><td>${escapeHTML(o.doctor_name || '—')}</td><td>${escapeHTML(pendingOrderBranch(o))}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(paid)}</td><td>${enMoney(Number(last?.shipping || 0))}</td><td>${escapeHTML(getOrderDisplayStatus(o))}</td><td>${formatEnglishDateTime(getOrderAccountingDateISO(o))}</td></tr>`;
+  }).join('')}</tbody></table>`;
+  const audit = totals.hasBlockingErrors ? `<div class="audit">فرق مراجعة: ${enMoney(Math.abs(totals.reconciliationGap))} — ${totals.problemOrders.length} أوردر يحتاج مراجعة</div>` : '';
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>خزنة الفروع</title><style>
+    *{box-sizing:border-box}body{font-family:Tahoma,Arial;margin:0;padding:14px;color:#111;background:#fff}h1{text-align:center;margin:0 0 5px}.meta{text-align:center;margin:0 0 12px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px}.stat,.branch-finance-card{border:1px solid #bbb;border-radius:8px;padding:9px;text-align:center;break-inside:avoid}.stat b,.branch-finance-card b{display:block;font-size:18px;margin:4px 0}.stat small,.branch-finance-card small{display:block;font-size:9px}.branch-breakdown{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:0 0 12px}.cash-card{border-color:#10b981}.cash-card b{color:#059669}.transfer-card{border-color:#8b5cf6}.transfer-card b{color:#7c3aed}.audit{margin:10px 0;padding:8px;border:2px solid #dc2626;color:#dc2626;font-weight:900;text-align:center}table{width:100%;border-collapse:collapse;margin-top:0}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #bbb;padding:5px;text-align:center;font-size:10px}
+    @media print{@page{size:A4 landscape;margin:7mm}body{padding:0}.stats{gap:5px}.stat,.branch-finance-card{padding:6px}.branch-breakdown{gap:5px}th,td{font-size:8px;padding:3px}}
+  </style></head><body><h1>🏦 خزنة الفروع — ${escapeHTML(branch)}</h1><div class="meta">${f.from} → ${f.to}</div><div class="stats"><div class="stat">إجمالي مبيعات التوصيل<b>${enMoney(totals.totalSales)}</b></div><div class="stat">إجمالي مصروفات الشحنات<b>${enMoney(totals.shipping)}</b></div><div class="stat">إجمالي إثبات الدفع<b>${enMoney(totals.transfers)}</b><small>السكرتارية: ${enMoney(totals.upfront)} | التحصيل من المندوب: ${enMoney(totals.collection)}</small></div><div class="stat">COD النقدي<b>${enMoney(totals.cod)}</b></div><div class="stat">صافي الكاش<b>${enMoney(totals.net)}</b></div><div class="stat">عدد أوردرات Signed<b>${enNumber(totals.count)}</b></div></div><div class="branch-breakdown">${branchCards}</div>${audit}${details}</body></html>`;
+}
 function openBranchesTreasuryPrint(summary){const win=window.open('','_blank','width=1100,height=760');if(!win){alert('المتصفح منع نافذة الطباعة');return;}win.document.write(branchesTreasuryReportHTML(summary));win.document.close();win.onload=()=>{win.focus();win.print();};}
 function printBranchesTreasurySummary(){const status=document.getElementById('btStatusFilter'),previous=status?.value;if(status)status.value='الكل';openBranchesTreasuryPrint(true);if(status)status.value=previous||'Signed';}
 function printBranchesTreasuryReport(){openBranchesTreasuryPrint(false);}
@@ -12378,13 +12891,17 @@ function getKhaznaFilteredOrders() {
   const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
 
   return khaznaOrders.filter(o => {
-    const isPaymentProofFilter = statusFilter === 'PaymentProof';
-    if (!isPaymentProofFilter && o.status !== 'Signed' && !isReturnWithin14Days(o)) return false;
+    const isSpecialFinancialFilter = ['PaymentProof', 'SecretaryTransfers', 'CollectionTransfers'].includes(statusFilter);
+    if (!isSpecialFinancialFilter && o.status !== 'Signed') return false;
     
     // ✅ استخدام matchesOrderSearch بدلاً من البحث اليدوي
     const matchSearch = !search || matchesOrderSearch(o, search);
     
-    const matchStatus = matchesOrderStatusFilter(o, statusFilter);
+    const matchStatus = statusFilter === 'SecretaryTransfers'
+      ? getOrderUpfrontTransferTotal(o) > FINANCIAL_TOLERANCE
+      : statusFilter === 'CollectionTransfers'
+        ? getOrderCollectionTransferTotal(o) > FINANCIAL_TOLERANCE
+        : matchesOrderStatusFilter(o, statusFilter);
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
     
     return matchSearch && matchStatus && matchEmp;
