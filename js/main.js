@@ -2273,6 +2273,11 @@ function getOrderOutstandingBalance(order) {
   return Math.max(0, total - deposit - collectedAtDelivery);
 }
 
+// الرصيد المطلوب من المندوب قبل التحصيل؛ يظل منفصلاً عن Deposit في صفحات التشغيل.
+function getOrderPreCollectionBalance(order) {
+  return Math.max(0, getEffectiveOrderPrice(order) - Math.max(0, Number(order?.deposit || 0)));
+}
+
 function stripCollectMeta(notes) {
   return stripOrderMeta(String(notes || "").replace(COLLECT_META_REGEX, "").trim());
 }
@@ -4212,7 +4217,8 @@ async function printBranchKhaznaReportForCashier() {
         <td style="padding:4px;font-weight:700;direction:ltr;">${escapeHTML(getTicketId(o) || '—')}</td>
         <td style="padding:4px;font-size:10px;">${escapeHTML(o.product_names || '—')}</td>
         <td style="padding:4px;text-align:right;">${enMoney(getEffectiveOrderPrice(o))}</td>
-        <td style="padding:4px;text-align:right;">${enMoney(Number(o.deposit||0) + Number(getLatestCollectEntry(o)?.sales||0))}</td>
+        <td style="padding:4px;text-align:right;">${enMoney(Number(o.deposit||0))}</td>
+        <td style="padding:4px;text-align:right;">${enMoney(Number(getLatestCollectEntry(o)?.sales||0))}</td>
         <td style="padding:4px;text-align:center;"><span style="background:#e5e7eb;padding:2px 6px;border-radius:4px;font-size:10px;">${escapeHTML(o.status||'')}</span></td>
       </tr>`).join('');
 
@@ -4224,7 +4230,8 @@ async function printBranchKhaznaReportForCashier() {
       'Ticket ID': getTicketId(o) || '',
       'المنتجات': o.product_names || '',
       'السعر': getEffectiveOrderPrice(o),
-      'المدفوع': Number(o.deposit || 0),
+      'Deposit': Number(o.deposit || 0),
+      'التحصيل': Number(getLatestCollectEntry(o)?.sales || 0),
       'الحالة': o.status || ''
     }));
     const safeDownloadRowsJSON = JSON.stringify(downloadRows).replace(/</g, '\u003c');
@@ -4289,7 +4296,7 @@ async function printBranchKhaznaReportForCashier() {
       <div class="stat-box"><div class="label">عدد الأوردرات</div><div class="value" style="color:#f59e0b;">${enNumber(reportOrders.length)}</div></div>
     </div>
   <table>
-    <thead><tr><th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th><th>Ticket ID</th><th>المنتجات</th><th>السعر</th><th>المدفوع</th><th>الحالة</th></tr></thead>
+    <thead><tr><th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th><th>Ticket ID</th><th>المنتجات</th><th>السعر</th><th>Deposit</th><th>التحصيل</th><th>الحالة</th></tr></thead>
     <tbody>${orderRows}</tbody>
   </table>
   <div style="margin-top:20px;border-top:2px solid #000;padding-top:10px;font-weight:bold;font-size:15px;direction:ltr;text-align:right;">
@@ -4310,7 +4317,7 @@ async function printBranchKhaznaReportForCashier() {
     if (typeof XLSX === 'undefined') { alert('تعذر تحميل أداة Excel. تأكد من اتصال الإنترنت وحاول مرة أخرى.'); return; }
     const ws = XLSX.utils.json_to_sheet(reportRows);
     ws['!cols'] = [
-      {wch:6},{wch:24},{wch:16},{wch:22},{wch:14},{wch:70},{wch:12},{wch:12},{wch:12}
+      {wch:6},{wch:24},{wch:16},{wch:22},{wch:14},{wch:70},{wch:12},{wch:12},{wch:12},{wch:12}
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Report');
@@ -4342,7 +4349,7 @@ async function printBranchKhaznaReportForCashier() {
         orientation: 'landscape',
         compress: true
       },
-      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.stat-box'] }
+      pagebreak: { mode: ['css'], avoid: ['tr', '.stat-box'] }
     };
 
     html2pdf().set(options).from(element).save();
@@ -4805,6 +4812,14 @@ orderForm.addEventListener("submit", async (e) => {
   const qty        = Math.max(1, Number(document.getElementById("quantity")?.value || 1));
   const delivFee   = Number(document.getElementById("deliveryFee")?.value || 0);
   const totalPrice = Number(document.getElementById("price")?.value || 0);
+  if (depositValue < 0 || depositValue - totalPrice > FINANCIAL_TOLERANCE) {
+    alert(depositValue < 0
+      ? '❌ قيمة Deposit لا يمكن أن تكون سالبة.'
+      : `❌ لا يمكن أن يكون Deposit (${money(depositValue)}) أكبر من قيمة الأوردر (${money(totalPrice)}).`);
+    depositEl?.focus();
+    releaseDashboardSubmit();
+    return;
+  }
   if (!(isAdmin()&&dashboardEditingOrder) && !validateLowValueOrderReason(totalPrice, notesEl)) {
     releaseDashboardSubmit();
     return;
@@ -8709,9 +8724,9 @@ function getOrderDisplayStatus(order) {
 
 function matchesOrderStatusFilter(order, filterValue) {
   if (!filterValue || filterValue === 'الكل') return true;
-  if (filterValue === 'PaymentProof') return hasAnyOrderPaymentProof(order);
-  if (filterValue === 'SecretaryTransfers') return getOrderUpfrontTransferTotal(order) > FINANCIAL_TOLERANCE;
-  if (filterValue === 'CollectionTransfers') return getOrderCollectionTransferTotal(order) > FINANCIAL_TOLERANCE;
+  if (filterValue === 'PaymentProof') return order?.status === 'Signed' && hasAnyOrderPaymentProof(order);
+  if (filterValue === 'SecretaryTransfers') return order?.status === 'Signed' && getOrderUpfrontTransferTotal(order) > FINANCIAL_TOLERANCE;
+  if (filterValue === 'CollectionTransfers') return order?.status === 'Signed' && getOrderCollectionTransferTotal(order) > FINANCIAL_TOLERANCE;
   if (filterValue === 'Returned') return order?.status === 'Returned';
   return order?.status === filterValue;
 }
@@ -8842,7 +8857,7 @@ function renderBranchOrders() {
     else if (isFakeDoctorOrder(o) || isFakeDeliveryUpdateOrder(o)) statusClass = 'chip-fake';
     const price = getEffectiveOrderPrice(o);
     const deposit = Number(o.deposit || 0);
-    const remaining = getOrderOutstandingBalance(o);
+    const remaining = getOrderPreCollectionBalance(o);
     const paymentProofs = getPaymentProofsCellHtml(o, { allowAttachUpfront: true });
     html += `<tr class="${isPriorityOrder(o) ? 'order-priority-row' : ''}">
       <td><input type="checkbox" class="row-check branch-row-check" data-id="${o.id}" ${isSelected?'checked':''} onchange="toggleBranchOrderSelection(this,'${o.id}')"/></td>
@@ -9338,6 +9353,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const bQty       = Math.max(1, Number(document.getElementById('bQuantity')?.value || 1));
     const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
     const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
+    const branchDepositValue = Number(depEl?.value || 0);
+    if (branchDepositValue < 0 || branchDepositValue - bTotalPrice > FINANCIAL_TOLERANCE) {
+      alert(branchDepositValue < 0
+        ? '❌ قيمة Deposit لا يمكن أن تكون سالبة.'
+        : `❌ لا يمكن أن يكون Deposit (${money(branchDepositValue)}) أكبر من قيمة الأوردر (${money(bTotalPrice)}).`);
+      depEl?.focus();
+      releaseBranchSubmit();
+      return;
+    }
     if (!(isAdmin()&&editingOrder) && !validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
 
     const orderData = {
@@ -10033,7 +10057,7 @@ function getOrderCollectionProofUrl(order) {
 }
 
 function getOrderCollectionPaidAmount(order) {
-  return Math.max(0, Number(getLatestCollectEntry(order)?.sales || 0));
+  return getOrderCollectionTransferTotal(order);
 }
 
 function hasAnyOrderPaymentProof(order) {
@@ -10079,6 +10103,9 @@ function getOrderUpfrontTransferTotal(order) {
 function getOrderCollectionTransferTotal(order) {
   const last = getLatestCollectEntry(order);
   const method = String(last?.payment_method || '').trim().toLowerCase();
+  if (method === 'cashtransfer' || method === 'cash + transfer') {
+    return Math.max(0, Number(last?.transfer_amount || 0));
+  }
   return (method === 'instapay' || method === 'wallet')
     ? Math.max(0, Number(last?.sales || 0))
     : 0;
@@ -10092,6 +10119,9 @@ function getOrderCodCashTotal(order) {
   const last = getLatestCollectEntry(order);
   if (!last) return 0;
   const method = String(last?.payment_method || '').trim().toLowerCase();
+  if (method === 'cashtransfer' || method === 'cash + transfer') {
+    return Math.max(0, Number(last?.cash_amount || 0));
+  }
   return method === 'cod' ? Math.max(0, Number(last?.sales || 0)) : 0;
 }
 
@@ -10115,9 +10145,12 @@ function analyzeOrderFinancials(order) {
   const isTransferMethod = method === 'instapay' || method === 'wallet';
   const isCodMethod = method === 'cod';
   const isPrepaidMethod = method === 'prepaid';
+  const isCashTransferMethod = method === 'cashtransfer' || method === 'cash + transfer';
+  const cashAmount = isCashTransferMethod ? Math.max(0, Number(latest?.cash_amount || 0)) : 0;
+  const transferAmount = isCashTransferMethod ? Math.max(0, Number(latest?.transfer_amount || 0)) : 0;
   const secretaryTransfer = deposit > 0 && upfrontProof ? deposit : 0;
-  const collectionTransfer = isTransferMethod ? collected : 0;
-  const codCash = isCodMethod ? collected : 0;
+  const collectionTransfer = isCashTransferMethod ? transferAmount : (isTransferMethod ? collected : 0);
+  const codCash = isCashTransferMethod ? cashAmount : (isCodMethod ? collected : 0);
   const paidTotal = deposit + collected;
   const balance = price - paidTotal;
   const errors = [];
@@ -10136,7 +10169,12 @@ function analyzeOrderFinancials(order) {
     if (deposit > 0 && !upfrontProof) errors.push(`مدفوع سكرتارية ${enMoney(deposit)} بدون إثبات`);
     if (upfrontProof && deposit <= 0) errors.push('إثبات سكرتارية موجود والمبلغ صفر');
     if (isTransferMethod && collected > 0 && !collectionProof) errors.push('تحويل تحصيل بدون إثبات');
-    if (collectionProof && !isTransferMethod) warnings.push('إثبات تحصيل موجود وطريقة الدفع ليست تحويلًا');
+    if (isCashTransferMethod) {
+      if (cashAmount <= FINANCIAL_TOLERANCE || transferAmount <= FINANCIAL_TOLERANCE) errors.push('كاش + تحويل يحتاج مبلغًا أكبر من صفر لكل جزء');
+      if (Math.abs((cashAmount + transferAmount) - collected) > FINANCIAL_TOLERANCE) errors.push('مجموع الكاش والتحويل لا يساوي إجمالي التحصيل');
+      if (!collectionProof) errors.push('جزء التحويل في كاش + تحويل يحتاج إثبات دفع');
+    }
+    if (collectionProof && !isTransferMethod && !isCashTransferMethod) warnings.push('إثبات تحصيل موجود وطريقة الدفع ليست تحويلًا');
     if (isPrepaidMethod && collected > FINANCIAL_TOLERANCE) {
       const actor = String(latest?.by || '').trim();
       const at = latest?.at ? formatEnglishDateTime(latest.at) : '';
@@ -10145,12 +10183,12 @@ function analyzeOrderFinancials(order) {
     if (isPrepaidMethod && price - deposit > FINANCIAL_TOLERANCE) {
       errors.push(`Prepaid غير صحيح: المتبقي قبل التحصيل ${enMoney(price - deposit)}`);
     }
-    if (collected > 0 && !isCodMethod && !isTransferMethod && !isPrepaidMethod) errors.push('طريقة التحصيل غير محددة');
+    if (collected > 0 && !isCodMethod && !isTransferMethod && !isPrepaidMethod && !isCashTransferMethod) errors.push('طريقة التحصيل غير محددة');
     if (shipping > collected && collected > 0) warnings.push('مصروف الشحنة أكبر من المبلغ المحصّل');
   }
 
   return {
-    order, status, price, deposit, collected, shipping, method,
+    order, status, price, deposit, collected, shipping, method, cashAmount, transferAmount,
     secretaryTransfer, collectionTransfer, totalTransfers: secretaryTransfer + collectionTransfer,
     codCash, paidTotal, balance, errors, warnings,
     isBalanced: status !== 'Signed' || (errors.length === 0 && Math.abs(balance) <= FINANCIAL_TOLERANCE)
@@ -10337,8 +10375,10 @@ function renderKhaznaOrders() {
   visibleKhaznaOrders.forEach((o, i) => {
     const price = getEffectiveOrderPrice(o);
     const deposit = Number(o.deposit || 0);
-    const remaining = getOrderOutstandingBalance(o);
     const latestCollect = getLatestCollectEntry(o);
+    // إجمالي ما استلمه المندوب من العميل قبل خصم مصروف الشحنة،
+    // سواء كان COD أو تحويلًا أو كاش + تحويل.
+    const collectedFromCustomer = Math.max(0, Number(latestCollect?.sales || 0));
     const shippingExpense = Number(latestCollect?.shipping || 0);
     const financialAudit = getOrderFinancialAudit(o);
     const hasFinancialIssue = financialAudit.errors.length > 0 || financialAudit.warnings.length > 0;
@@ -10359,7 +10399,7 @@ function renderKhaznaOrders() {
       <td>${escapeHTML(o.doctor_name || '—')}</td>
       <td>${enMoney(price)}</td>
       <td>${deposit > 0 ? enMoney(deposit) : '—'}</td>
-      <td>${remaining > 0 ? enMoney(remaining) : '—'}</td>
+      <td>${collectedFromCustomer > 0 ? enMoney(collectedFromCustomer) : '—'}</td>
       <td>${getPaymentProofsCellHtml(o)}</td>
       <td>${enMoney(shippingExpense)}</td>
       <td><span class="chip ${statusClass}" style="font-size:10px;">${getOrderDisplayStatus(o)}</span></td>
@@ -10570,7 +10610,8 @@ function printKhaznaReport() {
       <td class="ticket-cell">${escapeHTML(o.order_number || '—')}</td>
       <td class="arabic-cell products-cell">${escapeHTML(o.product_names || '—')}</td>
       <td class="money-cell">${enMoney(getEffectiveOrderPrice(o))}</td>
-      <td class="money-cell">${enMoney(Number(o.deposit || 0) + Number(getLatestCollectEntry(o)?.sales || 0))}</td>
+      <td class="money-cell">${enMoney(Number(o.deposit || 0))}</td>
+      <td class="money-cell">${enMoney(Number(getLatestCollectEntry(o)?.sales || 0))}</td>
       <td class="status-cell"><span>${escapeHTML(getOrderDisplayStatus(o))}</span></td>
     </tr>`).join('');
 
@@ -10582,7 +10623,8 @@ function printKhaznaReport() {
     'رقم الأوردر': o.order_number || '',
     'المنتجات': o.product_names || '',
     'السعر': getEffectiveOrderPrice(o),
-    'المدفوع': Number(o.deposit || 0) + Number(getLatestCollectEntry(o)?.sales || 0),
+    'Deposit': Number(o.deposit || 0),
+    'التحصيل': Number(getLatestCollectEntry(o)?.sales || 0),
     'الحالة': getOrderDisplayStatus(o)
   }));
 
@@ -10804,7 +10846,8 @@ function printKhaznaReport() {
           <th>رقم الأوردر</th>
           <th>المنتجات</th>
           <th>السعر</th>
-          <th>المدفوع</th>
+          <th>Deposit</th>
+          <th>التحصيل</th>
           <th>الحالة</th>
         </tr>
       </thead>
@@ -10837,7 +10880,7 @@ function printKhaznaReport() {
     }
     const ws = XLSX.utils.json_to_sheet(reportRows);
     ws['!cols'] = [
-      {wch:6},{wch:24},{wch:16},{wch:22},{wch:14},{wch:70},{wch:12},{wch:12},{wch:12}
+      {wch:6},{wch:24},{wch:16},{wch:22},{wch:14},{wch:70},{wch:12},{wch:12},{wch:12},{wch:12}
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Report');
@@ -10874,7 +10917,7 @@ function printKhaznaReport() {
         orientation:'landscape',
         compress:true
       },
-      pagebreak:{mode:['css','legacy'],avoid:['tr','.stat-box']}
+      pagebreak:{mode:['css'],avoid:['tr','.stat-box']}
     };
 
     html2pdf().set(options).from(element).save();
@@ -10929,13 +10972,25 @@ function buildCollectionTimestamp(dateKey) {
 
 function selectCollectPaymentMethod(method) {
   _collectPaymentMethod = method || 'COD';
-  ['COD','Instapay','Wallet'].forEach(m => {
+  ['COD','Instapay','Wallet','CashTransfer'].forEach(m => {
     const el = document.getElementById('collectPay' + m);
     if (el) el.checked = (m === _collectPaymentMethod);
   });
   const proofWrap = document.getElementById('collectProofWrap');
+  const splitWrap = document.getElementById('collectSplitWrap');
   const proofHint = document.getElementById('collectProofHint');
-  const needsProof = _collectPaymentMethod === 'Instapay' || _collectPaymentMethod === 'Wallet';
+  const isCashTransfer = _collectPaymentMethod === 'CashTransfer';
+  const needsProof = _collectPaymentMethod === 'Instapay' || _collectPaymentMethod === 'Wallet' || isCashTransfer;
+  if (splitWrap) splitWrap.style.display = isCashTransfer ? 'block' : 'none';
+  if (isCashTransfer) {
+    const total = Math.max(0, Number(document.getElementById('collectSalesInput')?.value || _collectLockedSalesValue || 0));
+    const cashInput = document.getElementById('collectSplitCashInput');
+    const transferInput = document.getElementById('collectSplitTransferInput');
+    if (cashInput && transferInput && !cashInput.value && !transferInput.value) {
+      cashInput.value = '';
+      transferInput.value = total || '';
+    }
+  }
   if (proofWrap) proofWrap.style.display = needsProof ? 'block' : 'none';
   if (proofHint) {
     proofHint.textContent = needsProof
@@ -10960,6 +11015,12 @@ function validateCollectionDraft(order, values = {}) {
   const isTransfer = method === 'instapay' || method === 'wallet';
   const isCod = method === 'cod';
   const isPrepaid = method === 'prepaid';
+  const isCashTransfer = method === 'cashtransfer' || method === 'cash + transfer';
+  const cashAmountRaw = Number(values.cashAmount);
+  const transferAmountRaw = Number(values.transferAmount);
+  const cashAmount = Number.isFinite(cashAmountRaw) ? cashAmountRaw : 0;
+  const transferAmount = Number.isFinite(transferAmountRaw) ? transferAmountRaw : 0;
+  const transferMethod = String(values.transferMethod || '').trim().toLowerCase();
   const errors = [];
   const warnings = [];
 
@@ -10970,7 +11031,7 @@ function validateCollectionDraft(order, values = {}) {
   if (hasUpfrontProof && deposit <= 0) errors.push('إثبات السكرتارية موجود لكن مبلغ المدفوع صفر');
   if (sales < 0) errors.push('إجمالي مبيعات التوصيل لا يمكن أن يكون سالبًا');
   if (shipping < 0) errors.push('مصروف الشحنة لا يمكن أن يكون سالبًا');
-  if (!isCod && !isTransfer && !isPrepaid) errors.push('اختر طريقة تحصيل صحيحة');
+  if (!isCod && !isTransfer && !isPrepaid && !isCashTransfer) errors.push('اختر طريقة تحصيل صحيحة');
 
   if (isPrepaid) {
     if (expectedCollection > FINANCIAL_TOLERANCE) {
@@ -10987,11 +11048,23 @@ function validateCollectionDraft(order, values = {}) {
   }
 
   if (isTransfer && sales > 0 && !hasCollectionProof) errors.push('تحويل التحصيل يحتاج إثبات دفع خاص بالمندوب');
+  if (isCashTransfer) {
+    if (cashAmount <= FINANCIAL_TOLERANCE) errors.push('أدخل المبلغ النقدي في كاش + تحويل');
+    if (transferAmount <= FINANCIAL_TOLERANCE) errors.push('أدخل مبلغ التحويل في كاش + تحويل');
+    if (!['instapay', 'wallet'].includes(transferMethod)) errors.push('اختر طريقة التحويل في كاش + تحويل');
+    const splitDifference = sales - (cashAmount + transferAmount);
+    if (Math.abs(splitDifference) > FINANCIAL_TOLERANCE) {
+      errors.push(splitDifference > 0
+        ? `تقسيم الدفع ناقص ${enMoney(splitDifference)} — مجموع الكاش والتحويل يجب أن يساوي ${enMoney(sales)}`
+        : `تقسيم الدفع زائد ${enMoney(Math.abs(splitDifference))} — مجموع الكاش والتحويل يجب أن يساوي ${enMoney(sales)}`);
+    }
+    if (!hasCollectionProof) errors.push('جزء التحويل يحتاج إثبات دفع خاص بالمندوب');
+  }
   if (isCod && hasCollectionProof) warnings.push('يوجد إثبات تحويل محفوظ بينما الطريقة المختارة COD');
   if (shipping > sales && sales > 0) errors.push('مصروف الشحنة أكبر من إجمالي المبلغ المطلوب تحصيله');
   if (!isPrepaid && sales - shipping < -FINANCIAL_TOLERANCE) errors.push('صافي المحصّل من المندوب أصبح بالسالب');
 
-  return { price, deposit, sales, shipping, method, expectedCollection, errors, warnings };
+  return { price, deposit, sales, shipping, method, expectedCollection, cashAmount, transferAmount, transferMethod, errors, warnings };
 }
 
 function renderCollectionValidation(validation) {
@@ -11121,6 +11194,12 @@ async function openCollectModal(orderId, customerName, price, deposit, src) {
     collectSalesInput.style.opacity = isAdmin() ? '1' : '0.82';
   }
   document.getElementById('collectShippingInput').value = last ? Number(last.shipping || 0) : '';
+  const splitCashInput = document.getElementById('collectSplitCashInput');
+  const splitTransferInput = document.getElementById('collectSplitTransferInput');
+  const splitTransferMethod = document.getElementById('collectSplitTransferMethod');
+  if (splitCashInput) splitCashInput.value = last && String(last.payment_method || '').toLowerCase() === 'cashtransfer' ? Number(last.cash_amount || 0) : '';
+  if (splitTransferInput) splitTransferInput.value = last && String(last.payment_method || '').toLowerCase() === 'cashtransfer' ? Number(last.transfer_amount || 0) : '';
+  if (splitTransferMethod) splitTransferMethod.value = last?.transfer_method === 'Wallet' ? 'Wallet' : 'Instapay';
 
   const paidAmount = Math.max(Number(deposit || 0), 0);
   _collectIsFullyPrepaid = calculationPrice > 0 && paidAmount >= calculationPrice;
@@ -11180,6 +11259,7 @@ function closeCollectModal() {
   _collectPaymentMethod = 'COD';
   _collectExistingProof = '';
   _collectIsFullyPrepaid = false;
+  _collectLockedSalesValue = 0;
   const collectDateWrap = document.getElementById('collectDateAdminWrap');
   const collectDateInput = document.getElementById('collectDateInput');
   if (collectDateWrap) collectDateWrap.style.display = 'none';
@@ -11192,13 +11272,23 @@ function closeCollectModal() {
   if (upfrontProofInfo) { upfrontProofInfo.style.display = 'none'; upfrontProofInfo.innerHTML = ''; }
   const validationPanel = document.getElementById('collectValidationPanel');
   if (validationPanel) { validationPanel.style.display = 'none'; validationPanel.innerHTML = ''; }
+  const splitWrap = document.getElementById('collectSplitWrap');
+  const splitCashInput = document.getElementById('collectSplitCashInput');
+  const splitTransferInput = document.getElementById('collectSplitTransferInput');
+  if (splitWrap) splitWrap.style.display = 'none';
+  if (splitCashInput) splitCashInput.value = '';
+  if (splitTransferInput) splitTransferInput.value = '';
   clearCollectProof();
 }
 
 function calcCollect() {
   const sales    = parseFloat(document.getElementById('collectSalesInput').value)    || 0;
   const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
-  const net      = sales - shipping;
+  const cashAmount = _collectPaymentMethod === 'CashTransfer' ? (parseFloat(document.getElementById('collectSplitCashInput')?.value) || 0) : 0;
+  const transferAmount = _collectPaymentMethod === 'CashTransfer' ? (parseFloat(document.getElementById('collectSplitTransferInput')?.value) || 0) : 0;
+  const transferMethod = document.getElementById('collectSplitTransferMethod')?.value || 'Instapay';
+  const netBase = _collectPaymentMethod === 'CashTransfer' ? cashAmount : sales;
+  const net      = netBase - shipping;
   const order = _collectOrderId ? getOrderByIdAny(_collectOrderId) : null;
   const proofInput = document.getElementById('collectProofInput');
   const selectedProof = Boolean(proofInput?.files?.length);
@@ -11206,6 +11296,9 @@ function calcCollect() {
     sales,
     shipping,
     method: _collectIsFullyPrepaid ? 'Prepaid' : (_collectPaymentMethod || ''),
+    cashAmount,
+    transferAmount,
+    transferMethod,
     hasCollectionProof: selectedProof || Boolean(_collectExistingProof)
   }) : null;
   if (validation) renderCollectionValidation(validation);
@@ -11228,6 +11321,9 @@ function calcCollect() {
   const status = document.getElementById('cStatus');
   const netEl  = document.getElementById('cNet');
   const netLabel = document.getElementById('collectNetLabel');
+  if (netLabel) netLabel.textContent = _collectPaymentMethod === 'CashTransfer'
+    ? '💵 صافي الكاش بعد خصم الشحن'
+    : '💵 المبلغ المحصّل من المندوب';
 
   // Fully prepaid orders have no new courier collection. The only cash impact
   // is the shipping expense, so present it explicitly instead of a fake deficit.
@@ -11284,12 +11380,16 @@ async function confirmCollectOrder() {
     ? (parseFloat(document.getElementById('collectSalesInput').value) || 0)
     : Math.max(0, Number(_collectLockedSalesValue || 0));
   const shipping = parseFloat(document.getElementById('collectShippingInput').value) || 0;
-  const net      = sales - shipping;
+  const isCashTransfer = !_collectIsFullyPrepaid && _collectPaymentMethod === 'CashTransfer';
+  const cashAmount = isCashTransfer ? (parseFloat(document.getElementById('collectSplitCashInput')?.value) || 0) : 0;
+  const transferAmount = isCashTransfer ? (parseFloat(document.getElementById('collectSplitTransferInput')?.value) || 0) : 0;
+  const transferMethod = isCashTransfer ? (document.getElementById('collectSplitTransferMethod')?.value || 'Instapay') : '';
+  const net      = (isCashTransfer ? cashAmount : sales) - shipping;
   const isCleanFullyPrepaid = _collectIsFullyPrepaid && Math.abs(sales) <= FINANCIAL_TOLERANCE;
   const customerLabel = document.getElementById('collectCustomerLabel').textContent;
   const paymentMethod = _collectIsFullyPrepaid ? 'Prepaid' : (_collectPaymentMethod || 'COD');
   const proofInput = document.getElementById('collectProofInput');
-  const isCollectionTransfer = paymentMethod === 'Instapay' || paymentMethod === 'Wallet';
+  const isCollectionTransfer = paymentMethod === 'Instapay' || paymentMethod === 'Wallet' || paymentMethod === 'CashTransfer';
   const selectedProofFile = proofInput && proofInput.files && proofInput.files.length ? proofInput.files[0] : null;
   const proofFile = isCollectionTransfer ? selectedProofFile : null;
 
@@ -11315,6 +11415,9 @@ async function confirmCollectOrder() {
       sales,
       shipping,
       method: paymentMethod,
+      cashAmount,
+      transferAmount,
+      transferMethod,
       hasCollectionProof: Boolean(proofFile || _collectExistingProof)
     }) : { errors: ['تعذر تحميل بيانات الأوردر'], warnings: [] };
     renderCollectionValidation(collectionValidation);
@@ -11372,6 +11475,9 @@ async function confirmCollectOrder() {
           // نحفظ السعر الطبيعي قبل أي تحويل للصفر حتى يمكن استعادته عند إعادة التعديل.
           original_price: preservedOriginalPrice,
           payment_method: paymentMethod,
+          cash_amount: isCashTransfer ? cashAmount : undefined,
+          transfer_amount: isCashTransfer ? transferAmount : undefined,
+          transfer_method: isCashTransfer ? transferMethod : undefined,
           proof_url: isCollectionTransfer ? (_collectExistingProof || '') : ''
         }
       ]
@@ -11421,7 +11527,9 @@ async function confirmCollectOrder() {
 
     const collectionActivityDetails = isCleanFullyPrepaid
       ? `الأوردر مدفوع بالكامل مقدمًا | تحصيل جديد: 0 | مصروف الشحن المخصوم: ${money(shipping)} | أثر صافي الكاش: ${money(net)} | الطريقة: Prepaid | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`
-      : `إجمالي مبيعات التوصيل: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي المحصّل من المندوب: ${money(net)} | الطريقة: ${paymentMethod} | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`;
+      : isCashTransfer
+        ? `إجمالي مبيعات التوصيل: ${money(sales)} | كاش: ${money(cashAmount)} | تحويل: ${money(transferAmount)} | طريقة التحويل: ${transferMethod} | مصروف الشحن: ${money(shipping)} | صافي الكاش: ${money(net)} | الطريقة: كاش + تحويل | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`
+        : `إجمالي مبيعات التوصيل: ${money(sales)} | مصروف الشحن: ${money(shipping)} | الصافي المحصّل من المندوب: ${money(net)} | الطريقة: ${paymentMethod} | تاريخ التحصيل المحاسبي: ${selectedCollectDate} | مرة التحصيل: ${newCount}`;
     await logActivity('order_collected','تم تحصيل أوردر',collectionActivityDetails,getActivityOrderInfo(currentOrder));
     if (proofFile && proofUrl) {
       await logActivity('payment_proof_attached','تم إرفاق إثبات دفع أثناء التحصيل',`العميل: ${currentOrder?.customer_name || '—'} | طريقة الدفع: ${paymentMethod} | مرة التحصيل: ${newCount}`,getActivityOrderInfo(currentOrder));
@@ -11430,7 +11538,9 @@ async function confirmCollectOrder() {
     const finalNotice = newCount >= 2 ? '\n\nتم تسليم وتحصيل هذا الأوردر، لا يجوز التعديل على أوردر تم تسليمه.' : '';
     const successMessage = isCleanFullyPrepaid
       ? `✅ تم تأكيد الأوردر المدفوع بالكامل\n${customerLabel}\n\nالتحصيل الجديد من المندوب: 0 ج.م\nمصروف الشحن المخصوم: ${shipping.toLocaleString('ar-EG')} ج.م\nطريقة المعالجة: Prepaid\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`
-      : `✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي مبيعات التوصيل: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل من المندوب: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`;
+      : isCashTransfer
+        ? `✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي التحصيل: ${sales.toLocaleString('ar-EG')} ج.م\nكاش: ${cashAmount.toLocaleString('ar-EG')} ج.م\nتحويل ${transferMethod}: ${transferAmount.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي الكاش: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`
+        : `✅ تم تحصيل الأوردر بنجاح\n${customerLabel}\n\nإجمالي مبيعات التوصيل: ${sales.toLocaleString('ar-EG')} ج.م\nمصاريف الشحن: ${shipping.toLocaleString('ar-EG')} ج.م\nصافي المحصّل من المندوب: ${net.toLocaleString('ar-EG')} ج.م\n\n📌 تم تحويل حالة الأوردر إلى Signed${finalNotice}`;
     alert(successMessage);
     closeCollectModal();
 
@@ -11941,7 +12051,14 @@ function showCustomerOrderTimeline(orderId) {
   const events = [{ at: order.created_at, title: 'تم إنشاء الأوردر', details: `الحالة: ${order.status || '—'} | الإجمالي: ${money(getEffectiveOrderPrice(order))}`, icon: '＋' }];
   customerProfileActivities.filter(item => String(item.ticket_id || '') === String(ticket || '')).forEach(item => events.push({ at: item.created_at, title: item.action_title || activityTypeLabel(item.action_type), details: `${item.action_details || ''}${item.user_name ? ` | بواسطة: ${item.user_name}` : ''}`, icon: activityIcon(item.action_type) }));
   const collectHistory = getCollectMeta(order).history || [];
-  collectHistory.forEach((entry, index) => events.push({ at: entry.at, title: `تحصيل الأوردر — المرة ${index + 1}`, details: `الطريقة: ${entry.payment_method || '—'} | التحصيل: ${money(entry.sales)} | الشحن: ${money(entry.shipping)} | الصافي: ${money(entry.net)}`, icon: '💰' }));
+  collectHistory.forEach((entry, index) => {
+    const isCashTransfer = String(entry.payment_method || '').toLowerCase() === 'cashtransfer';
+    const methodLabel = isCashTransfer ? 'كاش + تحويل' : (entry.payment_method || '—');
+    const splitDetails = isCashTransfer
+      ? ` | كاش: ${money(entry.cash_amount)} | تحويل ${entry.transfer_method || '—'}: ${money(entry.transfer_amount)}`
+      : '';
+    events.push({ at: entry.at, title: `تحصيل الأوردر — المرة ${index + 1}`, details: `الطريقة: ${methodLabel} | التحصيل: ${money(entry.sales)}${splitDetails} | الشحن: ${money(entry.shipping)} | الصافي: ${money(entry.net)}`, icon: '💰' });
+  });
   events.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
   target.innerHTML = `<div class="customer-profile-section-title"><div><h3>Timeline — Ticket ${escapeHTML(ticket || '—')}</h3><p>${escapeHTML(order.customer_name || '')}</p></div><button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button></div><div class="customer-timeline-list">${events.map(event => `<div class="customer-timeline-event"><i>${event.icon}</i><div><strong>${escapeHTML(event.title || 'Activity')}</strong><span>${escapeHTML(event.details || '—')}</span></div><time>${formatEnglishDateTime(event.at)}</time></div>`).join('')}</div>`;
   target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -12500,6 +12617,27 @@ function generateCode128BarcodeSVG(value) {
 // ✅ استبدل دالة generateReceiptHTML الموجودة بهذه النسخة المحدثة
 // التي تستخدم SVG بدلاً من النص العادي للباركود
 
+function getReceiptCollectionConfirmation(order) {
+  const latest = getLatestCollectEntry(order);
+  if (!latest || String(order?.status || '').trim() !== 'Signed') return '';
+  const actor = escapeHTML(latest.by || 'مستخدم غير محدد');
+  const method = String(latest.payment_method || '').trim().toLowerCase();
+  const sales = Math.max(0, Number(latest.sales || 0));
+  let paymentText = '';
+  if (method === 'cashtransfer' || method === 'cash + transfer') {
+    paymentText = `${enMoney(Math.max(0, Number(latest.cash_amount || 0)))} كاش + ${enMoney(Math.max(0, Number(latest.transfer_amount || 0)))} تحويل`;
+  } else if (method === 'instapay' || method === 'wallet') {
+    paymentText = `${enMoney(sales)} تحويل`;
+  } else if (method === 'cod') {
+    paymentText = `${enMoney(sales)} كاش`;
+  } else if (method === 'prepaid') {
+    paymentText = `Prepaid — Deposit ${enMoney(Math.max(0, Number(order?.deposit || 0)))}`;
+  } else {
+    paymentText = `${enMoney(sales)} ${escapeHTML(latest.payment_method || 'تحصيل')}`;
+  }
+  return `<div style="margin:4px 3px 0;color:#000;font-size:10px;font-weight:800;text-align:right;line-height:1.45;">(تم تحصيل الأوردر بواسطة ${actor} — ${paymentText})</div>`;
+}
+
 // 👇 دي النسخة المحدثة - استبدليها بالدالة القديمة
 function generateReceiptHTML(order, branchName) {
   const qty       = Number(order.quantity || 1);
@@ -12519,6 +12657,7 @@ function generateReceiptHTML(order, branchName) {
   const ticketId  = getTicketId(order);
   const barcode1  = getOrderBarcode(order);
   const editCount = getOrderEditCount(order);
+  const collectionConfirmation = getReceiptCollectionConfirmation(order);
   
   // ✅ توليد باركود SVG
   const barcodeSvg = generateCode128BarcodeSVG(barcode1);
@@ -12641,16 +12780,12 @@ function generateReceiptHTML(order, branchName) {
       <td class="label">خصم</td>
       <td class="value">${discount}.00</td>
     </tr>
-    <tr>
-      <td class="label">خدمة التوصيل</td>
-      <td class="value">${delivFee > 0 ? enMoney(delivFee) + '.00' : '0.00'}</td>
-    </tr>
     <tr style="border-top:1px solid #000;">
       <td class="label bold" style="font-size:13px;">الإجمالي</td>
       <td class="value bold" style="font-size:13px;">${enMoney(price)}.00</td>
     </tr>
     <tr>
-      <td class="label">المدفوع</td>
+      <td class="label">Deposit</td>
       <td class="value">${deposit > 0 ? enMoney(deposit) + '.00' : '0.00'}</td>
     </tr>
     <tr style="background:#f0f0f0;">
@@ -12658,6 +12793,7 @@ function generateReceiptHTML(order, branchName) {
       <td class="value bold" ${isDeliveredReceipt ? 'style="color:#16a34a;font-size:14px;font-weight:900;"' : ''}>${isDeliveredReceipt ? 'تم التسليم' : (reopenedRemaining > 0 ? enMoney(reopenedRemaining) + '.00' : '0.00')}</td>
     </tr>
   </table>
+  ${collectionConfirmation}
 
   <div class="divider"></div>
 
@@ -12722,9 +12858,9 @@ function getBranchesTreasuryVisibleOrders(ignoreStatus = false) {
     const branch = pendingOrderBranch(order);
     if (filters.branch !== 'الكل' && branch !== filters.branch) return false;
     if (!ignoreStatus) {
-      if (filters.status === 'PaymentProof' && !hasAnyOrderPaymentProof(order)) return false;
-      if (filters.status === 'SecretaryTransfers' && getOrderUpfrontTransferTotal(order) <= FINANCIAL_TOLERANCE) return false;
-      if (filters.status === 'CollectionTransfers' && getOrderCollectionTransferTotal(order) <= FINANCIAL_TOLERANCE) return false;
+      if (filters.status === 'PaymentProof' && (order.status !== 'Signed' || !hasAnyOrderPaymentProof(order))) return false;
+      if (filters.status === 'SecretaryTransfers' && (order.status !== 'Signed' || getOrderUpfrontTransferTotal(order) <= FINANCIAL_TOLERANCE)) return false;
+      if (filters.status === 'CollectionTransfers' && (order.status !== 'Signed' || getOrderCollectionTransferTotal(order) <= FINANCIAL_TOLERANCE)) return false;
       if (!['الكل', 'PaymentProof', 'SecretaryTransfers', 'CollectionTransfers'].includes(filters.status) && order.status !== filters.status) return false;
     }
     if (filters.search) {
@@ -12818,12 +12954,12 @@ function renderBranchesTreasury() {
   const body = document.getElementById('btOrdersBody');
   if (!body) return;
   body.innerHTML = rows.length ? rows.map((order,index) => {
-    const last = getLatestCollectEntry(order), price=getEffectiveOrderPrice(order), paid=Math.max(0,Number(order.deposit||0)+Number(last?.sales||0));
+    const last = getLatestCollectEntry(order), price=getEffectiveOrderPrice(order), deposit=Math.max(0,Number(order.deposit||0)), collected=Math.max(0,Number(last?.sales||0));
     const statusClass=order.status==='Signed'?'chip-signed':'chip-returned';
     return `<tr><td><input class="bt-order-check" type="checkbox" data-id="${order.id}" ${branchesTreasurySelectedIds.has(String(order.id))?'checked':''} onchange="toggleBranchesTreasuryOrder('${order.id}',this.checked)"></td>
       <td>${index+1}</td><td><strong>${escapeHTML(getTicketId(order)||'—')}</strong></td>
       <td>${escapeHTML(order.customer_name||'')}</td><td>${escapeHTML(order.phone||'')}</td><td>${escapeHTML(order.doctor_name||'—')}</td><td>${escapeHTML(pendingOrderBranch(order)||'—')}</td>
-      <td>${enMoney(price)}</td><td>${paid?enMoney(paid):'—'}</td><td>${Math.max(0,price-paid)?enMoney(Math.max(0,price-paid)):'—'}</td><td>${getPaymentProofsCellHtml(order)}</td>
+      <td>${enMoney(price)}</td><td>${deposit?enMoney(deposit):'—'}</td><td>${collected?enMoney(collected):'—'}</td><td>${getPaymentProofsCellHtml(order)}</td>
       <td>${enMoney(Number(last?.shipping||0))}</td><td><span class="chip ${statusClass}">${escapeHTML(getOrderDisplayStatus(order))}</span></td><td>${formatEnglishDateTime(getOrderAccountingDateISO(order))}</td>
       <td><div style="display:flex;gap:6px;align-items:center;"><button class="operation-manager-report-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">Ticket ID</button><button type="button" onclick="printBranchesTreasuryOrder('${order.id}')" class="operation-manager-report-btn">🖨️ طباعة</button></div></td></tr>`;
   }).join('') : '<tr><td colspan="15" class="empty">لا توجد أوردرات مطابقة للفلاتر</td></tr>';
@@ -12871,9 +13007,9 @@ function branchesTreasuryReportHTML(summaryOnly = false) {
   const branchCards = branchBreakdown.map(item => `
     <div class="branch-finance-card cash-card"><span>${escapeHTML(item.branchName)} — الكاش</span><b>${enMoney(item.cod)}</b><small>صافي بعد الشحن: ${enMoney(item.net)}</small></div>
     <div class="branch-finance-card transfer-card"><span>${escapeHTML(item.branchName)} — التحويلات</span><b>${enMoney(item.transfers)}</b><small>السكرتارية: ${enMoney(item.upfront)} | التحصيل: ${enMoney(item.collection)}</small></div>`).join('');
-  const details = summaryOnly ? '' : `<table><thead><tr><th>#</th><th>Ticket ID</th><th>العميل</th><th>الدكتور</th><th>الفرع</th><th>السعر</th><th>المدفوع</th><th>الشحن</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${rows.map((o, i) => {
-    const last = getLatestCollectEntry(o), paid = Number(o.deposit || 0) + Number(last?.sales || 0);
-    return `<tr><td>${i + 1}</td><td>${escapeHTML(getTicketId(o) || '—')}</td><td>${escapeHTML(o.customer_name || '')}</td><td>${escapeHTML(o.doctor_name || '—')}</td><td>${escapeHTML(pendingOrderBranch(o))}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(paid)}</td><td>${enMoney(Number(last?.shipping || 0))}</td><td>${escapeHTML(getOrderDisplayStatus(o))}</td><td>${formatEnglishDateTime(getOrderAccountingDateISO(o))}</td></tr>`;
+  const details = summaryOnly ? '' : `<table><thead><tr><th>#</th><th>Ticket ID</th><th>العميل</th><th>الدكتور</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th>التحصيل</th><th>الشحن</th><th>الحالة</th><th>التاريخ</th></tr></thead><tbody>${rows.map((o, i) => {
+    const last = getLatestCollectEntry(o), deposit = Number(o.deposit || 0), collected = Number(last?.sales || 0);
+    return `<tr><td>${i + 1}</td><td>${escapeHTML(getTicketId(o) || '—')}</td><td>${escapeHTML(o.customer_name || '')}</td><td>${escapeHTML(o.doctor_name || '—')}</td><td>${escapeHTML(pendingOrderBranch(o))}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(deposit)}</td><td>${enMoney(collected)}</td><td>${enMoney(Number(last?.shipping || 0))}</td><td>${escapeHTML(getOrderDisplayStatus(o))}</td><td>${formatEnglishDateTime(getOrderAccountingDateISO(o))}</td></tr>`;
   }).join('')}</tbody></table>`;
   const audit = totals.hasBlockingErrors ? `<div class="audit">فرق مراجعة: ${enMoney(Math.abs(totals.reconciliationGap))} — ${totals.problemOrders.length} أوردر يحتاج مراجعة</div>` : '';
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>خزنة الفروع</title><style>
