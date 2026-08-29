@@ -2326,3 +2326,105 @@ body.customer-profile-open{overflow:hidden}
 .user-last-seen.is-offline{color:#fca5a5}.user-last-seen.is-offline i{background:#ef4444;box-shadow:0 0 5px #ef4444,0 0 10px rgba(239,68,68,.68)}
 .user-last-seen.has-last-seen{color:#facc15}.user-last-seen.has-last-seen i{background:#eab308;box-shadow:0 0 5px #eab308,0 0 10px rgba(234,179,8,.68)}
 .branches-treasury-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:16px}.branches-treasury-stats .card{text-align:center;display:grid;gap:6px;align-content:center;min-height:112px;border:1px solid rgba(45,212,191,.24)}.branches-treasury-stats small{color:var(--text-muted);font-weight:800}.branches-treasury-stats strong{font-size:23px;color:#2dd4bf}.branches-treasury-stats span{font-size:10px;color:var(--text-muted)}.branches-treasury-stats span b{color:#c084fc}@media(max-width:700px){.branches-treasury-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#branchesTreasuryPage .toolbar>*{width:100%;max-width:none}}
+
+/* ===== Financial Audit monitor ===== */
+.financial-audit-btn{min-height:40px;padding:8px 14px;border:1px solid rgba(239,68,68,.55);border-radius:9px;background:linear-gradient(135deg,rgba(127,29,29,.96),rgba(15,23,42,.96));color:#fff;font-size:12px;font-weight:900;cursor:pointer;box-shadow:0 0 16px rgba(239,68,68,.18)}
+.financial-audit-modal{display:none;position:fixed;inset:0;z-index:12000;padding:18px;background:rgba(2,6,23,.86);backdrop-filter:blur(7px);align-items:center;justify-content:center}
+.financial-audit-modal.open{display:flex}.financial-audit-panel{width:min(1280px,98vw);max-height:94vh;overflow:auto;border:1px solid rgba(34,211,238,.34);border-radius:17px;background:var(--bg-card);box-shadow:0 24px 80px rgba(0,0,0,.5);padding:16px}
+.financial-audit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border-color);padding-bottom:12px}.financial-audit-head h2{margin:0;color:var(--text-primary);font-size:19px}.financial-audit-head p{margin:5px 0 0;color:var(--text-muted);font-size:11px}.financial-audit-head>button{border:1px solid var(--border-color);border-radius:9px;background:var(--bg-soft);color:var(--text-primary);width:36px;height:36px;cursor:pointer}
+.financial-audit-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:9px;margin:14px 0}.financial-audit-metric{border:1px solid var(--border-color);border-radius:11px;background:var(--bg-soft);padding:10px;text-align:center}.financial-audit-metric span{display:block;color:var(--text-muted);font-size:9px;font-weight:800}.financial-audit-metric b{display:block;margin-top:5px;color:var(--text-primary);font-size:17px}.financial-audit-verdict{padding:10px 13px;border-radius:10px;font-size:12px;font-weight:900}.financial-audit-verdict.ok{border:1px solid rgba(16,185,129,.45);background:rgba(16,185,129,.1);color:#34d399}.financial-audit-verdict.bad{border:1px solid rgba(239,68,68,.5);background:rgba(239,68,68,.11);color:#f87171}.financial-audit-tools{display:flex;gap:8px;flex-wrap:wrap;margin:11px 0}.financial-audit-table-wrap{max-height:48vh}.financial-audit-table-wrap table{min-width:1060px}.financial-audit-table-wrap th,.financial-audit-table-wrap td{font-size:10px}.audit-severity{display:inline-flex;padding:4px 8px;border-radius:999px;font-weight:900}.audit-severity.error{color:#fecaca;background:rgba(220,38,38,.28)}.audit-severity.warning{color:#fde68a;background:rgba(245,158,11,.22)}.financial-audit-row-error{background:rgba(239,68,68,.055)}.financial-audit-row-warning{background:rgba(245,158,11,.045)}
+@media(max-width:850px){.financial-audit-modal{padding:5px}.financial-audit-panel{width:100%;max-height:98vh;padding:10px}.financial-audit-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Aggregate treasury: same compact single-toolbar rhythm used by each branch treasury. */
+.branches-treasury-header-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.branches-treasury-toolbar{
+  margin-bottom:0;
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:end;
+  gap:8px;
+  width:100%;
+}
+.branches-treasury-toolbar .date-filter-group{
+  flex:0 0 170px;
+  min-width:170px;
+  width:170px;
+  box-sizing:border-box;
+  overflow:hidden;
+}
+.branches-treasury-toolbar .date-filter-group input[type="date"]{
+  flex:1 1 auto;
+  width:120px !important;
+  min-width:120px;
+  max-width:120px;
+  box-sizing:border-box;
+}
+.branches-treasury-toolbar .date-filter-group input,
+.branches-treasury-toolbar .bt-compact-select{
+  min-height:40px;
+  padding:8px 12px;
+  font-size:13px;
+  background:var(--bg-card);
+  border:1px solid var(--border-color);
+  border-radius:8px;
+  color:var(--text-primary);
+}
+.branches-treasury-toolbar .bt-compact-select{
+  flex:0 0 125px;
+  width:125px;
+  min-width:125px;
+  max-width:125px;
+}
+.branches-treasury-toolbar .bt-treasury-search{
+  flex:1 1 205px;
+  width:auto;
+  min-width:175px;
+  max-width:260px;
+  min-height:40px;
+  padding:8px 12px;
+  font-size:13px;
+}
+
+/* User name owns the My Account menu. */
+.user-account-trigger{position:relative;cursor:pointer;user-select:none;padding-inline-end:9px}
+.user-account-trigger:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}
+.user-account-arrow{font-size:10px;color:var(--text-muted);transition:transform .18s ease}
+.user-account-trigger[aria-expanded="true"] .user-account-arrow{transform:rotate(180deg)}
+.user-account-menu{display:none;position:absolute;z-index:12000;top:calc(100% + 8px);right:0;min-width:155px;padding:6px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 14px 35px rgba(0,0,0,.34)}
+.user-account-menu.open{display:block}
+.user-account-menu button{width:100%;border:0;border-radius:7px;background:transparent;color:var(--text-primary);padding:10px 12px;text-align:start;font:inherit;font-weight:800;cursor:pointer}
+.user-account-menu button:hover{background:var(--bg-soft);transform:translateY(-1px)}
+.secretary-audit-header-btn{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:7px 12px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-soft);color:var(--text-primary);font-size:11px;font-weight:900;cursor:pointer;white-space:nowrap;transition:.18s ease}
+.secretary-audit-header-btn:hover{transform:translateY(-1px);border-color:#22d3ee;background:rgba(34,211,238,.08)}
+.secretary-audit-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
+.secretary-audit-notification{position:absolute;top:-9px;left:-11px;display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border:2px solid var(--bg-card);border-radius:999px;background:#ef4444;color:#fff;font:900 9px/1 Inter,Arial,sans-serif;box-shadow:0 0 11px rgba(239,68,68,.85);z-index:2}
+.secretary-audit-notification.hidden{display:none!important}
+.secretary-audit-filters{align-items:flex-end}
+.secretary-audit-filters .date-filter-group{min-width:165px}
+.secretary-audit-action-btn{min-height:40px;padding:8px 18px;white-space:nowrap}
+.branches-treasury-toolbar button{
+  min-height:40px;
+  padding:8px 11px !important;
+  font-size:11px;
+  white-space:nowrap;
+}
+@media (max-width:1180px){
+  .branches-treasury-toolbar{flex-wrap:wrap}
+  .branches-treasury-toolbar .bt-treasury-search{flex:1 1 230px;max-width:none}
+}
+@media (max-width:700px){
+  .branches-treasury-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .branches-treasury-toolbar .date-filter-group,
+  .branches-treasury-toolbar .bt-compact-select{
+    width:100%;
+    min-width:0;
+    max-width:none;
+  }
+  .branches-treasury-toolbar .date-filter-group input[type="date"]{width:100% !important;min-width:0;max-width:none}
+  .branches-treasury-toolbar .bt-treasury-search{
+    grid-column:1/-1;
+    width:100%;
+    min-width:0;
+  }
+  .secretary-audit-action-btn{flex:1 1 calc(50% - 4px)}
+  .branches-treasury-header-actions{width:100%}
+}
