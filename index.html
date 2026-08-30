@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260830-branch-delivery-fee-v68">
+  <link rel="stylesheet" href="css/style.css?v=20260831-secretary-audit-v72-reset-header">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -1743,15 +1743,8 @@
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">إجمالي مصروفات الشحنات</p>
 <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
 <strong id="kShippingCost" style="font-size:24px;color:#ef4444;">0</strong>
-<button id="kShippingCostEditBtn" onclick="editShippingCost()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:14px;" title="تعديل">✏️</button>
 </div>
-<div id="kShippingCostEdit" style="display:none;margin-top:8px;">
-<input id="kShippingCostInput" placeholder="أدخل المصروف..." style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-input);color:var(--text-main);font-size:14px;text-align:center;" type="number"/>
-<div style="display:flex;gap:6px;margin-top:6px;justify-content:center;">
-<button onclick="saveShippingCost()" style="padding:5px 14px;border-radius:6px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:12px;">حفظ</button>
-<button onclick="cancelShippingCost()" style="padding:5px 14px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:12px;">إلغاء</button>
-</div>
-</div>
+<p style="margin:4px 0 0;font-size:10px;color:var(--text-muted);">يُحسب تلقائيًا من مصروف كل شحنة</p>
 </div>
 <div class="card" style="text-align:center;border:1px solid rgba(168,85,247,0.3);">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">إجمالي إثبات الدفع</p>
@@ -1813,28 +1806,31 @@
   </div>
 </div>
 
-<div id="secretaryAuditModal" class="financial-audit-modal" role="dialog" aria-modal="true" aria-labelledby="secretaryAuditTitle">
-  <div class="financial-audit-panel">
+<section id="secretaryAuditPage" class="page hidden secretary-audit-page" aria-labelledby="secretaryAuditTitle">
+  <div class="secretary-audit-page-panel">
     <div class="financial-audit-head">
       <div><h2 id="secretaryAuditTitle">🛡️ Secretary Audit — مراجعة أخطاء إدخال الأوردرات</h2><p id="secretaryAuditMeta"></p></div>
-      <button type="button" onclick="closeSecretaryAudit()" aria-label="إغلاق">✕</button>
+      <div class="secretary-audit-head-actions">
+        <button type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
+        <button type="button" onclick="closeSecretaryAudit()" aria-label="رجوع">← رجوع</button>
+      </div>
     </div>
     <div class="financial-audit-tools secretary-audit-filters">
       <div class="date-filter-group"><label>من</label><input id="secretaryAuditFrom" type="date"></div>
       <div class="date-filter-group"><label>إلى</label><input id="secretaryAuditTo" type="date"></div>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">Filter 🔍</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="toggleSecretaryAuditReport()">📊 Report</button>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAuditManagementReport()">📊 Report</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">↻ Refresh</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAudit()">⬇ Export Excel</button>
       <select id="secretaryAuditBranchFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="secretaryAuditEmployeeFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الموظفين</option></select>
       <select id="secretaryAuditSeverityFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الحالات</option><option value="warning">تنبيه</option><option value="error">خطأ</option><option value="resolved">تم التعديل</option></select>
     </div>
-    <div id="secretaryAuditReportPanel" class="secretary-audit-report-panel hidden"></div>
     <div id="secretaryAuditSummary" class="financial-audit-summary"></div>
     <div id="secretaryAuditVerdict" class="financial-audit-verdict"></div>
-    <div class="table-wrap financial-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th>المشكلة المكتشفة</th><th>الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
+    <div class="table-wrap financial-audit-table-wrap secretary-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th>المشكلة المكتشفة</th><th>التاريخ</th><th>الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
   </div>
-</div>
+</section>
 </main>
 </div>
 
@@ -2155,6 +2151,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260830-branch-delivery-fee-v68"></script>
+  <script src="js/main.js?v=20260831-secretary-audit-v72-reset-header"></script>
 </body>
 </html>

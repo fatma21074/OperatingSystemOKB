@@ -744,7 +744,10 @@ function parseOrderProductsForReports(order){
       }
     });
   }
-  if(!out.length && Number(order?.price||0)>0) out.push({name:'منتج غير محدد',price:Number(order.price||0),qty:Number(order.quantity||1)||1,total:Number(order.price||0)});
+  if(!out.length && getEffectiveOrderPrice(order)>0) {
+    const effectivePrice=getEffectiveOrderPrice(order);
+    out.push({name:'منتج غير محدد',price:effectivePrice,qty:Number(order.quantity||1)||1,total:effectivePrice});
+  }
   return out;
 }
 function normalizeProductReportBranch(value){
@@ -896,7 +899,7 @@ function updateProductReportKPIs(){
   if($('prReturnedProductName'))$('prReturnedProductName').textContent=ret?.name||'—'; if($('prReturnedProductRate'))$('prReturnedProductRate').textContent=`${num(ret?.qtyReturned||0)} قطعة`; if($('prReturnedProductQty'))$('prReturnedProductQty').textContent=`${Number(ret?.returnRate||0).toFixed(1)}% من حركة المنتج`;
   if($('prDeadStockValue'))$('prDeadStockValue').textContent=num(dead.length); if($('prDeadStockCount'))$('prDeadStockCount').textContent=`${num(dead.length)} منتج بدون حركة أكثر من 60 يوم`;
   const totalSold=(productReportRows._filteredOrders||[]).filter(o=>!['Returned','Cancel'].includes(String(o.status||''))).flatMap(parseOrderProductsForReports).reduce((s,p)=>s+Number(p.qty||0),0);
-  const totalRevenue=(productReportRows._filteredOrders||[]).filter(o=>!['Returned','Cancel'].includes(String(o.status||''))).reduce((s,o)=>s+Number(o.price||0),0);
+  const totalRevenue=(productReportRows._filteredOrders||[]).filter(o=>!['Returned','Cancel'].includes(String(o.status||''))).reduce((s,o)=>s+getEffectiveOrderPrice(o),0);
   if($('prTotalSold'))$('prTotalSold').textContent=num(totalSold); if($('prTotalRevenue'))$('prTotalRevenue').textContent=`إجمالي المبيعات: ${money(totalRevenue)}`;
   const filtered=productReportRows._filteredOrders||[]; const cancels=filtered.filter(o=>String(o.status||'')==='Cancel').length;
   if($('prCancelOrders'))$('prCancelOrders').textContent=num(cancels); if($('prAllTopName'))$('prAllTopName').textContent=top?.name||'—'; if($('prAllTopQty'))$('prAllTopQty').textContent=`${num(top?.qtySold||0)} قطعة`; if($('prAllReturnedName'))$('prAllReturnedName').textContent=ret?.name||'—'; if($('prAllReturnedQty'))$('prAllReturnedQty').textContent=`${num(ret?.qtyReturned||0)} قطعة`;
@@ -1538,7 +1541,7 @@ function currentPageStillAllowed() {
     ['pendingPage','pending'], ['okbStoresReportPage','stores_report'], ['branchesTreasuryPage','branches_treasury'], ['branchStockPage','branch_stock'],
     ['branchsPage','settings_page'], ['usersPage','users'],
     ['branchRankPage','daily_report'], ['doctorRankPage','doctor_rank_stores'],
-    ['activityLogPage','activity_log'], ['productReportsPage','product_reports'], ['chatPage','chat']
+    ['activityLogPage','activity_log'], ['productReportsPage','product_reports'], ['chatPage','chat'], ['secretaryAuditPage','secretary_audit']
   ];
   return checks.every(([pageId, feature]) =>
     document.getElementById(pageId)?.classList.contains('hidden') || hasRoleFeature(feature)
@@ -2175,7 +2178,7 @@ function setBranchStatusToDelivering() {
 }
 
 function canEditKhaznaShippingCost() {
-  return isAdmin();
+  return false;
 }
 
 function renderKhaznaShippingCostPermissionUI() {
@@ -3637,7 +3640,7 @@ async function exportOKBStoresReportExcel(){
 }
 
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "secretaryAuditPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
@@ -4917,6 +4920,14 @@ orderForm.addEventListener("submit", async (e) => {
       alert('تعذر فحص بيانات العميل. برجاء المحاولة مرة أخرى.');
       return;
     }
+  }
+
+  if (depositValue <= FINANCIAL_TOLERANCE && (imageFile || existingPaymentImage)) {
+    notifySecretaryBlockedDraft('dashboard',['إثبات دفع سكرتارية مرفق وقيمة Deposit تساوي صفر']);
+    alert('⚠️ برجاء إدخال قيمة الـ Deposit المدفوعة في السكرين');
+    depositEl?.focus();
+    releaseDashboardSubmit();
+    return;
   }
   
   if (depositValue > 0 && !imageFile && !existingPaymentImage && !(isAdmin()&&editId)) {
@@ -6729,7 +6740,7 @@ function exportData() {
       o.product_names || "",
       o.delivery_fee || 0,
       getOrderMeta(o).discount || 0,
-      o.price,
+      getEffectiveOrderPrice(o),
       o.deposit || 0,
       getOrderOutstandingBalance(o),
       o.status,
@@ -9592,6 +9603,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const branchPaymentInput = document.getElementById('bPaymentImage');
     const branchPaymentFile = branchPaymentInput?.files?.[0];
+    if (Number(orderData.deposit || 0) <= FINANCIAL_TOLERANCE && (branchPaymentFile || branchEditExistingPaymentImage)) {
+      notifySecretaryBlockedDraft('branch',['إثبات دفع سكرتارية مرفق وقيمة Deposit تساوي صفر']);
+      alert('⚠️ برجاء إدخال قيمة الـ Deposit المدفوعة في السكرين');
+      depEl?.focus();
+      releaseBranchSubmit();
+      return;
+    }
     if (Number(orderData.deposit || 0) > 0 && !branchPaymentFile && !branchEditExistingPaymentImage && !(isAdmin()&&editingOrder)) {
       notifySecretaryBlockedDraft('branch',[`Deposit ${money(orderData.deposit)} بدون إرفاق إثبات دفع`]);
       checkBranchDepositImageRequirement();
@@ -10205,31 +10223,10 @@ async function loadKhaznaData() {
 }
 
 async function loadKhaznaShippingOverride(from, to) {
+  // إجمالي مصروفات الشحنات مصدره الوحيد هو مصروف كل شحنة المسجل أثناء
+  // التحصيل. لا نحمّل أي تصحيح يدوي قديم حتى تظل الكروت والتقارير والقفل
+  // اليومي على نفس المصدر المحاسبي المركزي.
   khaznaShippingCost = null;
-  if (!from || !to || from !== to || !currentBranchName) return;
-  try {
-    const { data, error } = await supabaseClient
-      .from('activity_logs')
-      .select('action_details,created_at,action_date')
-      .eq('action_type', 'khazna_shipping_adjusted')
-      .eq('branch_name', currentBranchName)
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    for (const row of (data || [])) {
-      const text = String(row.action_details || '');
-      const marker = '[KHAZNA_SHIPPING_OVERRIDE]';
-      if (!text.startsWith(marker)) continue;
-      try {
-        const payload = JSON.parse(text.slice(marker.length));
-        if (String(payload.date || '') !== String(from)) continue;
-        khaznaShippingCost = payload.value === null ? null : Math.max(0, Number(payload.value || 0));
-        return;
-      } catch (_) {}
-    }
-  } catch (error) {
-    console.warn('تعذر تحميل تصحيح مصروفات الشحن:', error?.message || error);
-  }
 }
 
 function resetKhaznaFilter() {
@@ -10604,7 +10601,7 @@ function stopSecretaryAuditNotifications(){
 function scheduleSecretaryAuditLiveRefresh(){
   clearTimeout(secretaryAuditLiveRefreshTimer);
   secretaryAuditLiveRefreshTimer=setTimeout(async()=>{
-    if(document.getElementById('secretaryAuditModal')?.classList.contains('open')){await refreshSecretaryAudit(false);await markSecretaryAuditRead();}
+    if(!document.getElementById('secretaryAuditPage')?.classList.contains('hidden')){await refreshSecretaryAudit(false);await markSecretaryAuditRead();}
   },350);
 }
 function startSecretaryAuditNotifications(){
@@ -10614,7 +10611,7 @@ function startSecretaryAuditNotifications(){
   secretaryAuditRealtimeChannel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
     const action=String(payload?.new?.action_type||'');
     if(!SECRETARY_AUDIT_EVENT_ACTIONS.includes(action))return;
-    const open=document.getElementById('secretaryAuditModal')?.classList.contains('open');
+    const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
     if(open)scheduleSecretaryAuditLiveRefresh();
     else if(SECRETARY_AUDIT_ACTIONS.includes(action))updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
     else void refreshSecretaryAuditUnreadCount();
@@ -10665,7 +10662,7 @@ function buildSecretaryAuditFindings(rows) {
   const findings=[];
   (rows||[]).forEach(order=>{
     const audit=analyzeSecretaryOrderInput(order);
-    const add=(severity,issue)=>findings.push({severity,issue,order,ticket:getTicketId(order)||order.order_number||'—',branch:pendingOrderBranch(order)||order.branch||'—',actor:order.employee_name||'—'});
+    const add=(severity,issue)=>findings.push({severity,issue,order,ticket:getTicketId(order)||order.order_number||'—',branch:getSecretaryAuditOrderBranch(order)||order.branch||'—',actor:order.employee_name||'—',created_at:order.updated_at||order.created_at||order.date||''});
     audit.errors.forEach(issue=>add('error',issue));
     audit.warnings.forEach(issue=>add('warning',issue));
   });
@@ -10707,11 +10704,13 @@ async function loadSecretaryAuditRows() {
         const severity=event.action_type==='secretary_audit_resolved'?'resolved':event.action_type==='secretary_audit_warning'?'warning':'error';
         const ticket=getTicketId(order)||info.ticket_id||event.ticket_id||'—';
         const duplicate=findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
-        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:pendingOrderBranch(order)||order.branch||'—',actor:order.employee_name||event.user_name||'—',event_id:event.id});
+        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:getSecretaryAuditOrderBranch(order)||order.branch||'—',actor:order.employee_name||event.user_name||'—',event_id:event.id,created_at:event.created_at||order.updated_at||order.created_at||''});
       });
     });
   }
+  findings.sort((a,b)=>new Date(b.created_at||b.order?.updated_at||b.order?.created_at||0)-new Date(a.created_at||a.order?.updated_at||a.order?.created_at||0));
   secretaryAuditState={rows,findings,from,to};
+  populateSecretaryAuditEmployeeFilter();
 }
 
 async function openSecretaryAudit() {
@@ -10719,11 +10718,13 @@ async function openSecretaryAudit() {
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom'),to=document.getElementById('secretaryAuditTo');
   if(from)from.value=today;if(to)to.value=today;
-  document.getElementById('secretaryAuditModal')?.classList.add('open');
+  hideAllPages();
+  document.getElementById('secretaryAuditPage')?.classList.remove('hidden');
+  setActiveMenu('secretaryAuditPage');
   await refreshSecretaryAudit(false);
   await markSecretaryAuditRead();
 }
-function closeSecretaryAudit(){document.getElementById('secretaryAuditModal')?.classList.remove('open');}
+function closeSecretaryAudit(){showInitialPermittedPage();}
 async function refreshSecretaryAudit(markRead=true){
   let success=false;
   try{await loadSecretaryAuditRows();renderSecretaryAudit();success=true;}
@@ -10731,23 +10732,44 @@ async function refreshSecretaryAudit(markRead=true){
   if(markRead)await markSecretaryAuditRead();
   return success;
 }
+async function resetSecretaryAuditFilters(){
+  const today=getCairoDateISO(new Date());
+  const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'all'};
+  Object.entries(values).forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.value=value;});
+  ['secretaryAuditBranchFilter','secretaryAuditEmployeeFilter','secretaryAuditSeverityFilter'].forEach(id=>searchableOrderSelects.get(id)?.syncFromSelect());
+  await refreshSecretaryAudit();
+}
 function getFilteredSecretaryAuditFindings(){
   const severity=document.getElementById('secretaryAuditSeverityFilter')?.value||'all';
   const branch=document.getElementById('secretaryAuditBranchFilter')?.value||'all';
-  return secretaryAuditState.findings.filter(item=>(severity==='all'||item.severity===severity)&&(branch==='all'||String(item.branch||'').includes(branch)));
+  const employee=document.getElementById('secretaryAuditEmployeeFilter')?.value||'all';
+  return secretaryAuditState.findings.filter(item=>(severity==='all'||item.severity===severity)&&(branch==='all'||String(item.branch||'').includes(branch))&&(employee==='all'||String(item.actor||'')===employee));
 }
+function populateSecretaryAuditEmployeeFilter(){
+  const select=document.getElementById('secretaryAuditEmployeeFilter');if(!select)return;
+  const current=select.value||'all';
+  const names=[...new Set([...(Array.isArray(users)?users.map(user=>user?.name||user?.username):[]),...secretaryAuditState.rows.map(row=>row?.employee_name),...secretaryAuditState.findings.map(item=>item?.actor)].map(value=>String(value||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
+  select.innerHTML='<option value="all">كل الموظفين</option>'+names.map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join('');
+  select.value=names.includes(current)?current:'all';
+  searchableOrderSelects.get('secretaryAuditEmployeeFilter')?.syncFromSelect();
+}
+function getSecretaryAuditOrderBranch(order){
+  const direct=pendingOrderBranch(order);if(direct)return direct;
+  return getBranchNameFromShippingCompany(order?.branch)||getBranchNameFromShippingCompany(order?.shipping_company)||'';
+}
+function getSecretaryAuditBranchOrders(){return secretaryAuditState.rows.filter(order=>PENDING_BRANCH_NAMES.includes(getSecretaryAuditOrderBranch(order)));}
 function getSecretaryAuditTopEmployee(findings){
   const ordersByActor={};findings.filter(x=>x.severity!=='resolved').forEach(x=>{const key=x.actor||'غير محدد';(ordersByActor[key]||(ordersByActor[key]=new Set())).add(String(x.order?.id||x.ticket||x.event_id||x.issue));});
   const top=Object.entries(ordersByActor).map(([name,set])=>[name,set.size]).sort((a,b)=>b[1]-a[1])[0];return top?{name:top[0],count:top[1]}:{name:'—',count:0};
 }
 function renderSecretaryAudit(){
   const state=secretaryAuditState,findings=getFilteredSecretaryAuditFindings(),errors=findings.filter(x=>x.severity==='error').length,warnings=findings.filter(x=>x.severity==='warning').length,resolved=findings.filter(x=>x.severity==='resolved').length,top=getSecretaryAuditTopEmployee(state.findings);
-  const meta=document.getElementById('secretaryAuditMeta');if(meta)meta.textContent=`${state.from} → ${state.to} | تم فحص ${state.rows.length} أوردر | ${formatEnglishDateTime(new Date().toISOString())}`;
-  const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['الأوردرات المفحوصة',state.rows.length,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده أخطاء',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
+  const totalOrders=getSecretaryAuditBranchOrders().length;
+  const meta=document.getElementById('secretaryAuditMeta');if(meta)meta.textContent=`${state.from} → ${state.to} | ${totalOrders} أوردر في الفروع الأربعة | ${formatEnglishDateTime(new Date().toISOString())}`;
+  const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['Total Orders',totalOrders,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده أخطاء',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   const verdict=document.getElementById('secretaryAuditVerdict');if(verdict){verdict.className=`financial-audit-verdict ${errors?'bad':'ok'}`;verdict.textContent=errors?`❌ يوجد ${errors} خطأ إدخال يجب تصحيحه قبل خروج الأوردرات للفروع.`:`✅ لا توجد أخطاء إدخال مانعة${warnings?` — يوجد ${warnings} تنبيه للمراجعة`:''}.`;}
   const body=document.getElementById('secretaryAuditBody');if(!body)return;
-  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const openAction=o?.id?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${o.id}')">فتح الأوردر</button>`:'<span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>';const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="10" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
-  if(!document.getElementById('secretaryAuditReportPanel')?.classList.contains('hidden'))renderSecretaryAuditReport();
+  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const openAction=o?.id?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${o.id}')">فتح الأوردر</button>`:'<span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>';const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="11" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
 }
 async function toggleSecretaryAuditReport(){
   const panel=document.getElementById('secretaryAuditReportPanel');if(!panel)return;
@@ -10786,7 +10808,7 @@ async function exportSecretaryAudit(){
   const affectedOrders=new Set(exportedFindings.map(item=>String(item.order?.id||item.ticket||''))).size;
   const overview=[
     ['Secretary Audit Report',`${state.from||'—'} → ${state.to||'—'}`],
-    ['Orders Checked',state.rows.length],
+    ['Total Orders',getSecretaryAuditBranchOrders().length],
     ['Orders With Issues',affectedOrders],
     ['Errors',errors],
     ['Warnings',warnings],
@@ -10805,6 +10827,58 @@ async function exportSecretaryAudit(){
   const safeFrom=state.from||'from',safeTo=state.to||'to';
   XLSX.writeFile(workbook,`Secretary-Audit-${safeFrom}_${safeTo}.xlsx`);
   try{logActivity('data_exported',`تم تصدير Secretary Audit للفترة ${safeFrom} → ${safeTo} | ${exportedFindings.length} نتيجة`);}catch(_){ }
+}
+
+function secretaryAuditDecision(errorRate){
+  if(errorRate<=2)return 'أداء ممتاز — استمرار ومتابعة دورية';
+  if(errorRate<=5)return 'أداء جيد — يحتاج تنبيه بسيط';
+  if(errorRate<=10)return 'يحتاج خطة تحسين ومتابعة أسبوعية';
+  return 'مراجعة إدارية عاجلة وتدريب إلزامي';
+}
+async function exportSecretaryAuditManagementReport(){
+  if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
+  if(typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة حاليًا. برجاء إعادة تحميل الصفحة والمحاولة مرة أخرى.');return;}
+  if(!await refreshSecretaryAudit(false))return;
+  const branchFilter=document.getElementById('secretaryAuditBranchFilter')?.value||'all';
+  const employeeFilter=document.getElementById('secretaryAuditEmployeeFilter')?.value||'all';
+  const severityFilter=document.getElementById('secretaryAuditSeverityFilter')?.value||'all';
+  const allOrders=getSecretaryAuditBranchOrders().filter(order=>(branchFilter==='all'||getSecretaryAuditOrderBranch(order)===branchFilter)&&(employeeFilter==='all'||String(order.employee_name||'')===employeeFilter));
+  const findings=secretaryAuditState.findings.filter(item=>PENDING_BRANCH_NAMES.includes(String(item.branch||''))&&(branchFilter==='all'||item.branch===branchFilter)&&(employeeFilter==='all'||String(item.actor||'')===employeeFilter)&&(severityFilter==='all'||item.severity===severityFilter));
+  const branches=branchFilter==='all'?PENDING_BRANCH_NAMES:[branchFilter];
+  const workbook=new ExcelJS.Workbook();workbook.creator='OKB CRM';workbook.created=new Date();
+  const headerFill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0F766E'}},subFill={type:'pattern',pattern:'solid',fgColor:{argb:'FFDBEAFE'}},white={argb:'FFFFFFFF'},red={argb:'FFDC2626'},green={argb:'FF059669'};
+  const styleSheet=(sheet)=>{sheet.eachRow((row,rowIndex)=>{row.height=rowIndex===1?28:22;row.eachCell({includeEmpty:true},cell=>{cell.font={name:'Calibri',size:11,bold:rowIndex===1,color:rowIndex===1?white:{argb:'FF111827'}};cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};cell.border={top:{style:'thin',color:{argb:'FFD1D5DB'}},bottom:{style:'thin',color:{argb:'FFD1D5DB'}},left:{style:'thin',color:{argb:'FFD1D5DB'}},right:{style:'thin',color:{argb:'FFD1D5DB'}}};if(rowIndex===1)cell.fill=headerFill;});});};
+  const uniqueIssueOrders=(list)=>new Set(list.map(item=>String(item.order?.id||item.ticket||item.event_id||''))).size;
+  const overview=workbook.addWorksheet('Overview');
+  overview.columns=[{width:28},{width:22},{width:22},{width:22},{width:22},{width:42}];
+  overview.addRow(['Secretary Audit Management Report',`${secretaryAuditState.from} → ${secretaryAuditState.to}`,'','','','']);overview.mergeCells('A1:F1');
+  overview.addRow(['Branch','Total Orders','Orders With Errors','Correct Orders','Error Rate','Management Decision']);
+  branches.forEach(branch=>{const branchOrders=allOrders.filter(order=>getSecretaryAuditOrderBranch(order)===branch),branchFindings=findings.filter(item=>item.branch===branch),errorOrders=uniqueIssueOrders(branchFindings),correct=Math.max(0,branchOrders.length-errorOrders),rate=branchOrders.length?errorOrders/branchOrders.length*100:0;overview.addRow([branch,branchOrders.length,errorOrders,correct,rate/100,secretaryAuditDecision(rate)]);overview.getCell(overview.rowCount,5).numFmt='0.0%';});
+  overview.addRow([]);overview.addRow(['Employee','Branch','Total Orders','Error Orders','Error Rate','Decision']);
+  const employeeKeys=[...new Set(allOrders.map(order=>`${getSecretaryAuditOrderBranch(order)}|||${String(order.employee_name||'غير محدد')}`))];
+  employeeKeys.forEach(key=>{const [branch,employee]=key.split('|||'),employeeOrders=allOrders.filter(order=>getSecretaryAuditOrderBranch(order)===branch&&String(order.employee_name||'غير محدد')===employee),employeeFindings=findings.filter(item=>item.branch===branch&&String(item.actor||'غير محدد')===employee),errorOrders=uniqueIssueOrders(employeeFindings),rate=employeeOrders.length?errorOrders/employeeOrders.length*100:0;overview.addRow([employee,branch,employeeOrders.length,errorOrders,rate/100,secretaryAuditDecision(rate)]);overview.getCell(overview.rowCount,5).numFmt='0.0%';});
+  overview.getRow(1).fill=headerFill;overview.getRow(1).font={name:'Calibri',size:14,bold:true,color:white};overview.getRow(2).fill=subFill;overview.getRow(2).font={name:'Calibri',size:11,bold:true};const employeeHeader=branches.length+4;overview.getRow(employeeHeader).fill=subFill;overview.getRow(employeeHeader).font={name:'Calibri',size:11,bold:true};styleSheet(overview);
+  branches.forEach(branch=>{
+    const sheet=workbook.addWorksheet(branch.slice(0,31));
+    sheet.columns=[{width:7},{width:14},{width:16},{width:24},{width:22},{width:22},{width:15},{width:15},{width:16},{width:16},{width:25},{width:52}];
+    const branchFindings=findings.filter(item=>item.branch===branch).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const branchOrders=allOrders.filter(order=>getSecretaryAuditOrderBranch(order)===branch);
+    sheet.addRow([`${branch} — Secretary Audit`,`${secretaryAuditState.from} → ${secretaryAuditState.to}`]);sheet.mergeCells('A1:L1');
+    sheet.addRow(['Employee','Total Orders','Error Orders','Correct Orders','Error Rate','Management Decision']);
+    const branchEmployees=[...new Set([...branchOrders.map(order=>String(order.employee_name||'غير محدد')),...branchFindings.map(item=>String(item.actor||'غير محدد'))])].sort((a,b)=>a.localeCompare(b,'ar'));
+    branchEmployees.forEach(employee=>{const employeeOrders=branchOrders.filter(order=>String(order.employee_name||'غير محدد')===employee),employeeFindings=branchFindings.filter(item=>String(item.actor||'غير محدد')===employee),errorOrders=uniqueIssueOrders(employeeFindings),correct=Math.max(0,employeeOrders.length-errorOrders),rate=employeeOrders.length?errorOrders/employeeOrders.length*100:0;const row=sheet.addRow([employee,employeeOrders.length,errorOrders,correct,rate/100,secretaryAuditDecision(rate)]);row.getCell(5).numFmt='0.0%';});
+    sheet.addRow([]);
+    const detailsHeaderRow=sheet.rowCount+1;
+    sheet.addRow(['#','Ticket ID','Order Number','Customer','Doctor','Employee','Severity','Status','Price','Deposit','Date & Time','Detected Issue']);
+    const detailsStartRow=sheet.rowCount+1;
+    branchFindings.forEach((item,index)=>{const order=item.order||{},label=item.severity==='error'?'Error':item.severity==='resolved'?'Resolved':'Warning';sheet.addRow([index+1,item.ticket||'',order.order_number||'',order.customer_name||'',order.doctor_name||'',item.actor||order.employee_name||'',label,order.status||'',Number(getEffectiveOrderPrice(order)||0),Number(order.deposit||0),formatEnglishDateTime(item.created_at||order.updated_at||order.created_at||''),item.issue||'']);});
+    if(!branchFindings.length)sheet.addRow(['','','','','','','','','','','','No findings for this branch']);
+    styleSheet(sheet);
+    [2,detailsHeaderRow].forEach(rowIndex=>{sheet.getRow(rowIndex).fill=subFill;sheet.getRow(rowIndex).font={name:'Calibri',size:11,bold:true,color:{argb:'FF111827'}};});
+    branchFindings.forEach((item,index)=>{sheet.getRow(detailsStartRow+index).getCell(7).font={name:'Calibri',size:11,bold:true,color:item.severity==='resolved'?green:red};});
+  });
+  const buffer=await workbook.xlsx.writeBuffer(),url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');link.href=url;link.download=`Secretary-Audit-Management-${secretaryAuditState.from}_${secretaryAuditState.to}.xlsx`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1200);
+  try{logActivity('data_exported',`تم تصدير تقرير Secretary Audit الإداري | ${secretaryAuditState.from} → ${secretaryAuditState.to}`);}catch(_){ }
 }
 async function openSecretaryAuditOrder(id){
   const order=secretaryAuditState.rows.find(row=>String(row.id)===String(id))||secretaryAuditState.findings.map(item=>item.order).find(row=>String(row?.id)===String(id));if(!order)return;
@@ -10844,7 +10918,7 @@ async function recordSecretaryAuditResolution(order,actor=currentUser){
   if(!latest.data?.length||latest.data[0].action_type==='secretary_audit_resolved')return false;
   const info={order_id:order.id,ticket_id:ticket,order_number:order.order_number||'',customer_name:order.customer_name||'',doctor_name:order.doctor_name||'',branch:pendingOrderBranch(order)||order.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order.deposit||0),status:order.status||'',issues:['تم تعديل الأوردر وتصحيح بياناته']};
   const saved=await logActivity('secretary_audit_resolved','Secretary Audit — تم تعديل الخطأ',JSON.stringify(info),{order_id:order.id,ticket_id:ticket,customer_name:info.customer_name,branch_name:info.branch});
-  if(saved&&document.getElementById('secretaryAuditModal')?.classList.contains('open'))scheduleSecretaryAuditLiveRefresh();
+  if(saved&&!document.getElementById('secretaryAuditPage')?.classList.contains('hidden'))scheduleSecretaryAuditLiveRefresh();
   return saved;
 }
 async function sendAutomatedAuditNotice(kind,order,issues,options={}){
@@ -10952,36 +11026,16 @@ function renderKhaznaStats() {
 }
 
 function editShippingCost() {
-  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن فقط'); return; }
-  if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
-  document.getElementById('kShippingCostEdit').style.display = 'block';
-  const displayedTotal = Number(String(document.getElementById('kShippingCost')?.textContent || '0').replace(/,/g, '')) || 0;
-  document.getElementById('kShippingCostInput').value = khaznaShippingCost ?? displayedTotal;
-  document.getElementById('kShippingCostInput').focus();
+  alert('إجمالي مصروفات الشحنات يُحسب تلقائيًا من الأوردرات ولا يمكن تعديله يدويًا.');
 }
 
 async function saveShippingCost() {
-  if (!canEditKhaznaShippingCost()) { alert('تعديل إجمالي مصروفات الشحنات متاح للأدمن فقط'); return; }
-  if (khaznaLockInfo) { alert('هذه اليومية مقفولة. يجب فتح القفل أولاً من الأدمن أو Account Manager.'); return; }
-  const input = document.getElementById('kShippingCostInput');
-  const selectedDate = getKhaznaSelectedDate();
-  if (!selectedDate) { alert('تعديل إجمالي المصروفات يحتاج اختيار يوم واحد فقط'); return; }
-  const raw = String(input?.value || '').trim();
-  const previousTotal = calculateFinancialSummary(getKhaznaFilteredOrders(), { shippingOverride: khaznaShippingCost }).shippingExpenses;
-  khaznaShippingCost = raw === '' ? null : Math.max(0, Number(raw || 0));
-  document.getElementById('kShippingCostEdit').style.display = 'none';
-  renderKhaznaStats();
-  const newTotal = calculateFinancialSummary(getKhaznaFilteredOrders(), { shippingOverride: khaznaShippingCost }).shippingExpenses;
-  await logActivity(
-    'khazna_shipping_adjusted',
-    'تم تصحيح إجمالي مصروفات الشحنات',
-    `[KHAZNA_SHIPPING_OVERRIDE]${JSON.stringify({ date:selectedDate, value:khaznaShippingCost, previous:previousTotal, newTotal })}`,
-    {branch_name:currentBranchName || null}
-  );
+  alert('إجمالي مصروفات الشحنات يُحسب تلقائيًا من الأوردرات ولا يمكن تعديله يدويًا.');
 }
 
 function cancelShippingCost() {
-  document.getElementById('kShippingCostEdit').style.display = 'none';
+  const editBox = document.getElementById('kShippingCostEdit');
+  if (editBox) editBox.style.display = 'none';
 }
 
 function renderKhaznaOrders() {
@@ -14142,6 +14196,9 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('filterStatus', 'ابحث باسم الحالة...');
   enhanceOrderSearchableSelect('filterShippingCompany', 'ابحث باسم شركة الشحن...');
   enhanceOrderSearchableSelect('filterDoctor', 'ابحث باسم الدكتور أو الكود...');
+  enhanceOrderSearchableSelect('secretaryAuditBranchFilter', 'ابحث باسم الفرع...');
+  enhanceOrderSearchableSelect('secretaryAuditEmployeeFilter', 'ابحث باسم الموظف...');
+  enhanceOrderSearchableSelect('secretaryAuditSeverityFilter', 'ابحث باسم الحالة...');
   enhanceOrderSearchableSelect('bFilterEmployee', 'ابحث باسم الموظف...');
   enhanceOrderSearchableSelect('bFilterStatus', 'ابحث باسم الحالة...');
   enhanceOrderSearchableSelect('bFilterDoctor', 'ابحث باسم الدكتور أو الكود...');
