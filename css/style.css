@@ -2401,6 +2401,15 @@ body.customer-profile-open{overflow:hidden}
 .secretary-audit-filters{align-items:flex-end}
 .secretary-audit-filters .date-filter-group{min-width:165px}
 .secretary-audit-action-btn{min-height:40px;padding:8px 18px;white-space:nowrap}
+.secretary-audit-select{min-width:145px;min-height:40px;padding:8px 11px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-card);color:var(--text-primary);font:800 11px Cairo,sans-serif}
+.audit-severity.resolved{color:#bbf7d0;background:rgba(16,185,129,.25)}
+.financial-audit-metric.secretary-audit-top-employee b{font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.financial-audit-row-resolved{background:rgba(16,185,129,.055)}
+.secretary-audit-report-panel{margin:12px 0;padding:13px;border:1px solid rgba(34,211,238,.28);border-radius:13px;background:var(--bg-soft)}
+.secretary-audit-report-panel.hidden{display:none!important}
+.secretary-audit-report-grid{display:grid;grid-template-columns:repeat(5,minmax(135px,1fr));gap:9px}
+.secretary-audit-report-card{padding:11px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card);text-align:center}.secretary-audit-report-card span{display:block;color:var(--text-muted);font-size:10px;font-weight:800}.secretary-audit-report-card strong{display:block;margin-top:6px;color:var(--text-primary);font-size:16px}.secretary-audit-branch-stats{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin-top:10px}.secretary-audit-branch-stats div{padding:9px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-card);text-align:center;font-size:11px;font-weight:900;color:var(--text-primary)}
+@media(max-width:900px){.secretary-audit-report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-branch-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-select{flex:1 1 145px}}
 .branches-treasury-toolbar button{
   min-height:40px;
   padding:8px 11px !important;

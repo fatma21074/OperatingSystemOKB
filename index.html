@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260829-discount-audit-refresh-v62">
+  <link rel="stylesheet" href="css/style.css?v=20260830-secretary-audit-cairo-date-v67">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -735,6 +735,7 @@
 </select>
 <select id="filterEmployee"></select>
 <select id="filterShippingCompany"><option value="الكل">كل شركات الشحن</option></select>
+<select id="filterDoctor"><option value="الكل">كل الدكاترة</option></select>
 <button class="success" id="exportBtn">⬇ Export</button>
 <button id="importBtn" onclick="openImportModal()">📥 Import Excel</button>
 </div>
@@ -1572,6 +1573,7 @@
 <option value="CollectionTransfers">تحويلات التحصيل من المندوب</option>
 </select>
 <select id="bFilterEmployee"></select>
+<select id="bFilterDoctor"><option value="الكل">كل الدكاترة</option></select>
 <button class="success" id="bExportBtn" onclick="openOrdersExportMenu('branch', event)">⬇ Export</button>
 <button class="okb-stores-btn accounting-only" id="branchKhaznaBtn" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
 <button class="okb-stores-btn branch-shipping-rank-only hidden" id="branchShippingRankBtn" onclick="openBranchShippingRankFromBranch()" style="width:auto;padding:8px 16px;font-size:13px;">🚚 Shipping Rank</button>
@@ -1821,9 +1823,13 @@
       <div class="date-filter-group"><label>من</label><input id="secretaryAuditFrom" type="date"></div>
       <div class="date-filter-group"><label>إلى</label><input id="secretaryAuditTo" type="date"></div>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">Filter 🔍</button>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="toggleSecretaryAuditReport()">📊 Report</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">↻ Refresh</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAudit()">⬇ Export Excel</button>
+      <select id="secretaryAuditBranchFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="secretaryAuditSeverityFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الحالات</option><option value="warning">تنبيه</option><option value="error">خطأ</option><option value="resolved">تم التعديل</option></select>
     </div>
+    <div id="secretaryAuditReportPanel" class="secretary-audit-report-panel hidden"></div>
     <div id="secretaryAuditSummary" class="financial-audit-summary"></div>
     <div id="secretaryAuditVerdict" class="financial-audit-verdict"></div>
     <div class="table-wrap financial-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th>المشكلة المكتشفة</th><th>الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
@@ -2149,6 +2155,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260829-discount-audit-refresh-v62"></script>
+  <script src="js/main.js?v=20260830-secretary-audit-cairo-date-v67"></script>
 </body>
 </html>

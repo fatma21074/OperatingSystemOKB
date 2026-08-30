@@ -420,6 +420,27 @@ function getCairoDateISO(date = new Date()) {
   }
 }
 
+function getCairoDateRangeUTC(fromDate,toDate=fromDate){
+  const parseDay=value=>{const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return match?{year:Number(match[1]),month:Number(match[2]),day:Number(match[3])}:null;};
+  const cairoMidnightUtc=value=>{
+    const target=parseDay(value);if(!target)return null;
+    const targetMs=Date.UTC(target.year,target.month-1,target.day,0,0,0,0);
+    let instant=new Date(targetMs);
+    for(let pass=0;pass<3;pass+=1){
+      const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(instant);
+      const map=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+      const representedMs=Date.UTC(Number(map.year),Number(map.month)-1,Number(map.day),Number(map.hour),Number(map.minute),Number(map.second));
+      instant=new Date(instant.getTime()-(representedMs-targetMs));
+    }
+    return instant;
+  };
+  const start=cairoMidnightUtc(fromDate),to=parseDay(toDate);if(!start||!to)return null;
+  const nextDay=new Date(Date.UTC(to.year,to.month-1,to.day)+86400000);
+  const nextDayText=`${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth()+1).padStart(2,'0')}-${String(nextDay.getUTCDate()).padStart(2,'0')}`;
+  const endExclusive=cairoMidnightUtc(nextDayText);if(!endExclusive)return null;
+  return {start:start.toISOString(),endExclusive:endExclusive.toISOString()};
+}
+
 function getCurrentDashboardMonthRange() {
   const today = getCairoDateISO();
   const [year, month] = today.split('-').map(Number);
@@ -2833,6 +2854,8 @@ async function resetDateFilter() {
   if (filterEmployee) filterEmployee.value = "الكل";
   const shippingFilterEl = document.getElementById("filterShippingCompany");
   if (shippingFilterEl) shippingFilterEl.value = "الكل";
+  const doctorFilterEl=document.getElementById('filterDoctor');
+  if(doctorFilterEl)doctorFilterEl.value='الكل';
   resetAllPages();
   if(ordersDataScope!==`range:${range.key}`) await loadOrders({from:range.from,to:range.to,scope:range.key});
   else { renderOrders(); renderAnalytics(); renderRanks(); }
@@ -4708,17 +4731,31 @@ function renderDashboardShippingFilter() {
   refreshOrderSearchableSelects();
 }
 
+function renderOrderDoctorFilters(){
+  const masterDoctors=(doctorsList||[]).map(doctor=>({name:String(doctor?.name||'').trim(),code:String(doctor?.code||doctor?.doctor_code||'').trim()})).filter(doctor=>doctor.name).sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  const options=masterDoctors.map(doctor=>`<option value="${escapeHTML(doctor.name)}">${escapeHTML(doctor.code?`${doctor.name} - ${doctor.code}`:doctor.name)}</option>`).join('');
+  ['filterDoctor','bFilterDoctor'].forEach(id=>{
+    const select=document.getElementById(id);if(!select)return;
+    const current=select.value||'الكل';
+    select.innerHTML=`<option value="الكل">كل الدكاترة</option>${options}`;
+    select.value=masterDoctors.some(doctor=>doctor.name===current)?current:'الكل';
+  });
+  refreshOrderSearchableSelects();
+}
+
 function getFilteredOrders() {
   const search = searchInput.value.trim().toLowerCase(), statusFilter = filterStatus.value, employeeFilter = filterEmployee.value;
   const shippingFilterEl = document.getElementById("filterShippingCompany");
   const shippingFilter = shippingFilterEl ? shippingFilterEl.value : "الكل";
+  const doctorFilter=document.getElementById('filterDoctor')?.value||'الكل';
   return getVisibleOrders().filter(o => {
     const matchSearch = matchesOrderSearch(o, search);
     const matchStatus = matchesOrderStatusFilter(o, statusFilter);
     const matchEmployee = !isAdmin() || employeeFilter === "الكل" || o.employee_name === employeeFilter;
     const matchShipping = shippingFilter === "الكل" || o.shipping_company === shippingFilter;
+    const matchDoctor=doctorFilter==='الكل'||String(o.doctor_name||'').trim()===doctorFilter;
     const matchDate = isInDateRange(o);
-    return matchSearch && matchStatus && matchEmployee && matchShipping && matchDate;
+    return matchSearch && matchStatus && matchEmployee && matchShipping && matchDoctor && matchDate;
   });
 }
 
@@ -4752,6 +4789,7 @@ function renderStats(filtered) {
 function renderOrders() {
   renderEmployeeFilter();
   renderDashboardShippingFilter();
+  renderOrderDoctorFilters();
   const filtered = getFilteredOrders();
   renderStats(filtered);
   
@@ -5021,6 +5059,7 @@ orderForm.addEventListener("submit", async (e) => {
     const secretaryAudit = analyzeSecretaryOrderInput(savedOrder);
     if (secretaryAudit.errors.length) await sendAutomatedAuditNotice('secretary', savedOrder, secretaryAudit.errors,{severity:'error'});
     if (secretaryAudit.warnings.length) await sendAutomatedAuditNotice('secretary', savedOrder, secretaryAudit.warnings,{severity:'warning'});
+    if(wasEditingOrder&&!secretaryAudit.errors.length)await recordSecretaryAuditResolution(savedOrder);
     const appliedDiscount = Number(document.getElementById('dashDiscountInput')?.value || getOrderMeta(savedOrder).discount || 0);
     if(appliedDiscount>0) await logActivity('order_discount','تم تطبيق خصم على أوردر',`العميل: ${orderData.customer_name} | قيمة الخصم: ${money(appliedDiscount)} | الإجمالي بعد الخصم: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder));
     resetForm();
@@ -7674,6 +7713,7 @@ function renderDoctorOptions() {
     else select.value = '';
     select.dispatchEvent(new Event('change', { bubbles: true }));
   });
+  renderOrderDoctorFilters();
   refreshOrderSearchableSelects();
 }
 
@@ -8653,6 +8693,8 @@ filterStatus.addEventListener("change", () => { pageState.orders = 1; renderOrde
 filterEmployee.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
 const filterShippingCompanyEl = document.getElementById("filterShippingCompany");
 if (filterShippingCompanyEl) filterShippingCompanyEl.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
+const filterDoctorEl=document.getElementById('filterDoctor');
+if(filterDoctorEl)filterDoctorEl.addEventListener('change',()=>{pageState.orders=1;renderOrders();});
 exportBtn.addEventListener("click", event => openOrdersExportMenu('dashboard', event));
 const shippingRankSearchEl = document.getElementById("shippingRankSearch");
 if (shippingRankSearchEl) shippingRankSearchEl.addEventListener("input", () => { pageState.shippingRank = 1; renderShippingRank(); renderShippingCharts(); });
@@ -8808,11 +8850,13 @@ function getBranchFilteredOrders() {
   const search = (document.getElementById('bSearchInput')?.value || '').trim().toLowerCase();
   const statusFilter = document.getElementById('bFilterStatus')?.value || 'الكل';
   const empFilter = document.getElementById('bFilterEmployee')?.value || 'الكل';
+  const doctorFilter=document.getElementById('bFilterDoctor')?.value||'الكل';
 
   return branchOrders.filter(o => {
     const matchSearch = matchesOrderSearch(o, search);
     const matchStatus = matchesOrderStatusFilter(o, statusFilter);
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
+    const matchDoctor=doctorFilter==='الكل'||String(o.doctor_name||'').trim()===doctorFilter;
     const matchDate = (() => {
       if (!branchActiveDateFrom && !branchActiveDateTo) return true;
       const d = getLocalDateISO(o.created_at);
@@ -8820,7 +8864,7 @@ function getBranchFilteredOrders() {
       if (branchActiveDateFrom) return d >= branchActiveDateFrom;
       return d <= branchActiveDateTo;
     })();
-    return matchSearch && matchStatus && matchEmp && matchDate;
+    return matchSearch && matchStatus && matchEmp && matchDoctor && matchDate;
   });
 }
 
@@ -8948,6 +8992,7 @@ function closeBranchShippingRankToBranch() {
 function renderBranchOrders() {
   const statusSelect=document.getElementById('bFilterStatus');
   if(statusSelect && ![...statusSelect.options].some(o=>o.value==='Cancel')) statusSelect.insertAdjacentHTML('beforeend','<option value="Cancel">Cancel</option>');
+  renderOrderDoctorFilters();
   const filtered = getBranchFilteredOrders();
 
   const revenue = calcRevenueBreakdown(filtered);
@@ -9356,6 +9401,7 @@ async function resetBranchDateFilter() {
   const search = document.getElementById('bSearchInput'); if (search) search.value = '';
   const status = document.getElementById('bFilterStatus'); if (status) status.value = 'الكل';
   const employee = document.getElementById('bFilterEmployee'); if (employee) employee.value = 'الكل';
+  const doctor=document.getElementById('bFilterDoctor');if(doctor)doctor.value='الكل';
   const badge = document.getElementById('bActiveDateBadge');
   branchPageNum = 1;
   await loadBranchOrders({from:range.from,to:range.to});
@@ -9432,6 +9478,8 @@ document.addEventListener('DOMContentLoaded', function() {
   if (bFStatus) bFStatus.addEventListener('change', () => { branchPageNum = 1; renderBranchOrders(); });
   const bFEmp = document.getElementById('bFilterEmployee');
   if (bFEmp) bFEmp.addEventListener('change', () => { branchPageNum = 1; renderBranchOrders(); });
+  const bFDoctor=document.getElementById('bFilterDoctor');
+  if(bFDoctor)bFDoctor.addEventListener('change',()=>{branchPageNum=1;renderBranchOrders();});
 
   const khaznaSearch = document.getElementById('khaznaBarcodeSearch');
   if (khaznaSearch) {
@@ -9592,6 +9640,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const secretaryAudit = analyzeSecretaryOrderInput(savedOrder || editingOrder || orderData);
       if (secretaryAudit.errors.length) await sendAutomatedAuditNotice('secretary', savedOrder || editingOrder || orderData, secretaryAudit.errors,{severity:'error'});
       if (secretaryAudit.warnings.length) await sendAutomatedAuditNotice('secretary', savedOrder || editingOrder || orderData, secretaryAudit.warnings,{severity:'warning'});
+      if(wasEditing&&!secretaryAudit.errors.length)await recordSecretaryAuditResolution(savedOrder||editingOrder||orderData);
       const branchDiscount = Number(document.getElementById('branchDiscountInput')?.value || 0);
       if(branchDiscount>0) await logActivity('order_discount','تم تطبيق خصم على أوردر',`العميل: ${orderData.customer_name} | قيمة الخصم: ${money(branchDiscount)} | الإجمالي بعد الخصم: ${money(orderData.price)}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
       if(payImgInput?.files[0]) await logActivity('payment_proof_attached','تم إرفاق إثبات دفع للأوردر',`العميل: ${orderData.customer_name} | تم رفع صورة إثبات الدفع أثناء ${wasEditing?'تعديل':'إضافة'} الأوردر`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
@@ -10520,6 +10569,8 @@ function printFinancialAudit() {
 let secretaryAuditState = { rows:[], findings:[], from:'', to:'' };
 let secretaryAuditLiveRefreshTimer = null;
 const SECRETARY_AUDIT_ACTIONS=['secretary_audit_error','secretary_audit_warning'];
+const SECRETARY_AUDIT_EVENT_ACTIONS=[...SECRETARY_AUDIT_ACTIONS,'secretary_audit_resolved'];
+let secretaryAuditWeeklyCount=0;
 function secretaryAuditSeenIdKey(){return `okb_secretary_audit_seen_${currentUser?.username||currentUser?.id||'user'}`;}
 function updateSecretaryAuditBadge(count=secretaryAuditUnreadCount){
   secretaryAuditUnreadCount=Math.max(0,Number(count)||0);
@@ -10555,9 +10606,12 @@ function startSecretaryAuditNotifications(){
   if(!currentUser||!hasRoleFeature('secretary_audit'))return;
   refreshSecretaryAuditUnreadCount();
   secretaryAuditRealtimeChannel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
-    if(!SECRETARY_AUDIT_ACTIONS.includes(String(payload?.new?.action_type||'')))return;
+    const action=String(payload?.new?.action_type||'');
+    if(!SECRETARY_AUDIT_EVENT_ACTIONS.includes(action))return;
     const open=document.getElementById('secretaryAuditModal')?.classList.contains('open');
-    if(open)scheduleSecretaryAuditLiveRefresh();else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
+    if(open)scheduleSecretaryAuditLiveRefresh();
+    else if(SECRETARY_AUDIT_ACTIONS.includes(action))updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
+    else void refreshSecretaryAuditUnreadCount();
   }).subscribe();
   secretaryAuditPollingTimer=setInterval(refreshSecretaryAuditUnreadCount,20000);
 }
@@ -10613,27 +10667,38 @@ function buildSecretaryAuditFindings(rows) {
 }
 
 async function loadSecretaryAuditRows() {
-  const monthRange=getCurrentDashboardMonthRange();
-  const from=document.getElementById('secretaryAuditFrom')?.value||monthRange.from;
-  const to=document.getElementById('secretaryAuditTo')?.value||monthRange.to;
+  const today=getCairoDateISO(new Date());
+  const from=document.getElementById('secretaryAuditFrom')?.value||today;
+  const to=document.getElementById('secretaryAuditTo')?.value||today;
+  if(from>to)throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+  const utcRange=getCairoDateRangeUTC(from,to);
+  if(!utcRange)throw new Error('تعذر تحديد نطاق التاريخ بتوقيت القاهرة');
+  const fromInput=document.getElementById('secretaryAuditFrom'),toInput=document.getElementById('secretaryAuditTo');
+  if(fromInput&&!fromInput.value)fromInput.value=today;if(toInput&&!toInput.value)toInput.value=today;
   let rows=[],offset=0;
   while(true){
-    const result=await supabaseClient.from('orders').select('*').gte('created_at',`${from}T00:00:00`).lte('created_at',`${to}T23:59:59.999`).order('created_at',{ascending:false}).range(offset,offset+999);
+    const result=await supabaseClient.from('orders').select('*').gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).range(offset,offset+999);
     if(result.error)throw result.error;
     rows=rows.concat(result.data||[]);
     if(!result.data||result.data.length<1000)break;
     offset+=1000;
   }
   const findings=buildSecretaryAuditFindings(rows);
-  const eventResult=await supabaseClient.from('activity_logs').select('id,action_type,action_details,order_id,ticket_id,customer_name,branch_name,user_name,username,created_at').in('action_type',SECRETARY_AUDIT_ACTIONS).gte('created_at',`${from}T00:00:00`).lte('created_at',`${to}T23:59:59.999`).order('created_at',{ascending:false}).limit(2000);
+  const eventResult=await supabaseClient.from('activity_logs').select('id,action_type,action_details,order_id,ticket_id,customer_name,branch_name,user_name,username,created_at').in('action_type',SECRETARY_AUDIT_EVENT_ACTIONS).gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).limit(2000);
   if(!eventResult.error){
+    const seenOrderEvents=new Set();
     (eventResult.data||[]).forEach(event=>{
       let info={};try{info=JSON.parse(event.action_details||'{}');}catch(_){info={issue:event.action_details||'خطأ إدخال مسجل'};}
       const issues=Array.isArray(info.issues)?info.issues:[info.issue||event.action_details||'خطأ إدخال مسجل'];
       const matched=rows.find(row=>String(row.id||'')===String(info.order_id||event.order_id||'')||String(getTicketId(row)||'')===String(info.ticket_id||event.ticket_id||''));
+      const savedOrderId=String(info.order_id||event.order_id||'').trim();
+      if(savedOrderId&&!matched)return;
+      const eventOrderKey=savedOrderId||String(info.ticket_id||event.ticket_id||'').trim();
+      if(eventOrderKey&&seenOrderEvents.has(eventOrderKey))return;
+      if(eventOrderKey)seenOrderEvents.add(eventOrderKey);
       const order=matched||{id:info.order_id||event.order_id||'',customer_name:info.customer_name||event.customer_name||'—',doctor_name:info.doctor_name||'',employee_name:info.actor||event.user_name||event.username||'—',branch:info.branch||event.branch_name||'—',phone:info.phone||'',price:Number(info.price||0),deposit:Number(info.deposit||0),status:info.status||'',created_at:event.created_at,order_number:info.order_number||'',ticket_id:info.ticket_id||event.ticket_id||''};
       issues.forEach(issue=>{
-        const severity=event.action_type==='secretary_audit_warning'?'warning':'error';
+        const severity=event.action_type==='secretary_audit_resolved'?'resolved':event.action_type==='secretary_audit_warning'?'warning':'error';
         const ticket=getTicketId(order)||info.ticket_id||event.ticket_id||'—';
         const duplicate=findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
         if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:pendingOrderBranch(order)||order.branch||'—',actor:order.employee_name||event.user_name||'—',event_id:event.id});
@@ -10645,9 +10710,9 @@ async function loadSecretaryAuditRows() {
 
 async function openSecretaryAudit() {
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
-  const range=getCurrentDashboardMonthRange();
+  const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom'),to=document.getElementById('secretaryAuditTo');
-  if(from&&!from.value)from.value=range.from;if(to&&!to.value)to.value=range.to;
+  if(from)from.value=today;if(to)to.value=today;
   document.getElementById('secretaryAuditModal')?.classList.add('open');
   await refreshSecretaryAudit(false);
   await markSecretaryAuditRead();
@@ -10660,32 +10725,70 @@ async function refreshSecretaryAudit(markRead=true){
   if(markRead)await markSecretaryAuditRead();
   return success;
 }
+function getFilteredSecretaryAuditFindings(){
+  const severity=document.getElementById('secretaryAuditSeverityFilter')?.value||'all';
+  const branch=document.getElementById('secretaryAuditBranchFilter')?.value||'all';
+  return secretaryAuditState.findings.filter(item=>(severity==='all'||item.severity===severity)&&(branch==='all'||String(item.branch||'').includes(branch)));
+}
+function getSecretaryAuditTopEmployee(findings){
+  const ordersByActor={};findings.filter(x=>x.severity!=='resolved').forEach(x=>{const key=x.actor||'غير محدد';(ordersByActor[key]||(ordersByActor[key]=new Set())).add(String(x.order?.id||x.ticket||x.event_id||x.issue));});
+  const top=Object.entries(ordersByActor).map(([name,set])=>[name,set.size]).sort((a,b)=>b[1]-a[1])[0];return top?{name:top[0],count:top[1]}:{name:'—',count:0};
+}
 function renderSecretaryAudit(){
-  const state=secretaryAuditState,errors=state.findings.filter(x=>x.severity==='error').length,warnings=state.findings.filter(x=>x.severity==='warning').length;
+  const state=secretaryAuditState,findings=getFilteredSecretaryAuditFindings(),errors=findings.filter(x=>x.severity==='error').length,warnings=findings.filter(x=>x.severity==='warning').length,resolved=findings.filter(x=>x.severity==='resolved').length,top=getSecretaryAuditTopEmployee(state.findings);
   const meta=document.getElementById('secretaryAuditMeta');if(meta)meta.textContent=`${state.from} → ${state.to} | تم فحص ${state.rows.length} أوردر | ${formatEnglishDateTime(new Date().toISOString())}`;
-  const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['الأوردرات المفحوصة',state.rows.length],['أوردرات بها مشكلة',new Set(state.findings.map(x=>String(x.order?.id))).size],['أخطاء',errors],['تنبيهات',warnings]].map(([l,v])=>`<div class="financial-audit-metric"><span>${l}</span><b>${v}</b></div>`).join('');
+  const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['الأوردرات المفحوصة',state.rows.length,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده أخطاء',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   const verdict=document.getElementById('secretaryAuditVerdict');if(verdict){verdict.className=`financial-audit-verdict ${errors?'bad':'ok'}`;verdict.textContent=errors?`❌ يوجد ${errors} خطأ إدخال يجب تصحيحه قبل خروج الأوردرات للفروع.`:`✅ لا توجد أخطاء إدخال مانعة${warnings?` — يوجد ${warnings} تنبيه للمراجعة`:''}.`;}
   const body=document.getElementById('secretaryAuditBody');if(!body)return;
-  body.innerHTML=state.findings.length?state.findings.map((item,index)=>{const o=item.order;const openAction=o?.id?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${o.id}')">فتح الأوردر</button>`:'<span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${item.severity==='error'?'خطأ':'تنبيه'}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="10" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد أخطاء إدخال في الفترة المحددة</td></tr>';
+  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const openAction=o?.id?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${o.id}')">فتح الأوردر</button>`:'<span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>';const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="10" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
+  if(!document.getElementById('secretaryAuditReportPanel')?.classList.contains('hidden'))renderSecretaryAuditReport();
+}
+async function toggleSecretaryAuditReport(){
+  const panel=document.getElementById('secretaryAuditReportPanel');if(!panel)return;
+  panel.classList.toggle('hidden');if(panel.classList.contains('hidden'))return;
+  const end=new Date(),start=new Date();start.setDate(end.getDate()-6);
+  const result=await supabaseClient.from('activity_logs').select('id,order_id,action_details').in('action_type',SECRETARY_AUDIT_ACTIONS).gte('created_at',start.toISOString()).lte('created_at',end.toISOString()).limit(2000);
+  if(result.error)secretaryAuditWeeklyCount=0;
+  else{
+    const events=(result.data||[]).map(event=>{let info={};try{info=JSON.parse(event.action_details||'{}');}catch(_){ }return {...event,resolved_order_id:String(info.order_id||event.order_id||'').trim()};});
+    const orderIds=[...new Set(events.map(event=>event.resolved_order_id).filter(Boolean))];
+    let existingIds=new Set();
+    if(orderIds.length){const existing=await supabaseClient.from('orders').select('id').in('id',orderIds);if(!existing.error)existingIds=new Set((existing.data||[]).map(row=>String(row.id)));}
+    secretaryAuditWeeklyCount=events.filter(event=>!event.resolved_order_id||existingIds.has(event.resolved_order_id)).length;
+  }
+  renderSecretaryAuditReport();
+}
+function renderSecretaryAuditReport(){
+  const panel=document.getElementById('secretaryAuditReportPanel');if(!panel)return;
+  const current=secretaryAuditState.findings.filter(x=>x.severity!=='resolved'),top=getSecretaryAuditTopEmployee(current),issueCounts={},branchCounts={};
+  current.forEach(x=>{issueCounts[x.issue]=(issueCounts[x.issue]||0)+1;branchCounts[x.branch]=(branchCounts[x.branch]||0)+1;});
+  const topIssue=Object.entries(issueCounts).sort((a,b)=>b[1]-a[1])[0]||['—',0];
+  const affected=new Set(current.map(x=>String(x.order?.id||x.ticket))).size,total=secretaryAuditState.rows.length,rate=total?affected/total*100:0;
+  const cards=[['أكثر موظف عنده أخطاء',`${top.name} — ${top.count}`],['أكثر نوع خطأ متكرر',`${topIssue[0]} — ${topIssue[1]}`],['أخطاء اليوم',current.length],['أخطاء آخر 7 أيام',secretaryAuditWeeklyCount],['نسبة الأخطاء من الأوردرات',`${rate.toFixed(1)}%`]];
+  const branches=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
+  panel.innerHTML=`<div class="secretary-audit-report-grid">${cards.map(([l,v])=>`<div class="secretary-audit-report-card"><span>${escapeHTML(l)}</span><b>${escapeHTML(String(v))}</b></div>`).join('')}</div><h4>الأخطاء حسب الفرع</h4><div class="secretary-audit-branch-stats">${branches.map(branch=>`<div><span>${branch}</span><b>${branchCounts[branch]||Object.entries(branchCounts).filter(([k])=>k.includes(branch)).reduce((s,[,v])=>s+v,0)}</b></div>`).join('')}</div>`;
 }
 async function exportSecretaryAudit(){
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة حاليًا. برجاء إعادة تحميل الصفحة والمحاولة مرة أخرى.');return;}
   if(!await refreshSecretaryAudit(false))return;
   const state=secretaryAuditState||{rows:[],findings:[],from:'',to:''};
-  const errors=state.findings.filter(item=>item.severity==='error').length;
-  const warnings=state.findings.filter(item=>item.severity==='warning').length;
-  const affectedOrders=new Set(state.findings.map(item=>String(item.order?.id||item.ticket||''))).size;
+  const exportedFindings=getFilteredSecretaryAuditFindings();
+  const errors=exportedFindings.filter(item=>item.severity==='error').length;
+  const warnings=exportedFindings.filter(item=>item.severity==='warning').length;
+  const resolved=exportedFindings.filter(item=>item.severity==='resolved').length;
+  const affectedOrders=new Set(exportedFindings.map(item=>String(item.order?.id||item.ticket||''))).size;
   const overview=[
     ['Secretary Audit Report',`${state.from||'—'} → ${state.to||'—'}`],
     ['Orders Checked',state.rows.length],
     ['Orders With Issues',affectedOrders],
     ['Errors',errors],
     ['Warnings',warnings],
+    ['Resolved',resolved],
     ['Exported At',formatEnglishDateTime(new Date().toISOString())]
   ];
   const headers=['#','Severity','Ticket ID','Order Number','Customer','Doctor','Employee','Branch','Mobile','Price','Deposit','Status','Date','Issue'];
-  const details=state.findings.map((item,index)=>{const order=item.order||{};return [index+1,item.severity==='error'?'Error':'Warning',item.ticket||getTicketId(order)||'',order.order_number||'',order.customer_name||'',order.doctor_name||'',item.actor||order.employee_name||'',item.branch||pendingOrderBranch(order)||'',order.phone||'',Number(getEffectiveOrderPrice(order)||0),Number(order.deposit||0),order.status||'',formatEnglishDateTime(order.created_at||order.date||''),item.issue||''];});
+  const details=exportedFindings.map((item,index)=>{const order=item.order||{};return [index+1,item.severity==='error'?'Error':item.severity==='resolved'?'Resolved':'Warning',item.ticket||getTicketId(order)||'',order.order_number||'',order.customer_name||'',order.doctor_name||'',item.actor||order.employee_name||'',item.branch||pendingOrderBranch(order)||'',order.phone||'',Number(getEffectiveOrderPrice(order)||0),Number(order.deposit||0),order.status||'',formatEnglishDateTime(order.created_at||order.date||''),item.issue||''];});
   const workbook=XLSX.utils.book_new();
   const overviewSheet=XLSX.utils.aoa_to_sheet(overview);
   const findingsSheet=XLSX.utils.aoa_to_sheet([headers,...(details.length?details:[['','','','','','','','','','','','','','No findings in selected period']])]);
@@ -10695,7 +10798,7 @@ async function exportSecretaryAudit(){
   XLSX.utils.book_append_sheet(workbook,findingsSheet,'Audit Findings');
   const safeFrom=state.from||'from',safeTo=state.to||'to';
   XLSX.writeFile(workbook,`Secretary-Audit-${safeFrom}_${safeTo}.xlsx`);
-  try{logActivity('data_exported',`تم تصدير Secretary Audit للفترة ${safeFrom} → ${safeTo} | ${state.findings.length} نتيجة`);}catch(_){ }
+  try{logActivity('data_exported',`تم تصدير Secretary Audit للفترة ${safeFrom} → ${safeTo} | ${exportedFindings.length} نتيجة`);}catch(_){ }
 }
 async function openSecretaryAuditOrder(id){
   const order=secretaryAuditState.rows.find(row=>String(row.id)===String(id))||secretaryAuditState.findings.map(item=>item.order).find(row=>String(row?.id)===String(id));if(!order)return;
@@ -10726,6 +10829,17 @@ async function recordSecretaryAuditEvent(order,issues,severity='error',actor=cur
   if(!issues?.length)return false;
   const info={order_id:order?.id||'',ticket_id:getTicketId(order)||order?.order_number||'',order_number:order?.order_number||'',customer_name:order?.customer_name||'',doctor_name:order?.doctor_name||'',phone:order?.phone||'',branch:pendingOrderBranch(order)||order?.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order?.deposit||0),status:order?.status||'',issues:[...new Set(issues.map(String))]};
   return logActivity(severity==='warning'?'secretary_audit_warning':'secretary_audit_error',severity==='warning'?'Secretary Audit — تنبيه إدخال':'Secretary Audit — خطأ إدخال',JSON.stringify(info),{order_id:order?.id,ticket_id:info.ticket_id,customer_name:info.customer_name,branch_name:info.branch});
+}
+async function recordSecretaryAuditResolution(order,actor=currentUser){
+  const ticket=getTicketId(order)||order?.order_number||'';
+  if(!ticket||!order?.id)return false;
+  const latest=await supabaseClient.from('activity_logs').select('id,action_type').in('action_type',SECRETARY_AUDIT_EVENT_ACTIONS).eq('ticket_id',String(ticket)).order('id',{ascending:false}).limit(1);
+  if(latest.error){console.error('Secretary Audit resolution lookup failed:',latest.error);return false;}
+  if(!latest.data?.length||latest.data[0].action_type==='secretary_audit_resolved')return false;
+  const info={order_id:order.id,ticket_id:ticket,order_number:order.order_number||'',customer_name:order.customer_name||'',doctor_name:order.doctor_name||'',branch:pendingOrderBranch(order)||order.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order.deposit||0),status:order.status||'',issues:['تم تعديل الأوردر وتصحيح بياناته']};
+  const saved=await logActivity('secretary_audit_resolved','Secretary Audit — تم تعديل الخطأ',JSON.stringify(info),{order_id:order.id,ticket_id:ticket,customer_name:info.customer_name,branch_name:info.branch});
+  if(saved&&document.getElementById('secretaryAuditModal')?.classList.contains('open'))scheduleSecretaryAuditLiveRefresh();
+  return saved;
 }
 async function sendAutomatedAuditNotice(kind,order,issues,options={}){
   if(!order||!issues?.length)return false;
@@ -14017,8 +14131,10 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('filterEmployee', 'ابحث باسم الموظف...');
   enhanceOrderSearchableSelect('filterStatus', 'ابحث باسم الحالة...');
   enhanceOrderSearchableSelect('filterShippingCompany', 'ابحث باسم شركة الشحن...');
+  enhanceOrderSearchableSelect('filterDoctor', 'ابحث باسم الدكتور أو الكود...');
   enhanceOrderSearchableSelect('bFilterEmployee', 'ابحث باسم الموظف...');
   enhanceOrderSearchableSelect('bFilterStatus', 'ابحث باسم الحالة...');
+  enhanceOrderSearchableSelect('bFilterDoctor', 'ابحث باسم الدكتور أو الكود...');
 });
 
 async function refreshDashboardPage(button) {
