@@ -9547,6 +9547,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
     const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
     const branchDepositValue = Number(depEl?.value || 0);
+    if (!Number.isFinite(bDelivFee) || bDelivFee < 0) {
+      alert('❌ قيمة خدمة التوصيل غير صحيحة. برجاء إدخال صفر أو قيمة موجبة.');
+      document.getElementById('branchDeliveryInput')?.focus();
+      releaseBranchSubmit();
+      return;
+    }
     if (branchDepositValue < 0 || branchDepositValue - bTotalPrice > FINANCIAL_TOLERANCE) {
       notifySecretaryBlockedDraft('branch',[branchDepositValue < 0?'Deposit بقيمة سالبة':`Deposit أكبر من قيمة الأوردر بـ ${money(branchDepositValue-bTotalPrice)}`]);
       alert(branchDepositValue < 0
@@ -13421,6 +13427,10 @@ function generateReceiptHTML(order, branchName) {
     <tr>
       <td class="label">سعر المنتجات</td>
       <td class="value">${enMoney(productsTotal)}.00</td>
+    </tr>
+    <tr>
+      <td class="label">خدمة التوصيل</td>
+      <td class="value">${enMoney(delivFee)}.00</td>
     </tr>
     <tr>
       <td class="label">خصم</td>

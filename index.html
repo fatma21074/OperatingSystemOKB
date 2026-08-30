@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260830-secretary-audit-cairo-date-v67">
+  <link rel="stylesheet" href="css/style.css?v=20260830-branch-delivery-fee-v68">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -1505,7 +1505,7 @@
     <div class="smart-cart-fixed-total"><span>إجمالي عدد القطع</span><b id="branchItemsFixedQty">0</b></div>
   </div>
   <div class="smart-summary-grid">
-    <input id="branchDeliveryInput" type="hidden" value="0"/>
+    <div><label>خدمة التوصيل</label><input id="branchDeliveryInput" type="number" min="0" step="0.01" value="0" placeholder="0" oninput="syncProductCartTotals('branch')"/></div>
     <div><label>الخصم</label><input id="branchDiscountInput" type="number" min="0" step="0.01" placeholder="0" oninput="applyDiscountToGrandTotal('branch')"/></div>
     <div><label>المدفوع</label><input id="branchDepositInput" type="number" min="0" step="0.01" placeholder="0" oninput="syncProductCartTotals('branch');checkBranchDepositImageRequirement();"/></div>
     <div><label>الإجمالي (قابل للتعديل)</label><input class="smart-total-input" id="branchGrandTotal" type="number" min="0" step="0.01" value="0" oninput="applyManualGrandTotal('branch')" /></div>
@@ -2155,6 +2155,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260830-secretary-audit-cairo-date-v67"></script>
+  <script src="js/main.js?v=20260830-branch-delivery-fee-v68"></script>
 </body>
 </html>
