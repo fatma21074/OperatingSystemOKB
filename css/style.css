@@ -1255,6 +1255,10 @@ body.doctor-readonly .branch-bulk-edit,body.doctor-readonly .branch-bulk-delete,
 .order-flag-check input{width:23px!important;height:23px!important;min-width:23px;accent-color:#ef4444;cursor:pointer}
 .order-priority-row{color:#ef4444!important;box-shadow:inset 0 0 0 2px #ef4444,0 0 12px rgba(239,68,68,.48)!important;background:rgba(239,68,68,.055)!important}
 .order-priority-row td,.order-priority-row button.customer-profile-link{color:#ef4444!important;font-weight:900!important}
+.order-urgent-row{color:#22c55e!important;box-shadow:inset 0 0 0 2px #22c55e,0 0 13px rgba(34,197,94,.55)!important;background:rgba(34,197,94,.065)!important}
+.order-urgent-row td,.order-urgent-row button.customer-profile-link{color:#22c55e!important;font-weight:900!important}
+.error-order-flag-check .error-order-flag-text{display:inline-flex;direction:rtl;align-items:center;gap:5px;color:#fff!important;font-weight:900!important;text-shadow:none}
+.error-order-flag-check .error-order-flag-text b{color:#ef4444!important;font-weight:900;filter:drop-shadow(0 0 5px rgba(239,68,68,.48))}
 @media(max-width:900px){
   .smart-add-grid{grid-template-columns:1fr 1fr}
   .smart-add-grid .smart-add-btn{grid-column:span 2}
@@ -2400,6 +2404,8 @@ body.customer-profile-open{overflow:hidden}
 .secretary-audit-page .financial-audit-head{align-items:center}
 .secretary-audit-head-actions{display:flex;flex-direction:row;align-items:center;gap:8px;direction:rtl}
 .secretary-audit-head-actions button{width:auto;min-width:76px;height:36px;padding:0 14px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-soft);color:var(--text-primary);font:900 11px Cairo,sans-serif;cursor:pointer}
+.secretary-audit-search{order:-1;width:220px;min-width:180px;max-width:24vw;height:36px;padding:0 12px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-soft);color:var(--text-primary);font:800 11px Cairo,sans-serif;outline:none}
+.secretary-audit-search:focus{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.12)}
 .secretary-audit-head-actions .secretary-audit-head-reset{border-color:rgba(148,163,184,.65);background:var(--bg-card)}
 .secretary-audit-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
 .secretary-audit-notification{position:absolute;top:-9px;left:-11px;display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border:2px solid var(--bg-card);border-radius:999px;background:#ef4444;color:#fff;font:900 9px/1 Inter,Arial,sans-serif;box-shadow:0 0 11px rgba(239,68,68,.85);z-index:2}
@@ -2421,7 +2427,7 @@ body.customer-profile-open{overflow:hidden}
 .secretary-audit-report-grid{display:grid;grid-template-columns:repeat(5,minmax(135px,1fr));gap:9px}
 .secretary-audit-report-card{padding:11px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card);text-align:center}.secretary-audit-report-card span{display:block;color:var(--text-muted);font-size:10px;font-weight:800}.secretary-audit-report-card strong{display:block;margin-top:6px;color:var(--text-primary);font-size:16px}.secretary-audit-branch-stats{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin-top:10px}.secretary-audit-branch-stats div{padding:9px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-card);text-align:center;font-size:11px;font-weight:900;color:var(--text-primary)}
 @media(max-width:1250px){.secretary-audit-filters{grid-template-columns:repeat(4,minmax(150px,1fr))}.secretary-audit-action-btn{width:100%}}
-@media(max-width:900px){.secretary-audit-page-panel{padding:10px}.secretary-audit-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-branch-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-select{flex:1 1 145px}}
+@media(max-width:900px){.secretary-audit-page-panel{padding:10px}.secretary-audit-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-branch-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.secretary-audit-select{flex:1 1 145px}.secretary-audit-head-actions{flex-wrap:wrap}.secretary-audit-search{width:190px;min-width:150px;max-width:100%}}
 .branches-treasury-toolbar button{
   min-height:40px;
   padding:8px 11px !important;

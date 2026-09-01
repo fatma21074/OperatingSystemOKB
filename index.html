@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260831-secretary-audit-v72-reset-header">
+  <link rel="stylesheet" href="css/style.css?v=20260901-urgent-green-audit-search-v80">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -647,6 +647,7 @@
 </select>
 <label class="order-flag-check"><input id="dashUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
 <label class="order-flag-check"><input id="dashReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
+<label class="order-flag-check error-order-flag-check"><input id="dashErrorOrder" type="checkbox"/><span class="error-order-flag-text">أخطاء <b>❌</b></span></label>
 </div>
 <div class="smart-products-box" data-cart="dash">
   <div class="smart-products-head">
@@ -1484,6 +1485,7 @@
 </select>
 <label class="order-flag-check"><input id="branchUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
 <label class="order-flag-check"><input id="branchReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
+<label class="order-flag-check error-order-flag-check"><input id="branchErrorOrder" type="checkbox"/><span class="error-order-flag-text">أخطاء <b>❌</b></span></label>
 </div>
 <div class="smart-products-box" data-cart="branch">
   <div class="smart-products-head">
@@ -1811,6 +1813,7 @@
     <div class="financial-audit-head">
       <div><h2 id="secretaryAuditTitle">🛡️ Secretary Audit — مراجعة أخطاء إدخال الأوردرات</h2><p id="secretaryAuditMeta"></p></div>
       <div class="secretary-audit-head-actions">
+        <input id="secretaryAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." autocomplete="off" oninput="renderSecretaryAudit()">
         <button type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
         <button type="button" onclick="closeSecretaryAudit()" aria-label="رجوع">← رجوع</button>
       </div>
@@ -2151,6 +2154,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260831-secretary-audit-v72-reset-header"></script>
+  <script src="js/main.js?v=20260901-urgent-green-audit-search-v80"></script>
 </body>
 </html>

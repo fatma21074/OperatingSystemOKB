@@ -156,6 +156,11 @@ let selectedOrderIds = new Set();
 let dashboardOrderSubmitInProgress = false;
 let branchOrderSubmitInProgress = false;
 let ordersDataScope = 'none';
+const historicalOrderSearchState = {
+  dashboard:{timer:null,token:0,addedIds:new Set()},
+  branch:{timer:null,token:0,addedIds:new Set()},
+  khazna:{timer:null,token:0,addedIds:new Set()}
+};
 let liveBusinessSyncChannel = null;
 let liveBusinessSyncReconnectTimer = null;
 let liveBusinessSyncRenderTimer = null;
@@ -2232,17 +2237,34 @@ function getOrderFlagMeta(order) {
   const collectMeta = typeof getCollectMeta === 'function' ? getCollectMeta(order) : {};
   return {
     urgent: meta.urgent === true || collectMeta.urgent === true,
-    replacement: meta.replacement === true || collectMeta.replacement === true
+    replacement: meta.replacement === true || collectMeta.replacement === true,
+    errorOrder: meta.error_order === true
   };
 }
 
 function getOrderFlagLabels(order) {
   const flags = getOrderFlagMeta(order);
-  return [flags.urgent ? 'استعجال' : '', flags.replacement ? 'استبدال' : ''].filter(Boolean);
+  return [flags.urgent ? 'استعجال' : '', flags.replacement ? 'استبدال' : '', flags.errorOrder ? 'أخطاء' : ''].filter(Boolean);
+}
+
+function isErrorOrder(order) {
+  return getOrderFlagMeta(order).errorOrder === true;
+}
+
+function isCourtesyPrepaidOrder(order) {
+  const flags = getOrderFlagMeta(order);
+  return flags.errorOrder === true || flags.replacement === true;
 }
 
 function isPriorityOrder(order) {
   return getOrderFlagLabels(order).length > 0;
+}
+
+function getOrderPriorityRowClass(order) {
+  const flags = getOrderFlagMeta(order);
+  if (flags.errorOrder || flags.replacement) return 'order-priority-row';
+  if (flags.urgent) return 'order-urgent-row';
+  return '';
 }
 
 function getOrderByIdAny(orderId) {
@@ -3865,8 +3887,10 @@ function resetForm() {
   if (priceEl) priceEl.value = "";
   const urgentEl = document.getElementById('dashUrgentOrder');
   const replacementEl = document.getElementById('dashReplacementOrder');
+  const errorOrderEl = document.getElementById('dashErrorOrder');
   if (urgentEl) urgentEl.checked = false;
   if (replacementEl) replacementEl.checked = false;
+  if (errorOrderEl) errorOrderEl.checked = false;
 
   clearProductCart('dash');
   clearPaymentImage();
@@ -4757,9 +4781,62 @@ function getFilteredOrders() {
     const matchEmployee = !isAdmin() || employeeFilter === "الكل" || o.employee_name === employeeFilter;
     const matchShipping = shippingFilter === "الكل" || o.shipping_company === shippingFilter;
     const matchDoctor=doctorFilter==='الكل'||String(o.doctor_name||'').trim()===doctorFilter;
-    const matchDate = isInDateRange(o);
+    // A deliberate search is global and may return an order from an older
+    // month. Date filters remain active when the search box is empty.
+    const matchDate = search ? true : isInDateRange(o);
     return matchSearch && matchStatus && matchEmployee && matchShipping && matchDoctor && matchDate;
   });
+}
+
+function getHistoricalSearchArray(scope){
+  if(scope==='branch')return branchOrders;
+  if(scope==='khazna')return khaznaOrders;
+  return orders;
+}
+function setHistoricalSearchArray(scope,value){
+  if(scope==='branch')branchOrders=value;
+  else if(scope==='khazna')khaznaOrders=value;
+  else orders=value;
+}
+function clearHistoricalSearchRows(scope){
+  const state=historicalOrderSearchState[scope];if(!state?.addedIds?.size)return;
+  setHistoricalSearchArray(scope,getHistoricalSearchArray(scope).filter(order=>!state.addedIds.has(String(order.id))));
+  state.addedIds.clear();
+}
+function renderHistoricalSearchScope(scope){
+  if(scope==='branch'){branchPageNum=1;renderBranchOrders();return;}
+  if(scope==='khazna'){renderKhaznaStats();renderKhaznaOrders();return;}
+  pageState.orders=1;renderOrders();
+}
+async function runHistoricalOrderSearch(scope,rawValue){
+  const state=historicalOrderSearchState[scope];if(!state)return [];
+  const token=++state.token;
+  clearTimeout(state.timer);state.timer=null;
+  clearHistoricalSearchRows(scope);
+  const raw=String(rawValue||'').trim();
+  if(!raw){renderHistoricalSearchScope(scope);return [];}
+  const term=raw.replace(/[,%()'"\\]/g,' ').replace(/\s+/g,' ').trim();
+  if(!term){renderHistoricalSearchScope(scope);return [];}
+  const fields=['customer_name','phone','phone2','doctor_name','employee_name','order_number','ticket_id','order_barcode'];
+  let query=supabaseClient.from('orders').select('*').or(fields.map(field=>`${field}.ilike.%${term}%`).join(',')).order('created_at',{ascending:false}).limit(300);
+  if(scope==='branch'||scope==='khazna')query=query.eq('branch',currentBranchName);
+  const {data,error}=await query;
+  if(token!==state.token)return [];
+  if(error){console.warn('Historical order search:',error.message);renderHistoricalSearchScope(scope);return [];}
+  let rows=Array.isArray(data)?data:[];
+  if(scope==='dashboard'&&isAccountSupervisor())rows=rows.filter(order=>isOrderInManagedBranches(order));
+  const target=getHistoricalSearchArray(scope),existing=new Set(target.map(order=>String(order.id)));
+  rows.forEach(order=>{const id=String(order.id);if(existing.has(id))return;target.push(order);existing.add(id);state.addedIds.add(id);});
+  target.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+  renderHistoricalSearchScope(scope);
+  return rows;
+}
+function scheduleHistoricalOrderSearch(scope,value){
+  const state=historicalOrderSearchState[scope];if(!state)return;
+  clearTimeout(state.timer);
+  state.token++;
+  if(!String(value||'').trim()){void runHistoricalOrderSearch(scope,'');return;}
+  state.timer=setTimeout(()=>void runHistoricalOrderSearch(scope,value),350);
 }
 
 function renderStats(filtered) {
@@ -4823,7 +4900,7 @@ function renderOrders() {
     const adminCheckbox = isAdmin() ? `<td><input type="checkbox" class="row-check" data-id="${o.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectOrder(this, '${o.id}')" /></td>` : '';
     
     html += `
-      <tr class="${isPriorityOrder(o) ? 'order-priority-row' : ''}">
+      <tr class="${getOrderPriorityRowClass(o)}">
         ${adminCheckbox}
         <td>${num(page.start + i + 1)}</td>
         <td>${o.employee_name || ""}</td>
@@ -4908,7 +4985,10 @@ orderForm.addEventListener("submit", async (e) => {
   const existingPaymentImage = document.getElementById("existingPaymentImage")?.value || "";
   const dashboardEditingOrder = editId ? orders.find(order => String(order.id) === String(editId)) : null;
   
-  const depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
+  let depositValue = depositEl ? Number(depositEl.value) || 0 : 0;
+  const errorOrderSelected = Boolean(document.getElementById('dashErrorOrder')?.checked);
+  const replacementOrderSelected = Boolean(document.getElementById('dashReplacementOrder')?.checked);
+  const courtesyPrepaidSelected = errorOrderSelected || replacementOrderSelected;
   const imageFile = paymentImageInput?.files[0];
 
   if (!editId) {
@@ -4922,7 +5002,7 @@ orderForm.addEventListener("submit", async (e) => {
     }
   }
 
-  if (depositValue <= FINANCIAL_TOLERANCE && (imageFile || existingPaymentImage)) {
+  if (!courtesyPrepaidSelected && depositValue <= FINANCIAL_TOLERANCE && (imageFile || existingPaymentImage)) {
     notifySecretaryBlockedDraft('dashboard',['إثبات دفع سكرتارية مرفق وقيمة Deposit تساوي صفر']);
     alert('⚠️ برجاء إدخال قيمة الـ Deposit المدفوعة في السكرين');
     depositEl?.focus();
@@ -4930,7 +5010,7 @@ orderForm.addEventListener("submit", async (e) => {
     return;
   }
   
-  if (depositValue > 0 && !imageFile && !existingPaymentImage && !(isAdmin()&&editId)) {
+  if (!courtesyPrepaidSelected && depositValue > 0 && !imageFile && !existingPaymentImage && !(isAdmin()&&editId)) {
     notifySecretaryBlockedDraft('dashboard',[`Deposit ${money(depositValue)} بدون إرفاق إثبات دفع`]);
     alert(`⚠️ يجب رفع صورة إثبات الدفع (إيصال أو صورة تحويل) لأن المبلغ المدفوع هو ${money(depositValue)}`);
     if (paymentImageInput) paymentImageInput.focus();
@@ -4957,6 +5037,10 @@ orderForm.addEventListener("submit", async (e) => {
   const qty        = Math.max(1, Number(document.getElementById("quantity")?.value || 1));
   const delivFee   = Number(document.getElementById("deliveryFee")?.value || 0);
   const totalPrice = Number(document.getElementById("price")?.value || 0);
+  if (courtesyPrepaidSelected) {
+    depositValue = Math.max(0, totalPrice);
+    if (depositEl) depositEl.value = String(depositValue);
+  }
   if (depositValue < 0 || depositValue - totalPrice > FINANCIAL_TOLERANCE) {
     notifySecretaryBlockedDraft('dashboard',[depositValue < 0?'Deposit بقيمة سالبة':`Deposit أكبر من قيمة الأوردر بـ ${money(depositValue-totalPrice)}`]);
     alert(depositValue < 0
@@ -4966,7 +5050,7 @@ orderForm.addEventListener("submit", async (e) => {
     releaseDashboardSubmit();
     return;
   }
-  if (!(isAdmin()&&dashboardEditingOrder) && !validateLowValueOrderReason(totalPrice, notesEl)) {
+  if (!courtesyPrepaidSelected && !(isAdmin()&&dashboardEditingOrder) && !validateLowValueOrderReason(totalPrice, notesEl)) {
     releaseDashboardSubmit();
     return;
   }
@@ -4987,7 +5071,7 @@ orderForm.addEventListener("submit", async (e) => {
     delivery_fee:     delivFee,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), edit_count: dashboardEditingOrder ? getOrderEditCount(dashboardEditingOrder) + 1 : 0, discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder) }),
+    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), edit_count: dashboardEditingOrder ? getOrderEditCount(dashboardEditingOrder) + 1 : 0, discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder) }),
     product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts),
     branch:           isAdmin() ? (selectedAdminBranch || dashboardEditingOrder?.branch || null) : (dashboardEditingOrder?.branch || null)
   };
@@ -5188,8 +5272,10 @@ window.editOrder = function (id) {
   const orderFlags = getOrderFlagMeta(o);
   const urgentEl = document.getElementById('dashUrgentOrder');
   const replacementEl = document.getElementById('dashReplacementOrder');
+  const errorOrderEl = document.getElementById('dashErrorOrder');
   if (urgentEl) urgentEl.checked = orderFlags.urgent;
   if (replacementEl) replacementEl.checked = orderFlags.replacement;
+  if (errorOrderEl) errorOrderEl.checked = orderFlags.errorOrder;
   $('orderNotes').value = cleanVisibleOrderNotes(o.notes || '');
   const existingImage = o.payment_image || "";
   const existingImageField = document.getElementById("existingPaymentImage");
@@ -5832,7 +5918,8 @@ function renderDoctorRank() {
   setText('doctorRankConversionRate', percent(signed, total));
   setText('doctorRankCancelRate', percent(cancel, total));
   const branch = document.getElementById('doctorRankBranchFilter');
-  setText('doctorRankScopeLabel', branch?.selectedOptions?.[0]?.textContent || 'كل الفروع');
+  const branchLabel = branch?.selectedOptions?.[0]?.textContent || 'كل الفروع';
+  setText('doctorRankScopeLabel', branchLabel);
   updateDoctorRankSelectionUI(page.rows);
 }
 
@@ -8693,11 +8780,12 @@ if (!excelVal && !field.optional && field.dbField !== "notes" && field.dbField !
 }
 
 // ===== مستمعي الأحداث =====
-searchInput.addEventListener("input", () => { pageState.orders = 1; renderOrders(); });
-searchInput.addEventListener("keydown", (ev) => {
+searchInput.addEventListener("input", () => { pageState.orders = 1; renderOrders(); scheduleHistoricalOrderSearch('dashboard',searchInput.value); });
+searchInput.addEventListener("keydown", async (ev) => {
   if (ev.key !== "Enter") return;
   ev.preventDefault();
   const scannedValue = String(searchInput.value || "").trim();
+  if(scannedValue)await runHistoricalOrderSearch('dashboard',scannedValue);
   if (scannedValue) openCollectionFromScan(scannedValue, "branch");
 });
 filterStatus.addEventListener("change", () => { pageState.orders = 1; renderOrders(); });
@@ -8868,7 +8956,7 @@ function getBranchFilteredOrders() {
     const matchStatus = matchesOrderStatusFilter(o, statusFilter);
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
     const matchDoctor=doctorFilter==='الكل'||String(o.doctor_name||'').trim()===doctorFilter;
-    const matchDate = (() => {
+    const matchDate = search ? true : (() => {
       if (!branchActiveDateFrom && !branchActiveDateTo) return true;
       const d = getLocalDateISO(o.created_at);
       if (branchActiveDateFrom && branchActiveDateTo) return d >= branchActiveDateFrom && d <= branchActiveDateTo;
@@ -9059,7 +9147,7 @@ function renderBranchOrders() {
     const deposit = Number(o.deposit || 0);
     const remaining = getOrderPreCollectionBalance(o);
     const paymentProofs = getPaymentProofsCellHtml(o, { allowAttachUpfront: true });
-    html += `<tr class="${isPriorityOrder(o) ? 'order-priority-row' : ''}">
+    html += `<tr class="${getOrderPriorityRowClass(o)}">
       <td><input type="checkbox" class="row-check branch-row-check" data-id="${o.id}" ${isSelected?'checked':''} onchange="toggleBranchOrderSelection(this,'${o.id}')"/></td>
       <td>${num(start + i + 1)}</td>
       <td>${escapeHTML(getTicketId(o) || '—')}</td>
@@ -9442,8 +9530,10 @@ function editBranchOrder(id) {
   const orderFlags = getOrderFlagMeta(o);
   const urgentEl = document.getElementById('branchUrgentOrder');
   const replacementEl = document.getElementById('branchReplacementOrder');
+  const errorOrderEl = document.getElementById('branchErrorOrder');
   if (urgentEl) urgentEl.checked = orderFlags.urgent;
   if (replacementEl) replacementEl.checked = orderFlags.replacement;
+  if (errorOrderEl) errorOrderEl.checked = orderFlags.errorOrder;
   const branchStatusSelect = document.getElementById('bStatus');
   if (branchStatusSelect) {
     branchStatusSelect.disabled = !hasButtonPermission('btn_branch_edit');
@@ -9474,13 +9564,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
   const bSearch = document.getElementById('bSearchInput');
   if (bSearch) {
-    bSearch.addEventListener('input', () => { branchPageNum = 1; renderBranchOrders(); });
-    bSearch.addEventListener('keydown', (ev) => {
+    bSearch.addEventListener('input', () => { branchPageNum = 1; renderBranchOrders(); scheduleHistoricalOrderSearch('branch',bSearch.value); });
+    bSearch.addEventListener('keydown', async (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
         branchPageNum = 1;
-        renderBranchOrders();
         const scannedValue = String(bSearch.value || '').trim();
+        if(scannedValue)await runHistoricalOrderSearch('branch',scannedValue);
+        renderBranchOrders();
         if (scannedValue) openCollectionFromScan(scannedValue, 'branch');
       }
     });
@@ -9494,11 +9585,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   const khaznaSearch = document.getElementById('khaznaBarcodeSearch');
   if (khaznaSearch) {
-    khaznaSearch.addEventListener('input', () => { renderKhaznaStats(); renderKhaznaOrders(); });
-    khaznaSearch.addEventListener('keydown', (ev) => {
+    khaznaSearch.addEventListener('input', () => { renderKhaznaStats(); renderKhaznaOrders(); scheduleHistoricalOrderSearch('khazna',khaznaSearch.value); });
+    khaznaSearch.addEventListener('keydown', async (ev) => {
       if (ev.key !== 'Enter') return;
       ev.preventDefault();
       const scannedValue = String(khaznaSearch.value || '').trim();
+      if(scannedValue)await runHistoricalOrderSearch('khazna',scannedValue);
       if (scannedValue) openCollectionFromScan(scannedValue, 'khazna');
     });
   }
@@ -9557,7 +9649,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const bQty       = Math.max(1, Number(document.getElementById('bQuantity')?.value || 1));
     const bDelivFee  = Number(document.getElementById('bDeliveryFee')?.value || 0);
     const bTotalPrice = Number(document.getElementById('bPrice')?.value || 0);
-    const branchDepositValue = Number(depEl?.value || 0);
+    const errorOrderSelected = Boolean(document.getElementById('branchErrorOrder')?.checked);
+    const replacementOrderSelected = Boolean(document.getElementById('branchReplacementOrder')?.checked);
+    const courtesyPrepaidSelected = errorOrderSelected || replacementOrderSelected;
+    const branchDepositValue = courtesyPrepaidSelected ? Math.max(0, bTotalPrice) : Number(depEl?.value || 0);
+    if (courtesyPrepaidSelected && depEl) depEl.value = String(branchDepositValue);
     if (!Number.isFinite(bDelivFee) || bDelivFee < 0) {
       alert('❌ قيمة خدمة التوصيل غير صحيحة. برجاء إدخال صفر أو قيمة موجبة.');
       document.getElementById('branchDeliveryInput')?.focus();
@@ -9573,7 +9669,7 @@ document.addEventListener('DOMContentLoaded', function() {
       releaseBranchSubmit();
       return;
     }
-    if (!(isAdmin()&&editingOrder) && !validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
+    if (!courtesyPrepaidSelected && !(isAdmin()&&editingOrder) && !validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
 
     const orderData = {
       employee_name:    editingOrder?.employee_name || (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
@@ -9585,12 +9681,12 @@ document.addEventListener('DOMContentLoaded', function() {
       shipping_company: getBranchShippingCompanyName(currentBranchName) || shipEl?.value || '',
       area:             areaEl?.value.trim() || '',
       price:            bTotalPrice,
-      deposit:          Number(depEl?.value || 0),
+      deposit:          branchDepositValue,
       quantity:         bQty,
       delivery_fee:     bDelivFee,
       status:           editingOrder ? (hasButtonPermission('btn_branch_edit') ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
-      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(editingOrder) }),
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(editingOrder) }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
@@ -9603,14 +9699,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const branchPaymentInput = document.getElementById('bPaymentImage');
     const branchPaymentFile = branchPaymentInput?.files?.[0];
-    if (Number(orderData.deposit || 0) <= FINANCIAL_TOLERANCE && (branchPaymentFile || branchEditExistingPaymentImage)) {
+    if (!courtesyPrepaidSelected && Number(orderData.deposit || 0) <= FINANCIAL_TOLERANCE && (branchPaymentFile || branchEditExistingPaymentImage)) {
       notifySecretaryBlockedDraft('branch',['إثبات دفع سكرتارية مرفق وقيمة Deposit تساوي صفر']);
       alert('⚠️ برجاء إدخال قيمة الـ Deposit المدفوعة في السكرين');
       depEl?.focus();
       releaseBranchSubmit();
       return;
     }
-    if (Number(orderData.deposit || 0) > 0 && !branchPaymentFile && !branchEditExistingPaymentImage && !(isAdmin()&&editingOrder)) {
+    if (!courtesyPrepaidSelected && Number(orderData.deposit || 0) > 0 && !branchPaymentFile && !branchEditExistingPaymentImage && !(isAdmin()&&editingOrder)) {
       notifySecretaryBlockedDraft('branch',[`Deposit ${money(orderData.deposit)} بدون إرفاق إثبات دفع`]);
       checkBranchDepositImageRequirement();
       alert(`⚠️ الأوردر مدفوع بمبلغ ${money(orderData.deposit)} — لازم ترفق سكرين شوت إثبات الدفع قبل حفظ الأوردر`);
@@ -9674,8 +9770,10 @@ document.addEventListener('DOMContentLoaded', function() {
       branchForm.reset();
       const urgentEl = document.getElementById('branchUrgentOrder');
       const replacementEl = document.getElementById('branchReplacementOrder');
+      const errorOrderEl = document.getElementById('branchErrorOrder');
       if (urgentEl) urgentEl.checked = false;
       if (replacementEl) replacementEl.checked = false;
+      if (errorOrderEl) errorOrderEl.checked = false;
       const adminBranchDateWrap = document.getElementById('adminBranchOrderDateWrap');
       const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
       if (adminBranchDateWrap) adminBranchDateWrap.style.display = 'none';
@@ -10344,6 +10442,7 @@ function analyzeOrderFinancials(order) {
   const shipping = Math.max(0, shippingRaw);
   const method = String(latest?.payment_method || '').trim().toLowerCase();
   const upfrontProof = Boolean(getOrderUpfrontProofUrl(order));
+  const courtesyPrepaidOrder = isCourtesyPrepaidOrder(order);
   const collectionProof = Boolean(getOrderCollectionProofUrl(order));
   const isTransferMethod = method === 'instapay' || method === 'wallet';
   const isCodMethod = method === 'cod';
@@ -10351,7 +10450,7 @@ function analyzeOrderFinancials(order) {
   const isCashTransferMethod = method === 'cashtransfer' || method === 'cash + transfer';
   const cashAmount = isCashTransferMethod ? Math.max(0, Number(latest?.cash_amount || 0)) : 0;
   const transferAmount = isCashTransferMethod ? Math.max(0, Number(latest?.transfer_amount || 0)) : 0;
-  const secretaryTransfer = deposit > 0 && upfrontProof ? deposit : 0;
+  const secretaryTransfer = !courtesyPrepaidOrder && deposit > 0 && upfrontProof ? deposit : 0;
   const collectionTransfer = isCashTransferMethod ? transferAmount : (isTransferMethod ? collected : 0);
   const codCash = isCashTransferMethod ? cashAmount : (isCodMethod ? collected : 0);
   const paidTotal = deposit + collected;
@@ -10369,8 +10468,8 @@ function analyzeOrderFinancials(order) {
     if (depositRaw < 0) errors.push('المدفوع عند الحفظ قيمة سالبة');
     if (salesRaw < 0) errors.push('المحصّل من المندوب قيمة سالبة');
     if (shippingRaw < 0) errors.push('مصروف الشحنة قيمة سالبة');
-    if (deposit > 0 && !upfrontProof) errors.push(`مدفوع سكرتارية ${enMoney(deposit)} بدون إثبات`);
-    if (upfrontProof && deposit <= 0) errors.push('إثبات سكرتارية موجود والمبلغ صفر');
+    if (!courtesyPrepaidOrder && deposit > 0 && !upfrontProof) errors.push(`مدفوع سكرتارية ${enMoney(deposit)} بدون إثبات`);
+    if (!courtesyPrepaidOrder && upfrontProof && deposit <= 0) errors.push('إثبات سكرتارية موجود والمبلغ صفر');
     if (isTransferMethod && collected > 0 && !collectionProof) errors.push('تحويل تحصيل بدون إثبات');
     if (isCashTransferMethod) {
       if (cashAmount <= FINANCIAL_TOLERANCE || transferAmount <= FINANCIAL_TOLERANCE) errors.push('كاش + تحويل يحتاج مبلغًا أكبر من صفر لكل جزء');
@@ -10625,6 +10724,7 @@ function analyzeSecretaryOrderInput(order) {
   const deposit = Number(order?.deposit || 0);
   const deliveryFee = Number(order?.delivery_fee || 0);
   const orderMeta = getOrderMeta(order);
+  const courtesyPrepaidOrder = orderMeta.error_order === true || orderMeta.replacement === true;
   const phoneDigits = String(order?.phone || '').replace(/\D/g, '');
   const products = String(order?.product_names || '').trim();
   const visibleNotes = cleanVisibleOrderNotes(order?.notes || '').trim();
@@ -10640,9 +10740,9 @@ function analyzeSecretaryOrderInput(order) {
   if (!Number.isFinite(deliveryFee) || deliveryFee < 0) errors.push('مصروف التوصيل غير صالح أو بقيمة سالبة');
   if (deposit < 0) errors.push('Deposit بقيمة سالبة');
   if (Number.isFinite(price) && deposit - price > FINANCIAL_TOLERANCE) errors.push(`Deposit أكبر من قيمة الأوردر بـ ${enMoney(deposit-price)}`);
-  if (deposit > FINANCIAL_TOLERANCE && !upfrontProof) errors.push(`تحويل سكرتارية ${enMoney(deposit)} بدون إثبات دفع`);
-  if (upfrontProof && deposit <= FINANCIAL_TOLERANCE) warnings.push('إثبات سكرتارية موجود بدون مبلغ Deposit');
-  if (Number.isFinite(price) && price < 50 && !visibleNotes) errors.push('أوردر أقل من 50 بدون توضيح هل هو استبدال أم هدية في الملاحظات');
+  if (!courtesyPrepaidOrder && deposit > FINANCIAL_TOLERANCE && !upfrontProof) errors.push(`تحويل سكرتارية ${enMoney(deposit)} بدون إثبات دفع`);
+  if (!courtesyPrepaidOrder && upfrontProof && deposit <= FINANCIAL_TOLERANCE) warnings.push('إثبات سكرتارية موجود بدون مبلغ Deposit');
+  if (!courtesyPrepaidOrder && Number.isFinite(price) && price < 50 && !visibleNotes) errors.push('أوردر أقل من 50 بدون توضيح هل هو استبدال أم هدية في الملاحظات');
   try{
     const parsedProducts=parseReceiptProducts(products);
     const productsTotal=parsedProducts.reduce((sum,item)=>sum+(Number(item.price||0)*Math.max(1,Number(item.qty||1))),0);
@@ -10736,6 +10836,7 @@ async function resetSecretaryAuditFilters(){
   const today=getCairoDateISO(new Date());
   const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'all'};
   Object.entries(values).forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.value=value;});
+  const search=document.getElementById('secretaryAuditSearch');if(search)search.value='';
   ['secretaryAuditBranchFilter','secretaryAuditEmployeeFilter','secretaryAuditSeverityFilter'].forEach(id=>searchableOrderSelects.get(id)?.syncFromSelect());
   await refreshSecretaryAudit();
 }
@@ -10743,7 +10844,13 @@ function getFilteredSecretaryAuditFindings(){
   const severity=document.getElementById('secretaryAuditSeverityFilter')?.value||'all';
   const branch=document.getElementById('secretaryAuditBranchFilter')?.value||'all';
   const employee=document.getElementById('secretaryAuditEmployeeFilter')?.value||'all';
-  return secretaryAuditState.findings.filter(item=>(severity==='all'||item.severity===severity)&&(branch==='all'||String(item.branch||'').includes(branch))&&(employee==='all'||String(item.actor||'')===employee));
+  const query=normalizeSearchableText(document.getElementById('secretaryAuditSearch')?.value||'');
+  return secretaryAuditState.findings.filter(item=>{
+    if(!((severity==='all'||item.severity===severity)&&(branch==='all'||String(item.branch||'').includes(branch))&&(employee==='all'||String(item.actor||'')===employee)))return false;
+    if(!query)return true;
+    const order=item.order||{};
+    return [item.ticket,item.issue,item.actor,item.branch,order.customer_name,order.phone,order.phone2,order.order_number,order.doctor_name,order.status].some(value=>normalizeSearchableText(value).includes(query));
+  });
 }
 function populateSecretaryAuditEmployeeFilter(){
   const select=document.getElementById('secretaryAuditEmployeeFilter');if(!select)return;
@@ -11693,6 +11800,7 @@ function validateCollectionDraft(order, values = {}) {
   const method = String(values.method || '').trim().toLowerCase();
   const expectedCollection = Math.max(0, price - deposit);
   const hasUpfrontProof = Boolean(getOrderUpfrontProofUrl(order));
+  const courtesyPrepaidOrder = isCourtesyPrepaidOrder(order);
   const hasCollectionProof = Boolean(values.hasCollectionProof);
   const isTransfer = method === 'instapay' || method === 'wallet';
   const isCod = method === 'cod';
@@ -11706,11 +11814,11 @@ function validateCollectionDraft(order, values = {}) {
   const errors = [];
   const warnings = [];
 
-  if (price <= 0) errors.push('قيمة الأوردر صفر أو غير صالحة');
+  if (price <= 0 && !courtesyPrepaidOrder) errors.push('قيمة الأوردر صفر أو غير صالحة');
   if (depositRaw < 0) errors.push('المدفوع عند حفظ الأوردر قيمة سالبة');
   if (deposit - price > FINANCIAL_TOLERANCE) errors.push(`المدفوع عند الحفظ أكبر من قيمة الأوردر بـ ${enMoney(deposit - price)}`);
-  if (deposit > 0 && !hasUpfrontProof) errors.push(`مدفوع السكرتارية ${enMoney(deposit)} بدون إثبات دفع`);
-  if (hasUpfrontProof && deposit <= 0) errors.push('إثبات السكرتارية موجود لكن مبلغ المدفوع صفر');
+  if (!courtesyPrepaidOrder && deposit > 0 && !hasUpfrontProof) errors.push(`مدفوع السكرتارية ${enMoney(deposit)} بدون إثبات دفع`);
+  if (!courtesyPrepaidOrder && hasUpfrontProof && deposit <= 0) errors.push('إثبات السكرتارية موجود لكن مبلغ المدفوع صفر');
   if (sales < 0) errors.push('إجمالي مبيعات التوصيل لا يمكن أن يكون سالبًا');
   if (shipping < 0) errors.push('مصروف الشحنة لا يمكن أن يكون سالبًا');
   if (!isCod && !isTransfer && !isPrepaid && !isCashTransfer) errors.push('اختر طريقة تحصيل صحيحة');
@@ -11861,8 +11969,13 @@ async function openCollectModal(orderId, customerName, price, deposit, src) {
   const savedOriginalPrice = Number(firstSavedOriginalPrice?.original_price || previousNormalSales?.original_price || previousNormalSales?.sales || 0);
   const effectiveOrderPrice = order ? getEffectiveOrderPrice(order) : Number(price || 0);
   const calculationPrice = Math.max(savedOriginalPrice, effectiveOrderPrice, Number(price || 0));
-  const normalRemaining = Math.max(calculationPrice - Number(deposit || 0), 0);
-  const salesValue = last
+  const paidAmount = Math.max(Number(deposit || 0), 0);
+  const normalRemaining = Math.max(calculationPrice - paidAmount, 0);
+  _collectIsFullyPrepaid = (calculationPrice > 0 || isCourtesyPrepaidOrder(order)) && paidAmount + FINANCIAL_TOLERANCE >= calculationPrice;
+  // Fully prepaid must be resolved before restoring any previous collection.
+  // Otherwise a legacy/previous sales value can incorrectly reappear in the
+  // delivery-sales field even though the real remaining amount is zero.
+  const salesValue = _collectIsFullyPrepaid ? 0 : last
     ? (Number(last.sales || 0) === 0 ? normalRemaining : Number(last.sales || 0))
     : (normalRemaining > 0 ? normalRemaining : (calculationPrice || ''));
 
@@ -11883,8 +11996,6 @@ async function openCollectModal(orderId, customerName, price, deposit, src) {
   if (splitTransferInput) splitTransferInput.value = last && String(last.payment_method || '').toLowerCase() === 'cashtransfer' ? Number(last.transfer_amount || 0) : '';
   if (splitTransferMethod) splitTransferMethod.value = last?.transfer_method === 'Wallet' ? 'Wallet' : 'Instapay';
 
-  const paidAmount = Math.max(Number(deposit || 0), 0);
-  _collectIsFullyPrepaid = calculationPrice > 0 && paidAmount >= calculationPrice;
   const isPartiallyPaid = paidAmount > 0 && paidAmount < calculationPrice;
   const paymentSection = document.getElementById('collectPaymentMethodSection');
   const depositNotice = document.getElementById('collectDepositNotice');
