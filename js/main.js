@@ -2199,6 +2199,7 @@ const COLLECT_META_REGEX = /\n?\[COLLECT_META:([\s\S]*?)\]\s*$/;
 
 const ORDER_META_PREFIX = "[ORDER_META:";
 const ORDER_META_REGEX = /\n?\[ORDER_META:([\s\S]*?)\]\s*$/;
+const ORDER_FLAG_NOTE_PREFIX = "تصنيف السيستم:";
 
 function getOrderMeta(order) {
   const notes = String(order?.notes || "").replace(COLLECT_META_REGEX,'').trim();
@@ -2222,8 +2223,16 @@ function stripOrderMeta(notes) {
 function buildNotesWithOrderMeta(notes, meta) {
   const source=String(notes||'');
   const collectMatch=source.match(COLLECT_META_REGEX);
-  const cleanNotes = stripOrderMeta(source.replace(COLLECT_META_REGEX, "").trim());
+  let cleanNotes = stripOrderMeta(source.replace(COLLECT_META_REGEX, "").trim())
+    .split(/\n+/).map(line=>line.trim())
+    .filter(line=>line && !line.startsWith(ORDER_FLAG_NOTE_PREFIX) && line !== 'لا توجد ملاحظات').join('\n');
   const safeMeta = { ...(meta || {}), discount: Number(meta?.discount || 0) };
+  const flagNotes = [
+    safeMeta.urgent === true ? `${ORDER_FLAG_NOTE_PREFIX} استعجال الأوردر` : '',
+    safeMeta.replacement === true ? `${ORDER_FLAG_NOTE_PREFIX} استبدال الأوردر` : '',
+    safeMeta.error_order === true ? `${ORDER_FLAG_NOTE_PREFIX} أخطاء❌` : ''
+  ].filter(Boolean);
+  cleanNotes = [cleanNotes, ...flagNotes].filter(Boolean).join('\n');
   const orderBlock=`${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
   return collectMatch ? `${orderBlock}\n${COLLECT_META_PREFIX}${collectMatch[1]}]` : orderBlock;
 }
@@ -9011,6 +9020,10 @@ function getOrderDisplayStatus(order) {
 
 function matchesOrderStatusFilter(order, filterValue) {
   if (!filterValue || filterValue === 'الكل') return true;
+  const flags=getOrderFlagMeta(order);
+  if (filterValue === 'UrgentOrder') return flags.urgent === true;
+  if (filterValue === 'ReplacementOrder') return flags.replacement === true;
+  if (filterValue === 'ErrorOrder') return flags.errorOrder === true;
   if (filterValue === 'PaymentProof') return order?.status === 'Signed' && hasAnyOrderPaymentProof(order);
   if (filterValue === 'SecretaryTransfers') return order?.status === 'Signed' && getOrderUpfrontTransferTotal(order) > FINANCIAL_TOLERANCE;
   if (filterValue === 'CollectionTransfers') return order?.status === 'Signed' && getOrderCollectionTransferTotal(order) > FINANCIAL_TOLERANCE;
@@ -10726,6 +10739,7 @@ function analyzeSecretaryOrderInput(order) {
   const orderMeta = getOrderMeta(order);
   const courtesyPrepaidOrder = orderMeta.error_order === true || orderMeta.replacement === true;
   const phoneDigits = String(order?.phone || '').replace(/\D/g, '');
+  const phone2Digits = String(order?.phone2 || '').replace(/\D/g, '');
   const products = String(order?.product_names || '').trim();
   const visibleNotes = cleanVisibleOrderNotes(order?.notes || '').trim();
   const upfrontProof = Boolean(getOrderUpfrontProofUrl(order));
@@ -10733,6 +10747,7 @@ function analyzeSecretaryOrderInput(order) {
   if (!String(order?.doctor_name || '').trim()) errors.push('اسم الدكتور غير مسجل');
   if (!String(order?.customer_name || '').trim()) errors.push('اسم العميل غير مسجل');
   if (phoneDigits.length < 10) errors.push('رقم الموبايل ناقص أو غير صالح');
+  if (!phone2Digits) warnings.push('رقم العميل 2 غير مسجل');
   if (!String(order?.shipping_company || '').trim()) errors.push('شركة الشحن غير محددة');
   if (!String(order?.area || '').trim()) errors.push('المنطقة غير مسجلة');
   if (!products) errors.push('الأوردر بدون منتجات');
@@ -13680,10 +13695,13 @@ function getBranchesTreasuryVisibleOrders(ignoreStatus = false) {
     const status = String(order?.status || '').trim();
     if (filters.branch !== 'الكل' && branch !== filters.branch) return false;
     if (!ignoreStatus) {
+      if (filters.status === 'UrgentOrder' && !getOrderFlagMeta(order).urgent) return false;
+      if (filters.status === 'ReplacementOrder' && !getOrderFlagMeta(order).replacement) return false;
+      if (filters.status === 'ErrorOrder' && !getOrderFlagMeta(order).errorOrder) return false;
       if (filters.status === 'PaymentProof' && (status !== 'Signed' || !hasAnyOrderPaymentProof(order))) return false;
       if (filters.status === 'SecretaryTransfers' && (status !== 'Signed' || getOrderUpfrontTransferTotal(order) <= FINANCIAL_TOLERANCE)) return false;
       if (filters.status === 'CollectionTransfers' && (status !== 'Signed' || getOrderCollectionTransferTotal(order) <= FINANCIAL_TOLERANCE)) return false;
-      if (!['الكل', 'PaymentProof', 'SecretaryTransfers', 'CollectionTransfers'].includes(filters.status) && status !== filters.status) return false;
+      if (!['الكل', 'UrgentOrder', 'ReplacementOrder', 'ErrorOrder', 'PaymentProof', 'SecretaryTransfers', 'CollectionTransfers'].includes(filters.status) && status !== filters.status) return false;
     }
     if (filters.search) {
       const searchable = [order.customer_name, order.phone, order.phone2, order.doctor_name, order.employee_name,
@@ -13862,7 +13880,13 @@ function getKhaznaFilteredOrders() {
         ? getOrderUpfrontTransferTotal(o) > FINANCIAL_TOLERANCE
         : statusFilter === 'CollectionTransfers'
           ? getOrderCollectionTransferTotal(o) > FINANCIAL_TOLERANCE
-          : (statusFilter === 'الكل' || statusFilter === 'Signed');
+          : statusFilter === 'UrgentOrder'
+            ? getOrderFlagMeta(o).urgent === true
+            : statusFilter === 'ReplacementOrder'
+              ? getOrderFlagMeta(o).replacement === true
+              : statusFilter === 'ErrorOrder'
+                ? getOrderFlagMeta(o).errorOrder === true
+                : (statusFilter === 'الكل' || statusFilter === 'Signed');
     const matchEmp = empFilter === 'الكل' || o.employee_name === empFilter;
     
     return matchSearch && matchStatus && matchEmp;

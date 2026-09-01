@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260901-urgent-green-audit-search-v80">
+  <link rel="stylesheet" href="css/style.css?v=20260901-flags-notes-filters-audit-v81">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -723,6 +723,9 @@
 <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل أو Ticket ID أو Barcode..."/>
 <select id="filterStatus">
 <option value="الكل">كل الحالات</option>
+<option value="UrgentOrder">استعجال الأوردر</option>
+<option value="ReplacementOrder">استبدال الأوردر</option>
+<option value="ErrorOrder">أخطاء❌</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
@@ -1562,6 +1565,9 @@
 <input id="bSearchInput" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..."/>
 <select id="bFilterStatus">
 <option value="الكل">كل الحالات</option>
+<option value="UrgentOrder">استعجال الأوردر</option>
+<option value="ReplacementOrder">استبدال الأوردر</option>
+<option value="ErrorOrder">أخطاء❌</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
@@ -1667,7 +1673,7 @@
       <div class="date-filter-group"><label>من</label><input id="btFromDate" type="date"></div>
       <div class="date-filter-group"><label>إلى</label><input id="btToDate" type="date"></div>
       <select id="btBranchFilter" class="bt-compact-select" onchange="renderBranchesTreasury()"><option value="الكل">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
-      <select id="btStatusFilter" class="bt-compact-select" onchange="renderBranchesTreasury()"><option value="Signed">Signed</option><option value="Delivering">Delivering</option><option value="Transit">Transit</option><option value="Picked-up">Picked-up</option><option value="Returning">Returning</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option><option value="Fake Doctor">Fake Doctor</option><option value="Fake Delivery update">Fake Delivery Update</option><option value="PaymentProof">إثبات دفع</option><option value="SecretaryTransfers">تحويلات السكرتارية</option><option value="CollectionTransfers">تحويلات التحصيل من المندوب</option><option value="الكل">كل الحالات</option></select>
+      <select id="btStatusFilter" class="bt-compact-select" onchange="renderBranchesTreasury()"><option value="Signed">Signed</option><option value="UrgentOrder">استعجال الأوردر</option><option value="ReplacementOrder">استبدال الأوردر</option><option value="ErrorOrder">أخطاء❌</option><option value="Delivering">Delivering</option><option value="Transit">Transit</option><option value="Picked-up">Picked-up</option><option value="Returning">Returning</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option><option value="Fake Doctor">Fake Doctor</option><option value="Fake Delivery update">Fake Delivery Update</option><option value="PaymentProof">إثبات دفع</option><option value="SecretaryTransfers">تحويلات السكرتارية</option><option value="CollectionTransfers">تحويلات التحصيل من المندوب</option><option value="الكل">كل الحالات</option></select>
       <input id="btSearch" class="barcode-search-input bt-treasury-search" placeholder="بحث بالعميل، الموبايل، الدكتور، الموظف، Ticket ID، رقم الأوردر أو Barcode..." type="text" oninput="renderBranchesTreasury()">
       <button class="btn-filter" type="button" onclick="loadBranchesTreasury()">Filter 🔍</button>
       <button class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
@@ -1714,6 +1720,9 @@
 <input id="khaznaBarcodeSearch" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..." type="text"/>
 <select id="khaznaFilterStatus" style="flex:0 0 auto;min-width:160px;max-width:200px;min-height:40px;padding:8px 12px;font-size:13px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;color:var(--text-primary);">
 <option value="الكل">كل الحالات</option>
+<option value="UrgentOrder">استعجال الأوردر</option>
+<option value="ReplacementOrder">استبدال الأوردر</option>
+<option value="ErrorOrder">أخطاء❌</option>
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
@@ -2154,6 +2163,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260901-urgent-green-audit-search-v80"></script>
+  <script src="js/main.js?v=20260901-flags-notes-filters-audit-v81"></script>
 </body>
 </html>
