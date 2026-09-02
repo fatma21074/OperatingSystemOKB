@@ -2397,6 +2397,9 @@ body.customer-profile-open{overflow:hidden}
 .user-account-menu.open{display:block}
 .user-account-menu button{width:100%;border:0;border-radius:7px;background:transparent;color:var(--text-primary);padding:10px 12px;text-align:start;font:inherit;font-weight:800;cursor:pointer}
 .user-account-menu button:hover{background:var(--bg-soft);transform:translateY(-1px)}
+.user-account-menu .user-account-logout{margin-top:5px;border-top:1px solid var(--border-color);border-radius:0 0 7px 7px;color:#ff4d66}
+.financial-audit-header-btn{--header-neon:#ef4444;--header-neon-soft:#fca5a5}
+.financial-audit-header-btn .logout-header-icon{position:relative}
 .secretary-audit-header-btn{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:7px 12px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-soft);color:var(--text-primary);font-size:11px;font-weight:900;cursor:pointer;white-space:nowrap;transition:.18s ease}
 .secretary-audit-header-btn:hover{transform:translateY(-1px);border-color:#22d3ee;background:rgba(34,211,238,.08)}
 .secretary-audit-page{width:100%;padding:0}

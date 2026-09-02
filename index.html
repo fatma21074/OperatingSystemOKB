@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260902-normal-flags-signed-admin-lock-v84">
+  <link rel="stylesheet" href="css/style.css?v=20260902-live-permissions-v90">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -496,6 +496,7 @@
 <span class="user-account-arrow">▾</span>
 <div class="user-account-menu" id="userAccountMenu">
   <button type="button" onclick="event.stopPropagation();closeUserAccountMenu();openMyAccountModal()">👤 My Account</button>
+  <button type="button" class="user-account-logout" onclick="event.stopPropagation();closeUserAccountMenu();logout()">🚪 Log out</button>
 </div>
 </div>
 <div class="notif-wrap" title="Notifications">
@@ -593,9 +594,9 @@
   <span class="secretary-audit-icon" aria-hidden="true">🛡️<span id="secretaryAuditNotification" class="secretary-audit-notification hidden">0</span></span>
   <span>Secretary Audit</span>
 </button>
-<button class="logout-header-btn" id="logoutHeaderBtn" type="button" onclick="logout()" title="Log out">
-  <span class="logout-header-icon" aria-hidden="true">🚪</span>
-  <span class="logout-header-label">Log out</span>
+<button class="logout-header-btn financial-audit-header-btn" id="financialAuditHeaderBtn" type="button" onclick="openFinancialAudit('branches')" title="Financial Audit">
+  <span class="logout-header-icon" aria-hidden="true">🛡️<b id="financialAuditNotification" class="secretary-audit-notification hidden">0</b></span>
+  <span class="logout-header-label">Financial Audit</span>
 </button>
 </div>
 </header>
@@ -607,7 +608,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1>إضافة أوردر جديد</h1>
-<div class="page-user-refresh"><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="refreshDashboardPage(this)">↻ Refresh</button></div>
+<div class="page-user-refresh"><button id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="refreshDashboardPage(this)">↻ Refresh</button></div>
 </div>
 <form id="orderForm">
 <div class="form-grid">
@@ -1800,22 +1801,27 @@
 </div>
 </div>
 </section>
-<div id="financialAuditModal" class="financial-audit-modal" role="dialog" aria-modal="true" aria-labelledby="financialAuditTitle">
-  <div class="financial-audit-panel">
+<section id="financialAuditPage" class="page hidden secretary-audit-page" aria-labelledby="financialAuditTitle">
+  <div class="secretary-audit-page-panel">
     <div class="financial-audit-head">
       <div><h2 id="financialAuditTitle">🛡️ Financial Audit — المراجعة المالية</h2><p id="financialAuditMeta"></p></div>
-      <button type="button" onclick="closeFinancialAudit()" aria-label="إغلاق">✕</button>
+      <div class="secretary-audit-head-actions"><input id="financialAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." oninput="renderFinancialAudit()"><button type="button" class="secretary-audit-head-reset" onclick="resetFinancialAuditFilters()">Reset ✕</button><button type="button" onclick="closeFinancialAudit()">← رجوع</button></div>
+    </div>
+    <div class="financial-audit-tools secretary-audit-filters">
+      <div class="date-filter-group"><label>من</label><input id="financialAuditFrom" type="date"></div><div class="date-filter-group"><label>إلى</label><input id="financialAuditTo" type="date"></div>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshFinancialAudit()">Filter 🔍</button>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="printFinancialAudit()">🖨️ طباعة</button>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAuditManagementReport()">📊 Report</button>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAudit()">⬇ Export Excel</button>
+      <select id="financialAuditBranchFilter" class="secretary-audit-select" onchange="refreshFinancialAudit()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="financialAuditEmployeeFilter" class="secretary-audit-select" onchange="refreshFinancialAudit()"><option value="all">كل الموظفين</option></select>
+      <select id="financialAuditSeverityFilter" class="secretary-audit-select" onchange="renderFinancialAudit()"><option value="all">كل الحالات</option><option value="error">خطأ</option><option value="warning">تنبيه</option></select>
     </div>
     <div id="financialAuditSummary" class="financial-audit-summary"></div>
     <div id="financialAuditVerdict" class="financial-audit-verdict"></div>
-    <div class="financial-audit-tools">
-      <button type="button" class="btn-filter" onclick="refreshFinancialAudit()">↻ إعادة الفحص</button>
-      <button type="button" class="btn-filter" onclick="printFinancialAudit()">🖨️ طباعة</button>
-      <button type="button" class="btn-filter" onclick="exportFinancialAudit()">⬇ Export Excel</button>
-    </div>
     <div class="table-wrap financial-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th>التحصيل</th><th>الطريقة</th><th>المشكلة المكتشفة</th><th>الإجراء</th></tr></thead><tbody id="financialAuditBody"></tbody></table></div>
   </div>
-</div>
+</section>
 
 <section id="secretaryAuditPage" class="page hidden secretary-audit-page" aria-labelledby="secretaryAuditTitle">
   <div class="secretary-audit-page-panel">
@@ -2163,6 +2169,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260902-normal-flags-signed-admin-lock-v84"></script>
+  <script src="js/main.js?v=20260902-daily-lock-permission-v91"></script>
 </body>
 </html>

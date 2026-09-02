@@ -1,6 +1,7 @@
 const OKB_SUPABASE_URL = "https://nsynylbqrkdftnyqrgkn.supabase.co";
 const OKB_SUPABASE_KEY = "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv";
 const OKB_LOGIN_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-login`;
+const OKB_PAYMENT_OCR_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-payment-ocr`;
 let okbSessionRefreshTimer = null;
 let okbSessionRefreshPromise = null;
 let supabaseClient = createOkbSupabaseClient();
@@ -46,6 +47,7 @@ function setOkbSecureSession(token, expiresAt = 0) {
     try { previousClient?.removeAllChannels?.(); } catch (error) {}
     activityLogRealtimeChannel = null;
     secretaryAuditRealtimeChannel = null;
+    financialAuditRealtimeChannel = null;
     rolePermissionsRealtimeChannel = null;
     chatRealtimeChannel = null;
     onlinePresenceChannel = null;
@@ -58,6 +60,7 @@ function setOkbSecureSession(token, expiresAt = 0) {
       startLiveBusinessSync();
       startActivityLogNotifications();
       startSecretaryAuditNotifications();
+      startFinancialAuditNotifications();
       startOnlinePresence().catch(error => console.error('Presence restart failed:', error));
       startChatRealtime();
     }, 0);
@@ -220,6 +223,8 @@ let activityLogUnreadCount = 0;
 let secretaryAuditRealtimeChannel = null;
 let secretaryAuditPollingTimer = null;
 let secretaryAuditUnreadCount = 0;
+let financialAuditRealtimeChannel = null;
+let financialAuditUnreadCount = 0;
 let activityLogPageNumber = 1;
 const ACTIVITY_LOG_PAGE_SIZE = 25;
 let pendingHeaderPollingTimer = null;
@@ -391,6 +396,8 @@ function stopActivityLogNotifications(){
 }
 function startActivityLogNotifications(){
   stopActivityLogNotifications();
+  stopSecretaryAuditNotifications();
+  stopFinancialAuditNotifications();
   if (!hasRoleFeature('activity_log')) return;
   refreshActivityLogUnreadCount();
   activityLogRealtimeChannel = supabaseClient
@@ -1419,6 +1426,9 @@ function canonicalPermissionRole(role) {
   const key = getRoleKey(role);
   if (['operation_manager','delivery_manager','operations_manager'].includes(key)) return 'manager';
   if (key === 'receptionist') return 'secretary';
+  if (['accounts_manager','accounting_manager','finance_manager','مدير_الحسابات'].includes(key)) return 'account_manager';
+  if (['accounts_supervisor','accounting_supervisor','finance_supervisor','مشرف_الحسابات'].includes(key)) return 'account_supervisor';
+  if (['branch_cashier','كاشير'].includes(key)) return 'cashier';
   return key;
 }
 
@@ -1494,7 +1504,16 @@ function getPermissionsForRole(role) {
 function hasRoleFeature(feature) {
   if (!currentUser) return false;
   if (isAdmin()) return true;
-  return Boolean(getPermissionsForRole(currentUser.role)[feature]);
+  let userPermissions = currentUser.system_permissions;
+  if (typeof userPermissions === 'string') {
+    try { userPermissions = JSON.parse(userPermissions); } catch (e) { userPermissions = null; }
+  }
+  const roleAllowed = Boolean(getPermissionsForRole(currentUser.role)[feature]);
+  // A permission granted by either the Role matrix or the user's individual
+  // permissions is enough. A stale individual `false` must never cancel a
+  // newer permission that the admin granted to the whole Role.
+  const userAllowed = Boolean(userPermissions && userPermissions[feature]);
+  return roleAllowed || userAllowed;
 }
 
 function hasButtonPermission(feature) {
@@ -1563,7 +1582,7 @@ function startRolePermissionsSync() {
       setupUserView();
       if (!currentPageStillAllowed()) await showInitialPermittedPage();
     }
-  }, 45000);
+  }, 10000);
   if (supabaseClient?.channel) {
     rolePermissionsRealtimeChannel = supabaseClient
       .channel('role-permissions-live-global')
@@ -1914,8 +1933,8 @@ function isAccountManager() {
   const role = getRoleKey(currentUser.role);
   return role === 'account_manager' || role === 'account_supervisor';
 }
-function canManageDailyLock() { return isAdmin(); }
-function canUnlockDailyLock() { return isAdmin() || isAccountManager(); }
+function canManageDailyLock() { return hasButtonPermission('btn_khazna_lock'); }
+function canUnlockDailyLock() { return hasButtonPermission('btn_khazna_lock'); }
 function canManageKhaznaAndTransfer() { return hasButtonPermission('btn_branch_transfer'); }
 function canViewKhazna() { return hasButtonPermission('btn_branch_khazna'); }
 function canCollectOrders() { return hasButtonPermission('btn_order_collect'); }
@@ -2395,8 +2414,9 @@ function canCurrentUserCollect(order) {
   return String(order?.status || '').trim() !== 'Signed';
 }
 
-function canMutateSignedOrder(order, actionLabel = 'تنفيذ هذا الإجراء') {
+function canMutateSignedOrder(order, actionLabel = 'تنفيذ هذا الإجراء', permissionFeature = '') {
   if (isAdmin()) return true;
+  if (permissionFeature && hasButtonPermission(permissionFeature)) return true;
   if (String(order?.status || '').trim() === 'Signed') {
     alert(`لا يمكن ${actionLabel} على أوردر تم تسليمه (Signed). هذا الإجراء متاح للأدمن فقط.`);
     return false;
@@ -2711,6 +2731,23 @@ async function deletePaymentImage(imageUrl) {
     .remove([path]);
     
   if (error) console.error("Delete error:", error);
+}
+
+async function requestPaymentOcrAudit(orderId, proofType, imageUrl, expectedAmount) {
+  if (!orderId || !imageUrl || !['secretary','collection'].includes(proofType)) return false;
+  const token=sessionStorage.getItem('okb_access_token')||'';
+  if(!token)return false;
+  try{
+    const response=await okbFetchWithSessionRetry(OKB_PAYMENT_OCR_ENDPOINT,{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json',apikey:OKB_SUPABASE_KEY,Authorization:`Bearer ${token}`},
+      body:JSON.stringify({order_id:String(orderId),proof_type:proofType,image_url:String(imageUrl),expected_amount:Math.max(0,Number(expectedAmount||0))})
+    });
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok){console.warn('OCR audit request failed:',payload?.error||response.status);return false;}
+    if(!payload?.audit){console.warn('OCR audit completed without a stored result');return false;}
+    return payload.audit;
+  }catch(error){console.warn('OCR audit request:',error?.message||error);return false;}
 }
 
 function previewPaymentImage(input) {
@@ -3139,12 +3176,16 @@ function setupUserView() {
   if (inline2) inline2.textContent = getRoleDisplayName(currentUser.role);
   const av = $("userAvatar");
   if (av) av.textContent = (currentUser.name || "U").trim().charAt(0).toUpperCase();
+const hardRefreshBtn = document.getElementById('adminHardRefreshBtn');
+if (hardRefreshBtn) hardRefreshBtn.style.display = isAdmin() ? 'inline-flex' : 'none';
 const selectPageTh = document.getElementById("selectPageOrders")?.closest("th");
 if (selectPageTh) selectPageTh.style.display = isAdmin() ? "" : "none";
 const productReportsBtn = document.getElementById('productReportsHeaderBtn');
 if (productReportsBtn) productReportsBtn.style.display = canViewProductReports() ? 'inline-flex' : 'none';
 const secretaryAuditBtn = document.getElementById('secretaryAuditHeaderBtn');
 if (secretaryAuditBtn) secretaryAuditBtn.style.display = hasRoleFeature('secretary_audit') ? 'inline-flex' : 'none';
+const financialAuditBtn = document.getElementById('financialAuditHeaderBtn');
+if (financialAuditBtn) financialAuditBtn.style.display = hasButtonPermission('btn_financial_audit') ? 'inline-flex' : 'none';
 const dashboardBtn = document.getElementById('dashboardHeaderBtn');
 if (dashboardBtn) dashboardBtn.style.display = hasRoleFeature('dashboard') ? 'inline-flex' : 'none';
 const storesBtn = document.getElementById('okbStoresHeaderBtn');
@@ -3209,6 +3250,7 @@ document.querySelectorAll('[data-page="usersPage"]').forEach(el => {
 });
 startActivityLogNotifications();
 startSecretaryAuditNotifications();
+startFinancialAuditNotifications();
 startOnlinePresence();
 startLastSeenHeartbeat();
 startPendingHeaderNotifications();
@@ -3685,7 +3727,7 @@ async function exportOKBStoresReportExcel(){
 }
 
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "secretaryAuditPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "secretaryAuditPage", "financialAuditPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
@@ -4945,7 +4987,7 @@ function renderOrders() {
           <div class="dashboard-actions-menu">
             <button class="dashboard-actions-trigger" type="button" title="الإجراءات" aria-label="فتح الإجراءات" aria-expanded="false" onclick="toggleDashboardActions(event,'${o.id}')">•••</button>
             <div class="dashboard-actions-dropdown hidden" id="dashboardActions_${o.id}">
-              ${hasButtonPermission('btn_dashboard_edit') && (isAdmin() || String(o.status||'').trim()!=='Signed') ? `<button type="button" onclick="closeDashboardActions();editOrder('${o.id}')">✏️ تعديل</button>` : ''}
+              ${hasButtonPermission('btn_dashboard_edit') ? `<button type="button" onclick="closeDashboardActions();editOrder('${o.id}')">✏️ تعديل</button>` : ''}
               ${isAdmin() || String(o.status||'').trim()!=='Signed' ? `<button type="button" onclick="closeDashboardActions();openDashboardOrderNote('${o.id}')">📝 إضافة ملاحظة</button>` : ''}
               ${isAdmin() ? `<button type="button" class="dashboard-action-delete" onclick="closeDashboardActions();deleteOrder('${o.id}')">🗑️ حذف</button>` : ''}
             </div>
@@ -5117,11 +5159,7 @@ orderForm.addEventListener("submit", async (e) => {
     
     if (editId) {
       const existingOrder = orders.find(x => String(x.id) === String(editId));
-      if (existingOrder && !canCurrentUserEditRegisteredOrder(existingOrder)) {
-        return;
-      }
-      if (existingOrder && String(existingOrder.status || '').trim() === 'Signed' && !isAdmin()) {
-        alert('لا يمكن تعديل أوردر Signed إلا من خلال الأدمن فقط');
+      if (existingOrder && !canCurrentUserEditRegisteredOrder(existingOrder, true, 'btn_dashboard_edit')) {
         return;
       }
       result = await supabaseClient.from("orders").update(orderData).eq("id", editId).select();
@@ -5164,6 +5202,7 @@ orderForm.addEventListener("submit", async (e) => {
           if (result?.data?.[0]) result.data[0].payment_image = imageUrl;
           const proofOrder = { id: orderId, ...orderData };
           await logActivity('payment_proof_attached','تم إرفاق إثبات دفع للأوردر',`العميل: ${orderData.customer_name} | تم رفع صورة إثبات الدفع`,getActivityOrderInfo(proofOrder));
+          await requestPaymentOcrAudit(orderId,'secretary',imageUrl,orderData.deposit);
         }
       }
     }
@@ -5249,8 +5288,9 @@ function isOrderCreatedBySecretary(order) {
   });
 }
 
-function canCurrentUserEditRegisteredOrder(order, showMessage = true) {
+function canCurrentUserEditRegisteredOrder(order, showMessage = true, permissionFeature = '') {
   if (isAdmin()) return true;
+  if (permissionFeature && hasButtonPermission(permissionFeature)) return true;
   if(String(order?.status||'').trim().toLowerCase()==='signed'){
     if(showMessage)alert('لا يمكن تعديل أوردر Signed. التعديل متاح للأدمن فقط.');
     return false;
@@ -5268,7 +5308,7 @@ window.editOrder = function (id) {
   if(!hasButtonPermission('btn_dashboard_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   const o = orders.find(x => String(x.id) === String(id));
   if (!o) return;
-  if (!canCurrentUserEditRegisteredOrder(o)) return;
+  if (!canCurrentUserEditRegisteredOrder(o, true, 'btn_dashboard_edit')) return;
   editId = id;
   employeeName.value = o.employee_name || "";
   doctorName.value = o.doctor_name || "";
@@ -9383,10 +9423,10 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   const hasLockedSigned=!isAdmin()&&selectedOrders.some(order=>String(order?.status||'').trim()==='Signed');
   if(bar) bar.classList.toggle('hidden',count===0);
   if(countEl) countEl.textContent=`${num(count)} عميل محدد`;
-  if(editBtn) editBtn.classList.toggle('hidden',count!==1||!hasButtonPermission('btn_branch_edit')||hasLockedSigned);
+  if(editBtn) editBtn.classList.toggle('hidden',count!==1||!hasButtonPermission('btn_branch_edit'));
   if(noteBtn) noteBtn.classList.toggle('hidden',count===0||hasLockedSigned);
   if(transferBtn){
-    const showTransfer=count>0&&hasButtonPermission('btn_branch_transfer')&&!hasLockedSigned;
+    const showTransfer=count>0&&hasButtonPermission('btn_branch_transfer');
     transferBtn.classList.toggle('hidden',!showTransfer);
     transferBtn.style.display=showTransfer?'inline-flex':'none';
   }
@@ -9394,7 +9434,7 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   if(deleteProofBtn){
     const selectedOrder=selectedOrders.length===1?selectedOrders[0]:null;
     const hasPaymentProof=Boolean(String(selectedOrder?.payment_image||'').trim());
-    const shouldShow=count===1&&selectedOrders.length===1&&hasPaymentProof&&hasButtonPermission('btn_delete_upfront_proof')&&!hasLockedSigned;
+    const shouldShow=count===1&&selectedOrders.length===1&&hasPaymentProof&&hasButtonPermission('btn_delete_upfront_proof');
     deleteProofBtn.classList.toggle('hidden',!shouldShow);
     deleteProofBtn.disabled=!shouldShow;
     deleteProofBtn.setAttribute('aria-hidden',shouldShow?'false':'true');
@@ -9464,7 +9504,7 @@ async function deleteSelectedBranchPaymentProof(){
   if(!hasButtonPermission('btn_delete_upfront_proof')){alert('حذف إثبات السكرتارية غير مضاف لصلاحيات حسابك');return;}
   if(branchSelectedOrderIds.size!==1)return;
   const order=branchOrders.find(item=>branchSelectedOrderIds.has(String(item.id)));
-  if(order&&!canMutateSignedOrder(order,'حذف إثبات السكرتارية'))return;
+  if(order&&!canMutateSignedOrder(order,'حذف إثبات السكرتارية','btn_delete_upfront_proof'))return;
   if(!order||!order.payment_image){
     syncBranchSelectionUI();
     return;
@@ -9539,7 +9579,7 @@ function editBranchOrder(id) {
   if(!hasButtonPermission('btn_branch_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   const o = branchOrders.find(x => String(x.id) === String(id));
   if (!o) return;
-  if (!canCurrentUserEditRegisteredOrder(o)) return;
+  if (!canCurrentUserEditRegisteredOrder(o, true, 'btn_branch_edit')) return;
   branchEditId=String(o.id);
   branchEditExistingPaymentImage=o.payment_image||'';
   const setValue=(id,value)=>{const el=document.getElementById(id);if(el)el.value=value??'';};
@@ -9762,7 +9802,7 @@ document.addEventListener('DOMContentLoaded', function() {
       let savedOrder;
       let error;
       if(wasEditing){
-        if(!canCurrentUserEditRegisteredOrder(editingOrder)){
+        if(!canCurrentUserEditRegisteredOrder(editingOrder, true, 'btn_branch_edit')){
           return;
         }
         const result=await supabaseClient.from('orders').update(orderData).eq('id',editingOrder.id).select().single();
@@ -9782,6 +9822,7 @@ document.addEventListener('DOMContentLoaded', function() {
           if(branchEditExistingPaymentImage) await deletePaymentImage(branchEditExistingPaymentImage);
           await supabaseClient.from('orders').update({ payment_image: imgUrl }).eq('id', savedOrder.id);
           savedOrder.payment_image=imgUrl;
+          await requestPaymentOcrAudit(savedOrder.id,'secretary',imgUrl,savedOrder.deposit);
         }
       }
       await logActivity(wasEditing?'order_updated':'order_created',wasEditing?'تم تعديل أوردر من صفحة الفرع':'تم إضافة أوردر جديد من الفرع',`العميل: ${orderData.customer_name} | الفرع: ${currentBranchName} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
@@ -9834,6 +9875,7 @@ async function attachBranchPayment(input, orderId) {
   const { error } = await supabaseClient.from('orders').update({ payment_image: url }).eq('id', orderId);
   if (error) { alert('خطأ في الحفظ: ' + error.message); return; }
   const proofOrder = branchOrders.find(x=>String(x.id)===String(orderId)) || {id:orderId,branch:currentBranchName};
+  await requestPaymentOcrAudit(orderId,'secretary',url,proofOrder.deposit);
   await logActivity('payment_proof_attached','تم إرفاق إثبات دفع للأوردر',`العميل: ${proofOrder.customer_name||'—'} | تم رفع صورة إثبات الدفع`,getActivityOrderInfo(proofOrder));
   await loadBranchOrders();
 }
@@ -9910,7 +9952,7 @@ function transferSelectedBranchOrders() {
 function transferBranchOrder(orderId) {
   if (!canManageKhaznaAndTransfer()) { alert('زر التحويل غير مضاف لصلاحيات حسابك'); return; }
   const o = branchOrders.find(x => String(x.id) === String(orderId)) || khaznaOrders.find(x => String(x.id) === String(orderId));
-  if (o && !canMutateSignedOrder(o, 'تحويل الأوردر')) return;
+  if (o && !canMutateSignedOrder(o, 'تحويل الأوردر', 'btn_branch_transfer')) return;
   transferOrderId = orderId;
   transferOrderIds = [String(orderId)];
   const sel = document.getElementById('transferShippingSelect');
@@ -9947,7 +9989,7 @@ async function confirmTransfer() {
   const allKnownOrders = [...branchOrders, ...khaznaOrders, ...orders];
   const transferOrders = ids.map(id => allKnownOrders.find(x => String(x.id) === id)).filter(Boolean);
   const signedOrder = transferOrders.find(order => String(order?.status || '').trim() === 'Signed');
-  if (signedOrder && !canMutateSignedOrder(signedOrder, 'تحويل الأوردر')) return;
+  if (signedOrder && !canMutateSignedOrder(signedOrder, 'تحويل الأوردر', 'btn_branch_transfer')) return;
   const destinationBranch = getBranchNameFromShippingCompany(shipping);
   if (destinationBranch && destinationBranch === currentBranchName) {
     alert('الأوردر موجود بالفعل في الفرع المختار. اختر فرعًا آخر.');
@@ -10123,10 +10165,20 @@ function renderKhaznaLockUI() {
   const isLocked = !!khaznaLockInfo;
 
   if (lockBtn) {
-    lockBtn.style.display = (isSingleDate && !isLocked && canManageDailyLock()) ? 'inline-flex' : 'none';
+    const canLock = canManageDailyLock();
+    lockBtn.style.display = (canLock && !isLocked) ? 'inline-flex' : 'none';
+    lockBtn.disabled = canLock && !isSingleDate;
+    lockBtn.title = !isSingleDate ? 'اختر يومًا واحدًا فقط لقفل اليومية' : '';
+    lockBtn.style.opacity = lockBtn.disabled ? '0.62' : '1';
+    lockBtn.style.cursor = lockBtn.disabled ? 'not-allowed' : 'pointer';
   }
   if (unlockBtn) {
-    unlockBtn.style.display = (isSingleDate && isLocked && canUnlockDailyLock()) ? 'inline-flex' : 'none';
+    const canUnlock = canUnlockDailyLock();
+    unlockBtn.style.display = (canUnlock && isLocked) ? 'inline-flex' : 'none';
+    unlockBtn.disabled = canUnlock && !isSingleDate;
+    unlockBtn.title = !isSingleDate ? 'اختر يومًا واحدًا فقط لفتح القفل' : '';
+    unlockBtn.style.opacity = unlockBtn.disabled ? '0.62' : '1';
+    unlockBtn.style.cursor = unlockBtn.disabled ? 'not-allowed' : 'pointer';
   }
 
   if (lockBadge) {
@@ -10155,7 +10207,7 @@ async function refreshKhaznaLockState() {
 
 async function lockKhaznaDay() {
   if (!canManageDailyLock()) { 
-    alert('قفل اليومية متاح للأدمن فقط'); 
+    alert('زر قفل اليومية غير مضاف لصلاحيات حسابك'); 
     return; 
   }
   
@@ -10213,7 +10265,7 @@ async function lockKhaznaDay() {
 
 async function unlockKhaznaDay() {
   if (!canUnlockDailyLock()) { 
-    alert('فتح القفل متاح للأدمن و Account Manager فقط'); 
+    alert('زر فتح قفل اليومية غير مضاف لصلاحيات حسابك'); 
     return; 
   }
   
@@ -10260,6 +10312,8 @@ function openKhaznaPage() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('khaznaFromDate').value = today;
   document.getElementById('khaznaToDate').value = today;
+  khaznaLockInfo = null;
+  renderKhaznaLockUI();
   
   khaznaSelectedIds = new Set();
   khaznaShippingCost = null;
@@ -10562,7 +10616,7 @@ function getOrderFinancialAudit(order) {
   return analyzeOrderFinancials(order);
 }
 
-let financialAuditState = { scope:'branch', rows:[], findings:[], summary:null, label:'', period:'' };
+let financialAuditState = { scope:'branches', rows:[], findings:[], summary:null, label:'كل الفروع', period:'', ocrAudits:[], allRows:[] };
 
 function getFinancialAuditSource(scope) {
   if (scope === 'branches') {
@@ -10613,17 +10667,72 @@ function financialAuditMethodLabel(analysis) {
   return labels[analysis.method] || analysis.method || 'غير محددة';
 }
 
-function openFinancialAudit(scope = 'branch') {
-  if (!hasButtonPermission('btn_financial_audit')) { alert('المراجعة المالية غير مضافة لصلاحيات حسابك'); return; }
-  const source = getFinancialAuditSource(scope);
-  const summary = calculateFinancialSummary(source.rows, source.options);
-  financialAuditState = { scope, rows:source.rows, findings:buildFinancialAuditFindings(source.rows, summary), summary, label:source.label, period:source.period };
-  renderFinancialAudit();
-  document.getElementById('financialAuditModal')?.classList.add('open');
+async function loadPaymentOcrAudits(rows=[]) {
+  const ids=[...new Set(rows.map(order=>String(order?.id||'')).filter(Boolean))];
+  if(!ids.length)return [];
+  const {data,error}=await supabaseClient.from('payment_ocr_audits').select('*').in('order_id',ids).order('updated_at',{ascending:false});
+  if(error){console.warn('OCR audit results unavailable:',error.message);return [];}
+  return data||[];
 }
 
-function closeFinancialAudit() { document.getElementById('financialAuditModal')?.classList.remove('open'); }
-function refreshFinancialAudit() { openFinancialAudit(financialAuditState.scope || 'branch'); }
+async function loadPaymentOcrAuditScope(source,scope) {
+  const dates=String(source?.period||'').match(/\d{4}-\d{2}-\d{2}/g)||[];
+  let query=supabaseClient.from('payment_ocr_audits').select('*').neq('status','verified').order('updated_at',{ascending:false}).limit(1000);
+  if(dates[0])query=query.gte('updated_at',`${dates[0]}T00:00:00+02:00`);
+  if(dates[1])query=query.lte('updated_at',`${dates[1]}T23:59:59.999+02:00`);
+  const auditResult=await query;
+  if(auditResult.error){console.warn('OCR audit scope unavailable:',auditResult.error.message);return {audits:[],orders:[]};}
+  const audits=auditResult.data||[],ids=[...new Set(audits.map(item=>String(item.order_id||'')).filter(Boolean))];
+  if(!ids.length)return {audits:[],orders:[]};
+  const orderResult=await supabaseClient.from('orders').select('*').in('id',ids);
+  if(orderResult.error){console.warn('OCR audit orders unavailable:',orderResult.error.message);return {audits:[],orders:[]};}
+  const expectedBranch=scope==='branch'?currentBranchName:(source?.label&&source.label!=='كل الفروع'?source.label:'');
+  const orders=(orderResult.data||[]).filter(order=>!expectedBranch||pendingOrderBranch(order)===expectedBranch);
+  const allowed=new Set(orders.map(order=>String(order.id)));
+  return {orders,audits:audits.filter(item=>allowed.has(String(item.order_id)))};
+}
+
+function buildPaymentOcrFindings(rows=[],audits=[]) {
+  const orderMap=new Map(rows.map(order=>[String(order.id),order]));
+  return audits.filter(audit=>audit.status!=='verified').map(audit=>{
+    const order=orderMap.get(String(audit.order_id));
+    if(!order)return null;
+    const type=audit.proof_type==='secretary'?'إثبات السكرتارية':'إثبات التحصيل من المندوب';
+    const labels={pending:'مراجعة OCR قيد التنفيذ',mismatch:'اختلاف مبلغ OCR',multiple:'الصورة تحتوي أرقامًا متعددة وتحتاج مراجعة',unreadable:'تعذر قراءة مبلغ واضح من الصورة',service_not_configured:'خدمة OCR غير مفعلة',failed:'تعذر تنفيذ مراجعة OCR'};
+    const amounts=audit.extracted_amount===null||audit.extracted_amount===undefined
+      ? `المسجل ${enMoney(audit.expected_amount||0)} — المقروء غير واضح`
+      : `المسجل ${enMoney(audit.expected_amount||0)} — المقروء ${enMoney(audit.extracted_amount||0)} — الفرق ${enMoney(Math.abs(Number(audit.difference||0)))}`;
+    return {severity:['mismatch','multiple'].includes(audit.status)?'error':'warning',issue:`${type}: ${labels[audit.status]||audit.status} | ${amounts}`,order,analysis:analyzeOrderFinancials(order),ticket:getTicketId(order)||order.order_number||'—',branch:pendingOrderBranch(order)||order.branch||'—',actor:order.employee_name||'—',at:audit.reviewed_at||audit.updated_at||'',ocr:audit};
+  }).filter(Boolean);
+}
+
+async function openFinancialAudit(scope = 'branches') {
+  if (!hasButtonPermission('btn_financial_audit')) { alert('المراجعة المالية غير مضافة لصلاحيات حسابك'); return; }
+  const today=getCairoDateISO(new Date()),from=document.getElementById('financialAuditFrom'),to=document.getElementById('financialAuditTo'),branch=document.getElementById('financialAuditBranchFilter');
+  if(from&&!from.value)from.value=scope==='branch'?(document.getElementById('khaznaFromDate')?.value||today):(document.getElementById('btFromDate')?.value||today);
+  if(to&&!to.value)to.value=scope==='branch'?(document.getElementById('khaznaToDate')?.value||today):(document.getElementById('btToDate')?.value||today);
+  if(branch)branch.value=scope==='branch'?(currentBranchName||'all'):'all';
+  financialAuditState.scope=scope;
+  hideAllPages();document.getElementById('financialAuditPage')?.classList.remove('hidden');setActiveMenu('financialAuditPage');
+  await refreshFinancialAudit();markFinancialAuditRead();
+}
+
+function closeFinancialAudit() { showInitialPermittedPage(); }
+async function refreshFinancialAudit() {
+  const from=document.getElementById('financialAuditFrom')?.value||getCairoDateISO(new Date()),to=document.getElementById('financialAuditTo')?.value||from;
+  if(from>to){alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');return false;}
+  let all=[],offset=0;
+  while(true){const result=await supabaseClient.from('orders').select('*').in('branch',PENDING_BRANCH_NAMES).order('created_at',{ascending:false}).range(offset,offset+999);if(result.error){alert('تعذر تحميل المراجعة المالية: '+result.error.message);return false;}all=all.concat(result.data||[]);if(!result.data||result.data.length<1000)break;offset+=1000;}
+  all=all.filter(order=>isOrderInAccountingDateRange(order,from,to));
+  const branch=document.getElementById('financialAuditBranchFilter')?.value||'all',employee=document.getElementById('financialAuditEmployeeFilter')?.value||'all';
+  const scoped=all.filter(order=>(branch==='all'||pendingOrderBranch(order)===branch)&&(employee==='all'||String(order.employee_name||'')===employee));
+  const signed=scoped.filter(order=>String(order.status||'').trim()==='Signed'),summary=calculateFinancialSummary(signed,{}),ocrAudits=await loadPaymentOcrAudits(scoped);
+  financialAuditState={scope:'branches',rows:scoped,allRows:all,findings:[...buildFinancialAuditFindings(signed,summary),...buildPaymentOcrFindings(scoped,ocrAudits)],summary,label:branch==='all'?'كل الفروع':branch,period:`${from} → ${to}`,ocrAudits};
+  populateFinancialAuditEmployeeFilter(all);renderFinancialAudit();return true;
+}
+function resetFinancialAuditFilters(){const today=getCairoDateISO(new Date());[['financialAuditFrom',today],['financialAuditTo',today],['financialAuditBranchFilter','all'],['financialAuditEmployeeFilter','all'],['financialAuditSeverityFilter','all'],['financialAuditSearch','']].forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.value=value;});void refreshFinancialAudit();}
+function populateFinancialAuditEmployeeFilter(rows=[]){const select=document.getElementById('financialAuditEmployeeFilter');if(!select)return;const current=select.value||'all',names=[...new Set(rows.map(row=>String(row.employee_name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));select.innerHTML='<option value="all">كل الموظفين</option>'+names.map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join('');select.value=names.includes(current)?current:'all';}
+function getFilteredFinancialAuditFindings(){const severity=document.getElementById('financialAuditSeverityFilter')?.value||'all',q=normalizeSearchableText(document.getElementById('financialAuditSearch')?.value||'');return (financialAuditState.findings||[]).filter(item=>(severity==='all'||item.severity===severity)&&(!q||normalizeSearchableText([item.ticket,item.order?.customer_name,item.branch,item.actor,item.issue].join(' ')).includes(q)));}
 
 function renderFinancialAudit() {
   const state = financialAuditState, summary = state.summary;
@@ -10632,13 +10741,15 @@ function renderFinancialAudit() {
   if (meta) meta.textContent = `${state.label} | الفترة: ${state.period} | فُحص في: ${formatEnglishDateTime(new Date().toISOString())}`;
   const metrics = [
     ['Signed',summary.signedOrdersCount],['إجمالي المبيعات',enMoney(summary.totalSales)],['COD النقدي',enMoney(summary.codCash)],
-    ['التحويلات',enMoney(summary.totalTransfers)],['مصروفات الشحن',enMoney(summary.shippingExpenses)],['صافي الكاش',enMoney(summary.recordedNetCash)]
+    ['التحويلات',enMoney(summary.totalTransfers)],['مصروفات الشحن',enMoney(summary.shippingExpenses)],['صافي الكاش',enMoney(summary.recordedNetCash)],
+    ['OCR مطابق',state.ocrAudits.filter(item=>item.status==='verified').length],['OCR يحتاج مراجعة',state.ocrAudits.filter(item=>item.status!=='verified').length]
   ];
   const summaryEl = document.getElementById('financialAuditSummary');
   if (summaryEl) summaryEl.innerHTML = metrics.map(([label,value])=>`<div class="financial-audit-metric"><span>${label}</span><b>${value}</b></div>`).join('');
   const verdict = document.getElementById('financialAuditVerdict');
-  const errors = state.findings.filter(item=>item.severity==='error').length;
-  const warnings = state.findings.filter(item=>item.severity==='warning').length;
+  const visibleFindings=getFilteredFinancialAuditFindings();
+  const errors = visibleFindings.filter(item=>item.severity==='error').length;
+  const warnings = visibleFindings.filter(item=>item.severity==='warning').length;
   if (verdict) {
     verdict.className = `financial-audit-verdict ${errors ? 'bad' : 'ok'}`;
     verdict.textContent = errors
@@ -10647,7 +10758,7 @@ function renderFinancialAudit() {
   }
   const body = document.getElementById('financialAuditBody');
   if (!body) return;
-  body.innerHTML = state.findings.length ? state.findings.map((item,index) => {
+  body.innerHTML = visibleFindings.length ? visibleFindings.map((item,index) => {
     const a=item.analysis,o=item.order;
     return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${item.severity==='error'?'خطأ':'تنبيه'}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.branch)}</td><td>${a?enMoney(a.price):'—'}</td><td>${a?enMoney(a.deposit):'—'}</td><td>${a?enMoney(a.collected):'—'}</td><td>${escapeHTML(financialAuditMethodLabel(a))}</td><td><strong>${escapeHTML(item.issue)}</strong>${item.actor!=='—'?`<small style="display:block;color:var(--text-muted);margin-top:3px;">بواسطة ${escapeHTML(item.actor)} ${item.at?'— '+formatEnglishDateTime(item.at):''}</small>`:''}</td><td>${o?`<button class="operation-manager-report-btn" type="button" onclick="openFinancialAuditOrder('${o.id}')">فتح الأوردر</button>`:'—'}</td></tr>`;
   }).join('') : '<tr><td colspan="11" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد أخطاء أو تنبيهات مالية في النطاق المحدد</td></tr>';
@@ -10656,17 +10767,14 @@ function renderFinancialAudit() {
 function openFinancialAuditOrder(id) {
   const order = financialAuditState.rows.find(item=>String(item.id)===String(id));
   if (!order) return;
-  closeFinancialAudit();
-  if (financialAuditState.scope === 'branches') { openBranchesTreasuryOrder(id); return; }
-  const input=document.getElementById('khaznaBarcodeSearch');
-  if(input){input.value=getTicketId(order)||order.order_number||'';filterKhaznaBarcode();input.focus();}
+  const branch=pendingOrderBranch(order);closeFinancialAudit();if(branch){openBranchPage(branch).then(()=>setTimeout(()=>{const input=document.getElementById('bSearchInput');if(input){input.value=getTicketId(order)||order.order_number||'';input.dispatchEvent(new Event('input',{bubbles:true}));}},250));}
 }
 
 function getFinancialAuditExportRows() {
-  return financialAuditState.findings.map((item,index)=>({
+  return getFilteredFinancialAuditFindings().map((item,index)=>({
     '#':index+1,'Severity':item.severity==='error'?'Error':'Warning','Ticket ID':item.ticket,'Customer':item.order?.customer_name||'',
     'Branch':item.branch,'Price':item.analysis?.price??'','Deposit':item.analysis?.deposit??'','Collection':item.analysis?.collected??'',
-    'Method':financialAuditMethodLabel(item.analysis),'Issue':item.issue,'Collected By':item.actor,'Collection Date':item.at?formatEnglishDateTime(item.at):''
+    'Method':financialAuditMethodLabel(item.analysis),'Issue':item.issue,'OCR Status':item.ocr?.status||'','OCR Expected':item.ocr?.expected_amount??'','OCR Extracted':item.ocr?.extracted_amount??'','OCR Difference':item.ocr?.difference??'','OCR Confidence':item.ocr?.confidence??'','Collected By':item.actor,'Collection Date':item.at?formatEnglishDateTime(item.at):''
   }));
 }
 
@@ -10676,9 +10784,24 @@ function exportFinancialAudit() {
   if(typeof XLSX==='undefined'){alert('تعذر تحميل أداة Excel. تأكد من الإنترنت وحاول مرة أخرى.');return;}
   const overview=[['Financial Audit',financialAuditState.label],['Period',financialAuditState.period],['Signed Orders',financialAuditState.summary?.signedOrdersCount||0],['Total Sales',financialAuditState.summary?.totalSales||0],['COD Cash',financialAuditState.summary?.codCash||0],['Transfers',financialAuditState.summary?.totalTransfers||0],['Shipping',financialAuditState.summary?.shippingExpenses||0],['Net Cash',financialAuditState.summary?.recordedNetCash||0],['Reconciliation Gap',financialAuditState.summary?.reconciliationGap||0],['Errors',financialAuditState.findings.filter(x=>x.severity==='error').length],['Warnings',financialAuditState.findings.filter(x=>x.severity==='warning').length]];
   const wb=XLSX.utils.book_new(),ws1=XLSX.utils.aoa_to_sheet(overview),ws2=XLSX.utils.json_to_sheet(rows.length?rows:[{'Result':'No financial issues'}]);
-  ws1['!cols']=[{wch:24},{wch:24}];ws2['!cols']=[{wch:5},{wch:10},{wch:12},{wch:24},{wch:18},{wch:12},{wch:12},{wch:12},{wch:22},{wch:65},{wch:20},{wch:24}];
+  ws1['!cols']=[{wch:24},{wch:24}];ws2['!cols']=[{wch:5},{wch:10},{wch:12},{wch:24},{wch:18},{wch:12},{wch:12},{wch:12},{wch:22},{wch:65},{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:20},{wch:24}];
   XLSX.utils.book_append_sheet(wb,ws1,'Overview');XLSX.utils.book_append_sheet(wb,ws2,'Findings');
   XLSX.writeFile(wb,`Financial-Audit-${getLocalDateISO()}.xlsx`);
+}
+
+function exportFinancialAuditManagementReport() {
+  if (!hasButtonPermission('btn_financial_audit')) return;
+  if (typeof XLSX === 'undefined') { alert('تعذر تحميل أداة Excel. تأكد من الإنترنت وحاول مرة أخرى.'); return; }
+  const findings=getFilteredFinancialAuditFindings(), rows=financialAuditState.rows||[];
+  const overview=[['Financial Audit Management Report',financialAuditState.period],['Scope',financialAuditState.label],['Signed Orders',financialAuditState.summary?.signedOrdersCount||0],['Total Sales',financialAuditState.summary?.totalSales||0],['COD Cash',financialAuditState.summary?.codCash||0],['Transfers',financialAuditState.summary?.totalTransfers||0],['Shipping Expenses',financialAuditState.summary?.shippingExpenses||0],['Net Cash',financialAuditState.summary?.recordedNetCash||0],['Errors',findings.filter(x=>x.severity==='error').length],['Warnings',findings.filter(x=>x.severity==='warning').length]];
+  const branchRows=['مدينة نصر','اسكندرية','طنطا','المنصورة'].map(branch=>{const scoped=rows.filter(order=>normalizeBranchName(order.shipping_company||order.branch)===branch),summary=calculateFinancialSummary(scoped.filter(order=>normalizeStatus(order.status)==='Signed')),issues=findings.filter(item=>item.branch===branch);return{Branch:branch,'Signed Orders':summary.signedOrdersCount||0,'Total Sales':summary.totalSales||0,'COD Cash':summary.codCash||0,Transfers:summary.totalTransfers||0,Shipping:summary.shippingExpenses||0,'Net Cash':summary.recordedNetCash||0,Errors:issues.filter(x=>x.severity==='error').length,Warnings:issues.filter(x=>x.severity==='warning').length};});
+  const employees=new Map();
+  rows.forEach(order=>{const name=String(order.employee_name||'غير محدد').trim()||'غير محدد';if(!employees.has(name))employees.set(name,{Employee:name,Orders:0,Errors:0,Warnings:0});employees.get(name).Orders++;});
+  findings.forEach(item=>{const name=String(item.order?.employee_name||item.actor||'غير محدد').trim()||'غير محدد';if(!employees.has(name))employees.set(name,{Employee:name,Orders:0,Errors:0,Warnings:0});employees.get(name)[item.severity==='error'?'Errors':'Warnings']++;});
+  const employeeRows=[...employees.values()].map(row=>({...row,'Error Rate':row.Orders?row.Errors/row.Orders:0})).sort((a,b)=>b.Errors-a.Errors||b.Warnings-a.Warnings);
+  const wb=XLSX.utils.book_new(), sheets=[['Overview',XLSX.utils.aoa_to_sheet(overview)],['Branch Performance',XLSX.utils.json_to_sheet(branchRows)],['Employee Risk',XLSX.utils.json_to_sheet(employeeRows)],['Findings',XLSX.utils.json_to_sheet(getFinancialAuditExportRows().length?getFinancialAuditExportRows():[{Result:'No financial issues'}])]];
+  sheets.forEach(([name,sheet])=>{sheet['!cols']=Array.from({length:XLSX.utils.decode_range(sheet['!ref']||'A1:B1').e.c+1},()=>({wch:22}));XLSX.utils.book_append_sheet(wb,sheet,name);});
+  XLSX.writeFile(wb,`Financial-Audit-Management-${getLocalDateISO()}.xlsx`);
 }
 
 function printFinancialAudit() {
@@ -10735,9 +10858,20 @@ function startSecretaryAuditNotifications(){
     if(open)scheduleSecretaryAuditLiveRefresh();
     else if(SECRETARY_AUDIT_ACTIONS.includes(action))updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
     else void refreshSecretaryAuditUnreadCount();
+  }).on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
+    const status=String(payload?.new?.status||'');
+    if(!status||status==='pending'||status==='verified')return;
+    const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
+    if(open)scheduleSecretaryAuditLiveRefresh();
+    else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
   }).subscribe();
   secretaryAuditPollingTimer=setInterval(refreshSecretaryAuditUnreadCount,20000);
 }
+
+function updateFinancialAuditBadge(count=financialAuditUnreadCount){financialAuditUnreadCount=Math.max(0,Number(count)||0);const badge=document.getElementById('financialAuditNotification');if(!badge)return;badge.textContent=financialAuditUnreadCount>99?'99+':String(financialAuditUnreadCount);badge.classList.toggle('hidden',financialAuditUnreadCount<1||!hasButtonPermission('btn_financial_audit'));}
+function markFinancialAuditRead(){localStorage.setItem(`okb_financial_audit_seen_${currentUser?.username||currentUser?.id||'user'}`,new Date().toISOString());updateFinancialAuditBadge(0);}
+function stopFinancialAuditNotifications(){if(financialAuditRealtimeChannel){try{supabaseClient.removeChannel(financialAuditRealtimeChannel);}catch(_){ }financialAuditRealtimeChannel=null;}updateFinancialAuditBadge(0);}
+function startFinancialAuditNotifications(){stopFinancialAuditNotifications();if(!currentUser||!hasButtonPermission('btn_financial_audit'))return;financialAuditRealtimeChannel=supabaseClient.channel(`financial-audit-${currentUser.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{if(String(payload?.new?.action_type||'')!=='order_collected')return;if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))void refreshFinancialAudit();else updateFinancialAuditBadge(financialAuditUnreadCount+1);}).on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{const status=String(payload?.new?.status||'');if(!status||status==='pending'||status==='verified')return;if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))void refreshFinancialAudit();else updateFinancialAuditBadge(financialAuditUnreadCount+1);}).subscribe();}
 
 function analyzeSecretaryOrderInput(order) {
   const errors = [], warnings = [];
@@ -10837,6 +10971,14 @@ async function loadSecretaryAuditRows() {
       });
     });
   }
+  // A payment screenshot is part of the secretary's input controls. Surface
+  // the same OCR discrepancy here as well as in Financial Audit so it can be
+  // corrected before the order leaves the branch.
+  const ocrAudits=await loadPaymentOcrAudits(rows);
+  buildPaymentOcrFindings(rows,ocrAudits).forEach(item=>{
+    const duplicate=findings.some(existing=>String(existing.order?.id||'')===String(item.order?.id||'')&&String(existing.issue)===String(item.issue));
+    if(!duplicate)findings.push({...item,created_at:item.at||item.ocr?.updated_at||item.order?.updated_at||item.order?.created_at||''});
+  });
   findings.sort((a,b)=>new Date(b.created_at||b.order?.updated_at||b.order?.created_at||0)-new Date(a.created_at||a.order?.updated_at||a.order?.created_at||0));
   secretaryAuditState={rows,findings,from,to};
   populateSecretaryAuditEmployeeFilter();
@@ -11283,7 +11425,7 @@ function syncKhaznaSelectionUI(visibleOrders = null) {
   if (bar) bar.classList.toggle('hidden', selectedCount === 0);
   if (count) count.textContent = `${selectedCount} محدد`;
   if (deleteBtn) deleteBtn.classList.toggle('hidden', !isAdmin() || selectedCount === 0);
-  const canDeleteCollectionProof = isAdmin() && hasButtonPermission('btn_delete_collection_proof') && selectedCount === 1 && Boolean(getOrderCollectionProofUrl(selected[0]));
+  const canDeleteCollectionProof = hasButtonPermission('btn_delete_collection_proof') && selectedCount === 1 && Boolean(getOrderCollectionProofUrl(selected[0]));
   if (deleteProofBtn) deleteProofBtn.classList.toggle('hidden', !canDeleteCollectionProof);
 
   if (master) {
@@ -11326,7 +11468,7 @@ async function deleteSelectedKhaznaCollectionProof() {
   const selected = khaznaOrders.filter(order => khaznaSelectedIds.has(String(order.id)));
   if (selected.length !== 1) return;
   const order = selected[0];
-  if (!canMutateSignedOrder(order, 'حذف إثبات التحصيل')) return;
+  if (!canMutateSignedOrder(order, 'حذف إثبات التحصيل', 'btn_delete_collection_proof')) return;
   const proofUrl = getOrderCollectionProofUrl(order);
   if (!proofUrl) { syncKhaznaSelectionUI(); return; }
   if (!confirm(`هل أنت متأكد من حذف إثبات التحصيل الخاص بالعميل ${order.customer_name || ''}؟`)) return;
@@ -12338,6 +12480,11 @@ async function confirmCollectOrder() {
 
     if (error) throw error;
 
+    if (isCollectionTransfer && proofUrl) {
+      const expectedTransferAmount = isCashTransfer ? transferAmount : sales;
+      await requestPaymentOcrAudit(_collectOrderId,'collection',proofUrl,expectedTransferAmount);
+    }
+
     [branchOrders, khaznaOrders, orders].forEach(arr => {
       if (!Array.isArray(arr)) return;
       const idx = arr.findIndex(o => String(o.id) === String(_collectOrderId));
@@ -13335,9 +13482,14 @@ function findOrderByScannedValue(value) {
   return allowed.find(order => matchesOrderSearch(order, raw)) || null;
 }
 
-function openCollectionFromScan(value, sourceHint) {
+async function openCollectionFromScan(value, sourceHint) {
   if (!canCollectOrders()) return false;
-  const order = findOrderByScannedValue(value);
+  let order = findOrderByScannedValue(value);
+  if(!order){
+    const scope=sourceHint==='khazna'?'khazna':(isElementVisibleById('ordersPage')?'dashboard':'branch');
+    await runHistoricalOrderSearch(scope,value);
+    order=findOrderByScannedValue(value);
+  }
   if (!order) {
     alert('❌ هذا الباركود غير موجود');
     return false;
@@ -13354,7 +13506,7 @@ function openCollectionFromScan(value, sourceHint) {
   return true;
 }
 
-function runBarcodeSearch(value) {
+async function runBarcodeSearch(value) {
   const input = getActiveBarcodeSearchInput();
   const cleanValue = String(value || '').trim();
   if (!input || !cleanValue) return;
@@ -13364,15 +13516,15 @@ function runBarcodeSearch(value) {
   if (input.id === 'bSearchInput') {
     branchPageNum = 1;
     renderBranchOrders();
-    openCollectionFromScan(cleanValue, 'branch');
+    await openCollectionFromScan(cleanValue, 'branch');
   } else if (input.id === 'khaznaBarcodeSearch') {
     renderKhaznaStats();
     renderKhaznaOrders();
-    openCollectionFromScan(cleanValue, 'khazna');
+    await openCollectionFromScan(cleanValue, 'khazna');
   } else if (input.id === 'searchInput') {
     pageState.orders = 1;
     renderOrders();
-    openCollectionFromScan(cleanValue, 'branch');
+    await openCollectionFromScan(cleanValue, 'branch');
   }
 }
 
@@ -13829,7 +13981,7 @@ function syncBranchesTreasurySelection(rows=[]) {
   const selected=rows.filter(order=>branchesTreasurySelectedIds.has(String(order.id))), bar=document.getElementById('btBulkActions');
   bar?.classList.toggle('hidden',!selected.length); const count=document.getElementById('btSelectedCount'); if(count)count.textContent=`${selected.length} محدد`;
   const del=document.getElementById('btDeleteSelectedBtn'); if(del)del.classList.toggle('hidden',!isAdmin()||!selected.length);
-  const proof=document.getElementById('btDeleteProofBtn'); if(proof)proof.classList.toggle('hidden',!(isAdmin()&&selected.length===1&&hasButtonPermission('btn_delete_collection_proof')&&getOrderCollectionProofUrl(selected[0])));
+  const proof=document.getElementById('btDeleteProofBtn'); if(proof)proof.classList.toggle('hidden',!(selected.length===1&&hasButtonPermission('btn_delete_collection_proof')&&getOrderCollectionProofUrl(selected[0])));
   const master=document.getElementById('btSelectAll'); if(master){master.checked=rows.length>0&&selected.length===rows.length;master.indeterminate=selected.length>0&&selected.length<rows.length;}
 }
 
@@ -13848,7 +14000,7 @@ async function deleteSelectedBranchesTreasuryProof(){
   const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));
   if(rows.length!==1)return;
   const order=rows[0];
-  if(!canMutateSignedOrder(order,'حذف إثبات التحصيل'))return;
+  if(!canMutateSignedOrder(order,'حذف إثبات التحصيل','btn_delete_collection_proof'))return;
   const url=getOrderCollectionProofUrl(order);
   if(!url||!confirm('حذف إثبات التحصيل لهذا الأوردر؟'))return;
   const meta=getCollectMeta(order);
@@ -14369,6 +14521,9 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('secretaryAuditBranchFilter', 'ابحث باسم الفرع...');
   enhanceOrderSearchableSelect('secretaryAuditEmployeeFilter', 'ابحث باسم الموظف...');
   enhanceOrderSearchableSelect('secretaryAuditSeverityFilter', 'ابحث باسم الحالة...');
+  enhanceOrderSearchableSelect('financialAuditBranchFilter', 'ابحث باسم الفرع...');
+  enhanceOrderSearchableSelect('financialAuditEmployeeFilter', 'ابحث باسم الموظف...');
+  enhanceOrderSearchableSelect('financialAuditSeverityFilter', 'ابحث باسم الحالة...');
   enhanceOrderSearchableSelect('bFilterEmployee', 'ابحث باسم الموظف...');
   enhanceOrderSearchableSelect('bFilterStatus', 'ابحث باسم الحالة...');
   enhanceOrderSearchableSelect('bFilterDoctor', 'ابحث باسم الدكتور أو الكود...');
@@ -14389,6 +14544,21 @@ async function refreshDashboardPage(button) {
   } finally {
     if (button) { button.disabled = false; button.textContent = oldText; }
   }
+}
+
+async function hardRefreshAdmin(button) {
+  if (!isAdmin()) { alert('Hard Refresh متاح للأدمن فقط'); return; }
+  const oldText=button?.textContent||'⚡ Hard Refresh';
+  if(button){button.disabled=true;button.textContent='⚡ جاري التحديث...';}
+  try {
+    localStorage.removeItem('okb_role_permissions_cache');
+    if ('caches' in window) {
+      const keys=await caches.keys();
+      await Promise.allSettled(keys.map(key=>caches.delete(key)));
+    }
+  } catch(error) { console.warn('Hard refresh cache cleanup:',error); }
+  window.location.replace(`${window.location.pathname}?hard=${Date.now()}`);
+  if(button){button.disabled=false;button.textContent=oldText;}
 }
 
 async function refreshBranchPage(button) {

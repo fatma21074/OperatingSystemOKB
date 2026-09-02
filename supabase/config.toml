@@ -1,2 +1,5 @@
 [functions.okb-login]
 verify_jwt = false
+
+[functions.okb-payment-ocr]
+verify_jwt = false
