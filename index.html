@@ -639,6 +639,7 @@
 <option value="Transit">Transit</option>
 <option value="Returned">Returned</option>
 <option value="Cancel">Cancel</option>
+<option value="Cancel">Cancel</option>
 <option value="Fake Delivery update">Fake Delivery Update</option>
 <option value="Fake Doctor">Fake Doctor</option>
 <option value="Picked-up">Picked-up</option>
@@ -723,6 +724,7 @@
 <span class="active-filter-badge" id="activeDateBadge">📅 فيلتر تاريخ مفعّل</span>
 <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل أو Ticket ID أو Barcode..."/>
 <select id="filterStatus">
+<option value="Signed" selected>Signed</option>
 <option value="الكل">كل الحالات</option>
 <option value="UrgentOrder">استعجال الأوردر</option>
 <option value="ReplacementOrder">استبدال الأوردر</option>
@@ -734,7 +736,6 @@
 <option value="Picked-up">Picked-up</option>
 <option value="Delivering">Delivering</option>
 <option value="Returning">Returning</option>
-<option value="Signed">Signed</option>
 <option value="Cancel">Cancel</option>
 <option value="PaymentProof">إثبات دفع</option>
 </select>
@@ -1585,7 +1586,6 @@
 <select id="bFilterDoctor"><option value="الكل">كل الدكاترة</option></select>
 <button class="success" id="bExportBtn" onclick="openOrdersExportMenu('branch', event)">⬇ Export</button>
 <button class="okb-stores-btn accounting-only" id="branchKhaznaBtn" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
-<button class="okb-stores-btn branch-shipping-rank-only hidden" id="branchShippingRankBtn" onclick="openBranchShippingRankFromBranch()" style="width:auto;padding:8px 16px;font-size:13px;">🚚 Shipping Rank</button>
 </div>
 <div class="branch-bulk-actions hidden" id="branchBulkActions">
   <strong id="branchSelectedCount">0 عميل محدد</strong>
@@ -1673,8 +1673,8 @@
     <div class="toolbar branches-treasury-toolbar">
       <div class="date-filter-group"><label>من</label><input id="btFromDate" type="date"></div>
       <div class="date-filter-group"><label>إلى</label><input id="btToDate" type="date"></div>
-      <select id="btBranchFilter" class="bt-compact-select" onchange="renderBranchesTreasury()"><option value="الكل">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
-      <select id="btStatusFilter" class="bt-compact-select" onchange="renderBranchesTreasury()"><option value="Signed">Signed</option><option value="UrgentOrder">استعجال الأوردر</option><option value="ReplacementOrder">استبدال الأوردر</option><option value="ErrorOrder">أخطاء❌</option><option value="Delivering">Delivering</option><option value="Transit">Transit</option><option value="Picked-up">Picked-up</option><option value="Returning">Returning</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option><option value="Fake Doctor">Fake Doctor</option><option value="Fake Delivery update">Fake Delivery Update</option><option value="PaymentProof">إثبات دفع</option><option value="SecretaryTransfers">تحويلات السكرتارية</option><option value="CollectionTransfers">تحويلات التحصيل من المندوب</option><option value="الكل">كل الحالات</option></select>
+      <select id="btBranchFilter" class="bt-compact-select" onchange="loadBranchesTreasury()"><option value="الكل">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="btStatusFilter" class="bt-compact-select" onchange="loadBranchesTreasury()"><option value="Signed">Signed</option><option value="UrgentOrder">استعجال الأوردر</option><option value="ReplacementOrder">استبدال الأوردر</option><option value="ErrorOrder">أخطاء❌</option><option value="Delivering">Delivering</option><option value="Transit">Transit</option><option value="Picked-up">Picked-up</option><option value="Returning">Returning</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option><option value="Fake Doctor">Fake Doctor</option><option value="Fake Delivery update">Fake Delivery Update</option><option value="PaymentProof">إثبات دفع</option><option value="SecretaryTransfers">تحويلات السكرتارية</option><option value="CollectionTransfers">تحويلات التحصيل من المندوب</option><option value="الكل">كل الحالات</option></select>
       <input id="btSearch" class="barcode-search-input bt-treasury-search" placeholder="بحث بالعميل، الموبايل، الدكتور، الموظف، Ticket ID، رقم الأوردر أو Barcode..." type="text" oninput="renderBranchesTreasury()">
       <button class="btn-filter" type="button" onclick="loadBranchesTreasury()">Filter 🔍</button>
       <button class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
@@ -1809,12 +1809,12 @@
     </div>
     <div class="financial-audit-tools secretary-audit-filters">
       <div class="date-filter-group"><label>من</label><input id="financialAuditFrom" type="date"></div><div class="date-filter-group"><label>إلى</label><input id="financialAuditTo" type="date"></div>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshFinancialAudit()">Filter 🔍</button>
+      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshFinancialAudit(true)">Filter 🔍</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="printFinancialAudit()">🖨️ طباعة</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAuditManagementReport()">📊 Report</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAudit()">⬇ Export Excel</button>
-      <select id="financialAuditBranchFilter" class="secretary-audit-select" onchange="refreshFinancialAudit()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
-      <select id="financialAuditEmployeeFilter" class="secretary-audit-select" onchange="refreshFinancialAudit()"><option value="all">كل الموظفين</option></select>
+      <select id="financialAuditBranchFilter" class="secretary-audit-select" onchange="applyFinancialAuditClientFilters()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="financialAuditEmployeeFilter" class="secretary-audit-select" onchange="applyFinancialAuditClientFilters()"><option value="all">كل الموظفين</option></select>
       <select id="financialAuditSeverityFilter" class="secretary-audit-select" onchange="renderFinancialAudit()"><option value="all">كل الحالات</option><option value="error">خطأ</option><option value="warning">تنبيه</option></select>
     </div>
     <div id="financialAuditSummary" class="financial-audit-summary"></div>
@@ -2169,6 +2169,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="js/main.js?v=20260902-daily-lock-permission-v91"></script>
+<script src="js/main.js?v=20260903-fast-all-branches-treasury-v97"></script>
 </body>
 </html>
