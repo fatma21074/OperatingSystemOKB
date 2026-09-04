@@ -5713,13 +5713,13 @@ function updateShippingMiniDashboard() {
   const DELIVERY_TARGET = 90;
   const RETURN_TARGET = 10;
   const src = getShippingFilteredOrders();
-  const branchMetrics = calculateBranchMiniDashboardStats(src);
+  const branchMetrics = calculateBranchMiniDashboardStats(src, {
+    excludeGroupCancelFromTotal: shippingRankMode === 'branch'
+  });
   const total = branchMetrics.total;
   const signed = branchMetrics.signed;
   const delivering = branchMetrics.delivering;
   const returned = branchMetrics.returned;
-  // Group Cancel remains in Total, but is excluded from the Conversion base
-  // in every Branch Rank surface: cards, table, charts and exports.
   const conversionNum = shippingRankMode === 'branch'
     ? Number(String(branchMetrics.conversionRate).replace('%', '')) || 0
     : percentNum(signed, total);
@@ -5779,20 +5779,25 @@ function updateShippingMiniDashboard() {
   if (backBtn) backBtn.classList.toggle('hidden', !branchShippingRankOverride);
 }
 
-function calculateBranchMiniDashboardStats(list) {
+function calculateBranchMiniDashboardStats(list, options = {}) {
   const source = Array.isArray(list) ? list : [];
-  const total = source.length;
-  const signed = source.filter(o => o.status === 'Signed').length;
-  const delivering = source.filter(o => o.status === 'Delivering').length;
-  const returned = source.filter(o => o.status === 'Returned').length;
-  const cancelled = source.filter(o => o.status === 'Cancel').length;
-  // Group Cancel orders were cancelled by the doctor before dispatch, so they
-  // remain visible in Total but are excluded only from the Conversion base.
-  const conversionBase = Math.max(0, total - cancelled);
+  const statusOf = order => getOrderDisplayStatus(order) || String(order?.status || '').trim();
+  const rawTotal = source.length;
+  const signed = source.filter(o => statusOf(o) === 'Signed').length;
+  const delivering = source.filter(o => statusOf(o) === 'Delivering').length;
+  const returned = source.filter(o => statusOf(o) === 'Returned').length;
+  const cancelled = source.filter(o => statusOf(o) === 'Cancel').length;
+  const operationalTotal = Math.max(0, rawTotal - cancelled);
+  const total = options.excludeGroupCancelFromTotal ? operationalTotal : rawTotal;
+  // Group Cancel happens before dispatch. It is always excluded from the
+  // conversion denominator, while callers can choose whether Total displays
+  // the raw count (branch pages) or the operational count (Branch Rank).
+  const conversionBase = operationalTotal;
   const conversionNum = percentNum(signed, conversionBase);
   const returnNum = percentNum(returned, total);
   return {
     total,
+    rawTotal,
     conversionBase,
     signed,
     delivering,
@@ -5815,7 +5820,7 @@ function getBranchPerformanceRows() {
 
   return branchesMap.map(item => {
     const list = src.filter(order => getProductReportOrderBranch(order) === item.key);
-    const stats = calculateBranchMiniDashboardStats(list);
+    const stats = calculateBranchMiniDashboardStats(list, { excludeGroupCancelFromTotal: true });
     return {
       name: item.branch,
       ...stats
@@ -5853,7 +5858,7 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
 
-  const activeRows = rows.filter(r => Number(r.total || 0) > 0);
+  const activeRows = rows.filter(r => Number(r.rawTotal ?? r.total ?? 0) > 0);
   if (!activeRows.length) {
     tbody.innerHTML = `<tr><td colspan="9" class="empty">${emptyText}</td></tr>`;
     return;
@@ -6446,11 +6451,13 @@ function renderShippingCharts() {
   src.forEach(o => {
     const d = toDay(o.created_at) || '—';
     if (!byDate[d]) byDate[d] = { total: 0, signed: 0, returned: 0, delivering: 0, cancelled: 0 };
-    byDate[d].total += 1;
-    if (o.status === 'Signed') byDate[d].signed += 1;
-    if (o.status === 'Returned') byDate[d].returned += 1;
-    if (o.status === 'Delivering') byDate[d].delivering += 1;
-    if (o.status === 'Cancel') byDate[d].cancelled += 1;
+    const status = getOrderDisplayStatus(o) || String(o?.status || '').trim();
+    const isGroupCancel = shippingRankMode === 'branch' && status === 'Cancel';
+    if (!isGroupCancel) byDate[d].total += 1;
+    if (status === 'Signed') byDate[d].signed += 1;
+    if (status === 'Returned') byDate[d].returned += 1;
+    if (status === 'Delivering') byDate[d].delivering += 1;
+    if (status === 'Cancel') byDate[d].cancelled += 1;
   });
   const labels = Object.keys(byDate).sort((a,b) => {
     const [da,ma] = a.split('/').map(Number);
@@ -6458,16 +6465,17 @@ function renderShippingCharts() {
     return (ma*100+da) - (mb*100+db);
   });
   const conversionData = labels.map(d => {
-    const denominator = shippingRankMode === 'branch'
-      ? Math.max(0, byDate[d].total - byDate[d].cancelled)
-      : byDate[d].total;
+    const denominator = byDate[d].total;
     return Number(percentNum(byDate[d].signed, denominator).toFixed(1));
   });
   const returnData = labels.map(d => Number(percentNum(byDate[d].returned, byDate[d].total).toFixed(1)));
-  const signed = src.filter(o => o.status === 'Signed').length;
-  const delivering = src.filter(o => o.status === 'Delivering').length;
-  const returned = src.filter(o => o.status === 'Returned').length;
-  const others = Math.max(0, src.length - signed - delivering - returned);
+  const statusOf = order => getOrderDisplayStatus(order) || String(order?.status || '').trim();
+  const chartSource = shippingRankMode === 'branch' ? src.filter(o => statusOf(o) !== 'Cancel') : src;
+  const chartTotal = chartSource.length;
+  const signed = chartSource.filter(o => statusOf(o) === 'Signed').length;
+  const delivering = chartSource.filter(o => statusOf(o) === 'Delivering').length;
+  const returned = chartSource.filter(o => statusOf(o) === 'Returned').length;
+  const others = Math.max(0, chartTotal - signed - delivering - returned);
   const baseLineOptions = (maxY = 100) => ({
     responsive: true,
     maintainAspectRatio: false,
@@ -6478,7 +6486,7 @@ function renderShippingCharts() {
   const convCtx = document.getElementById('shippingConversionLineChart');
   if (convCtx) charts['shippingConversionLineChart'] = new Chart(convCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل التسليم', data: conversionData, borderColor: '#57D85A', backgroundColor: 'rgba(87,216,90,.15)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 90%', data: labels.map(() => 90), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(100) });
   const doughnutCtx = document.getElementById('shippingStatusDoughnutChart');
-  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, src.length)})` } } } } });
+  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, chartTotal)})` } } } } });
   const returnCtx = document.getElementById('shippingReturnLineChart');
   if (returnCtx) charts['shippingReturnLineChart'] = new Chart(returnCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل المرتجعات', data: returnData, borderColor: '#FF5555', backgroundColor: 'rgba(239,68,68,.12)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 10%', data: labels.map(() => 10), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(25) });
 }
@@ -13846,6 +13854,11 @@ function generateReceiptHTML(order, branchName) {
   const barcode1  = getOrderBarcode(order);
   const editCount = getOrderEditCount(order);
   const collectionConfirmation = getReceiptCollectionConfirmation(order);
+  const receiptPhones = [...new Set(
+    [order.phone, order.phone2]
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+  )].join(' - ');
   
   // ✅ توليد باركود SVG
   const barcodeSvg = generateCode128BarcodeSVG(barcode1);
@@ -13936,7 +13949,7 @@ function generateReceiptHTML(order, branchName) {
   <div style="font-size:12px;margin-bottom:4px;">العميل: <strong>${escapeHTML(receiptCustomerName)}</strong></div>
   <div style="font-size:12px;margin-bottom:4px;">الدكتور: <strong>${order.doctor_name || ''}</strong></div>
  <div style="font-size:12px;margin-bottom:4px;">رقم الأوردر: <strong>${order.order_number || '—'}</strong></div>
-  <div style="font-size:12px;margin-bottom:4px;">الموبايل: <strong>${order.phone || ''}</strong></div>
+  <div style="font-size:12px;margin-bottom:4px;">الموبايل: <strong>${escapeHTML(receiptPhones || '—')}</strong></div>
   <div style="font-size:12px;margin-bottom:6px;">العنوان: <strong>${order.area || ''}</strong></div>
 
   <div class="divider"></div>
