@@ -576,8 +576,8 @@ async function logActivity(actionType, actionTitle, actionDetails = '', extra = 
     return false;
   }
 }
-function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',khazna_shipping_adjusted:'🧾',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
-function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_note_added:'إضافة ملاحظة',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',khazna_shipping_adjusted:'تصحيح مصروفات الشحن',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد مؤقت',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
+function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',khazna_shipping_adjusted:'🧾',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',stock_balance_add:'➕',stock_balance_edit:'✏️',stock_receipt:'📥',stock_receipt_resend:'↩️',stock_receipt_confirm:'☑️',stock_signed_control:'⏻',stock_signed_bypass:'⚠️',stock_signed_deduction:'📦',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
+function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_note_added:'إضافة ملاحظة',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',khazna_shipping_adjusted:'تصحيح مصروفات الشحن',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد الفرع',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',stock_balance_add:'إضافة رصيد الجرد',stock_balance_edit:'تعديل رصيد مرسل',stock_receipt:'استلام الجرد',stock_receipt_resend:'إعادة إرسال الجرد',stock_receipt_confirm:'تأكيد تسوية الاستلام',stock_signed_control:'التحكم في خصم Signed',stock_signed_bypass:'Signed بدون خصم مخزون',stock_signed_deduction:'خصم رصيد عند Signed',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
 function getAuditActivityIssueText(activity){
   if(!String(activity?.action_type||'').startsWith('secretary_audit_'))return '';
   try{
@@ -741,7 +741,7 @@ function resetActivityLogFilters(){ const today=getLocalDateISO(); activityLogPa
 // ===== Product Reports =====
 function canViewProductReports(){ return hasRoleFeature('product_reports'); }
 let productReportTab = 'top';
-let productReportRows = { top: [], returned: [], cancel: [], dead: [], total: [] };
+let productReportRows = { top: [], returned: [], cancel: [], dead: [], total: [], signed: [] };
 let productTicketModalRows = [];
 
 function productItemCategory(item){ return String(item?.category || item?.item_category || item?.category_name || 'غير مصنف').trim() || 'غير مصنف'; }
@@ -817,9 +817,10 @@ function buildProductReportData(){
     const status=String(order.status||'').trim();
     parseOrderProductsForReports(order).filter(p=>!filters.search||normalizeProductName(p.name).includes(filters.search)).forEach(p=>{
       const key=normalizeProductName(p.name);
-      if(!map.has(key)) map.set(key,{name:p.name,qtySold:0,revenue:0,qtyReturned:0,lossValue:0,qtyCancelled:0,cancelValue:0,reasons:{},cancelReasons:{},soldTickets:[],returnedTickets:[],cancelTickets:[]});
+      if(!map.has(key)) map.set(key,{name:p.name,qtySold:0,revenue:0,qtySigned:0,signedRevenue:0,qtyReturned:0,lossValue:0,qtyCancelled:0,cancelValue:0,reasons:{},cancelReasons:{},soldTickets:[],signedTickets:[],returnedTickets:[],cancelTickets:[]});
       const r=map.get(key); const date=String(order.created_at||''); if(date && (!lastMovement.get(key)||date>lastMovement.get(key))) lastMovement.set(key,date);
       const ref=productTicketRef(order,p);
+      if(status==='Signed') { r.qtySigned+=p.qty; r.signedRevenue+=p.total; r.signedTickets.push(ref); }
       if(status==='Returned') { r.qtyReturned+=p.qty; r.lossValue+=p.total; r.reasons[ref.reason]=(r.reasons[ref.reason]||0)+p.qty; r.returnedTickets.push(ref); }
       else if(status==='Cancel') { r.qtyCancelled+=p.qty; r.cancelValue+=p.total; r.cancelReasons[ref.reason]=(r.cancelReasons[ref.reason]||0)+p.qty; r.cancelTickets.push(ref); }
       else { r.qtySold+=p.qty; r.revenue+=p.total; r.soldTickets.push(ref); }
@@ -828,11 +829,12 @@ function buildProductReportData(){
   const all=[...map.values()];
   const top=all.filter(r=>r.qtySold>0).sort((a,b)=>b.qtySold-a.qtySold||b.revenue-a.revenue).slice(0,10);
   const total=all.filter(r=>r.qtySold>0).sort((a,b)=>b.qtySold-a.qtySold||b.revenue-a.revenue);
+  const signed=all.filter(r=>r.qtySigned>0).sort((a,b)=>b.qtySigned-a.qtySigned||b.signedRevenue-a.signedRevenue);
   const returned=all.map(r=>{ const moved=r.qtySold+r.qtyReturned+r.qtyCancelled; const reason=Object.entries(r.reasons).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—'; return {...r,returnReason:reason,returnRate:moved?r.qtyReturned/moved*100:0}; }).filter(r=>r.qtyReturned>0).sort((a,b)=>b.qtyReturned-a.qtyReturned||b.returnRate-a.returnRate).slice(0,10);
   const cancel=all.map(r=>{ const moved=r.qtySold+r.qtyReturned+r.qtyCancelled; const reason=Object.entries(r.cancelReasons).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—'; return {...r,cancelReason:reason,cancelRate:moved?r.qtyCancelled/moved*100:0}; }).filter(r=>r.qtyCancelled>0).sort((a,b)=>b.qtyCancelled-a.qtyCancelled||b.cancelRate-a.cancelRate).slice(0,10);
   const now=Date.now();
   const dead=okbItems.map(item=>{ const name=item.item_name||''; const key=normalizeProductName(name); const last=lastMovement.get(key); const days=last?Math.floor((now-new Date(last).getTime())/(24*60*60*1000)):9999; const qty=productStockQty(item); return {name,stockQty:qty,unitPrice:Number(item.price||0),lastMovement:last||null,daysInactive:days}; }).filter(r=>r.daysInactive>60&&(!filters.search||normalizeProductName(r.name).includes(filters.search))).sort((a,b)=>b.daysInactive-a.daysInactive).slice(0,10);
-  productReportRows={top,returned,cancel,dead,total};
+  productReportRows={top,returned,cancel,dead,total,signed};
   productReportRows._filteredOrders=filteredOrders;
 }
 function ensureProductReportEnhancements(){
@@ -926,7 +928,7 @@ function updateProductReportKPIs(){
   const filtered=productReportRows._filteredOrders||[]; const cancels=filtered.filter(o=>String(o.status||'')==='Cancel').length;
   if($('prCancelOrders'))$('prCancelOrders').textContent=num(cancels); if($('prAllTopName'))$('prAllTopName').textContent=top?.name||'—'; if($('prAllTopQty'))$('prAllTopQty').textContent=`${num(top?.qtySold||0)} قطعة`; if($('prAllReturnedName'))$('prAllReturnedName').textContent=ret?.name||'—'; if($('prAllReturnedQty'))$('prAllReturnedQty').textContent=`${num(ret?.qtyReturned||0)} قطعة`;
 }
-function ticketButton(row,type){ const tickets=(type==='top'||type==='total')?row.soldTickets:type==='returned'?row.returnedTickets:row.cancelTickets; return `<button class="product-ticket-btn" type="button" onclick="openProductTicketModal('${encodeURIComponent(row.name)}','${type}')">Ticket ID (${num(tickets.length)})</button>`; }
+function ticketButton(row,type){ const tickets=(type==='top'||type==='total')?row.soldTickets:type==='signed'?row.signedTickets:type==='returned'?row.returnedTickets:row.cancelTickets; return `<button class="product-ticket-btn" type="button" onclick="openProductTicketModal('${encodeURIComponent(row.name)}','${type}')">Ticket ID (${num(tickets.length)})</button>`; }
 function renderProductReportTable(){
   const list=$('productReportRowsList');
   if(!list)return;
@@ -943,6 +945,13 @@ function renderProductReportTable(){
     list.innerHTML=`<div class="product-report-total-summary"><span>إجمالي عدد القطع المباعة</span><strong>${num(totalPieces)}</strong><small>إجمالي القيمة: ${money(totalRevenue)} — عدد المنتجات: ${num(rows.length)}</small></div>`+
       header(['Rank','Product Name','Ticket ID','Qty Sold','Revenue'])+
       (rows.length?rows.map((r,i)=>`<div class="product-report-line"><div class="cell">${i+1}</div><div class="cell product-name">${escapeHTML(r.name)}</div><div class="cell">${ticketButton(r,'total')}</div><div class="cell">${num(r.qtySold)}</div><div class="cell">${money(r.revenue)}</div></div>`).join(''):empty('لا توجد قطع مباعة مطابقة للفلاتر الحالية'));
+  } else if(productReportTab==='signed'){
+    const totalPieces=rows.reduce((sum,row)=>sum+Number(row.qtySigned||0),0);
+    const totalRevenue=rows.reduce((sum,row)=>sum+Number(row.signedRevenue||0),0);
+    const signedOrders=new Set(rows.flatMap(row=>(row.signedTickets||[]).map(ticket=>String(ticket.orderId)))).size;
+    list.innerHTML=`<div class="product-report-total-summary"><span>إجمالي عدد القطع التي تم تسليمها للعملاء</span><strong>${num(totalPieces)}</strong><small>إجمالي القيمة: ${money(totalRevenue)} — عدد الأوردرات التي تم تسليمها: ${num(signedOrders)}</small></div>`+
+      header(['Rank','Product Name','Ticket ID','Qty Sold','Revenue'])+
+      (rows.length?rows.map((r,i)=>`<div class="product-report-line"><div class="cell">${i+1}</div><div class="cell product-name">${escapeHTML(r.name)}</div><div class="cell">${ticketButton(r,'signed')}</div><div class="cell">${num(r.qtySigned)}</div><div class="cell">${money(r.signedRevenue)}</div></div>`).join(''):empty('لا توجد منتجات تم تسليمها بحالة Signed طبقاً للفلاتر الحالية'));
   } else if(productReportTab==='returned'){
     list.innerHTML=header(['Rank','Product Name','Ticket ID','Qty Returned','Return Reason','Return Rate %','Loss Value'],'returned')+
       (rows.length?rows.map((r,i)=>`<div class="product-report-line returned"><div class="cell">${i+1}</div><div class="cell product-name">${escapeHTML(r.name)}</div><div class="cell">${ticketButton(r,'returned')}</div><div class="cell">${num(r.qtyReturned)}</div><div class="cell">${escapeHTML(r.returnReason)}</div><div class="cell">${r.returnRate.toFixed(1)}%</div><div class="cell">${money(r.lossValue)}</div></div>`).join(''):empty('لا توجد منتجات مرتجعة مطابقة للفلاتر'));
@@ -956,7 +965,7 @@ function renderProductReportTable(){
 }
 function openProductTicketModal(encodedName,type){
   const name=decodeURIComponent(encodedName); const row=(productReportRows[type]||[]).find(r=>r.name===name); if(!row)return;
-  productTicketModalRows=(type==='top'||type==='total')?row.soldTickets:type==='returned'?row.returnedTickets:row.cancelTickets;
+  productTicketModalRows=(type==='top'||type==='total')?row.soldTickets:type==='signed'?row.signedTickets:type==='returned'?row.returnedTickets:row.cancelTickets;
   let modal=$('productTicketModal'); if(!modal){ modal=document.createElement('div'); modal.id='productTicketModal'; modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.76);z-index:11000;align-items:center;justify-content:center;padding:18px;'; modal.innerHTML=`<div style="width:900px;max-width:98vw;max-height:88vh;overflow:auto;background:var(--bg-card);border:1px solid var(--border-color);border-radius:18px;padding:18px;direction:rtl"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px"><div><h3 id="productTicketModalTitle" style="margin:0"></h3><small id="productTicketModalSub"></small></div><button class="soft" onclick="closeProductTicketModal()">✕ إغلاق</button></div><div id="productTicketModalList"></div></div>`; document.body.appendChild(modal); }
   $('productTicketModalTitle').textContent=`Ticket IDs — ${name}`; $('productTicketModalSub').textContent=`إجمالي ${productTicketModalRows.length} أوردر مرتبط بالمنتج`;
   $('productTicketModalList').innerHTML=productTicketModalRows.length?`<div class="product-ticket-modal-row" style="font-weight:900;background:var(--bg-soft)"><span>Ticket ID</span><span>العميل</span><span>الدكتور</span><span>الفرع</span><span>الحالة</span><span>الكمية</span><span>التاريخ</span></div>`+productTicketModalRows.map(x=>`<div class="product-ticket-modal-row"><button class="product-ticket-btn" onclick="openProductReportOrder('${x.orderId}')">${escapeHTML(x.ticketId)}</button><span>${escapeHTML(x.customer)}</span><span>${escapeHTML(x.doctor||'—')}</span><span>${escapeHTML(x.branch)}</span><span>${escapeHTML(x.status)}</span><span>${num(x.qty)}</span><span>${x.date?formatDate(x.date):'—'}</span></div>`).join(''):'<div class="empty">لا توجد أوردرات</div>'; modal.style.display='flex';
@@ -977,12 +986,12 @@ function renderProductReports(){ ensureProductReportEnhancements(); buildProduct
 async function showProductReportsPage(){ if(!canViewProductReports()){alert('غير مسموح لك بفتح Product Reports');return;} hideAllPages(); $('productReportsPage')?.classList.remove('hidden'); setActiveMenu('productReportsPage'); ensureProductReportEnhancements(); const today=getCairoDateISO(); if(!$('productReportTo').value)$('productReportTo').value=today; if(!$('productReportFrom').value){const d=new Date();d.setDate(d.getDate()-7);$('productReportFrom').value=d.toISOString().split('T')[0];} const loads=[]; if(ordersDataScope!=='all')loads.push(loadOrders()); loads.push(ensureChartLibrary()); await Promise.allSettled(loads); populateProductReportFilters(); renderProductReports(); }
 function applyProductReportFilters(){ renderProductReports(); }
 function resetProductReportFilters(){ const d=new Date(); d.setDate(d.getDate()-7); $('productReportFrom').value=d.toISOString().split('T')[0]; $('productReportTo').value=getCairoDateISO(); if($('productReportBranch'))$('productReportBranch').value='all'; if($('productReportDoctor'))$('productReportDoctor').value='all'; if($('productReportSearch'))$('productReportSearch').value=''; renderProductReports(); }
-function setProductReportTab(tab){ productReportTab=tab; ['top','returned','cancel','dead','total'].forEach(x=>$('productTab'+(x==='top'?'Top':x==='returned'?'Returned':x==='cancel'?'Cancel':x==='total'?'Total':'Dead'))?.classList.toggle('active',x===tab)); renderProductReportTable(); renderProductReportsChart(); }
+function setProductReportTab(tab){ productReportTab=tab; ['top','returned','cancel','dead','total','signed'].forEach(x=>$('productTab'+(x==='top'?'Top':x==='returned'?'Returned':x==='cancel'?'Cancel':x==='total'?'Total':x==='signed'?'Signed':'Dead'))?.classList.toggle('active',x===tab)); renderProductReportTable(); renderProductReportsChart(); }
 async function refreshProductReports(ev){ const btn=ev?.currentTarget; const old=btn?.innerHTML; if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';} await loadOrders(); await loadOKBItems(); populateProductReportFilters(); renderProductReports(); if(btn){btn.disabled=false;btn.innerHTML=old||'↻ Refresh';} }
 function exportProductReportExcel(){
   const rows=productReportRows[productReportTab]||[]; if(!rows.length){alert('لا توجد بيانات للتصدير');return;} if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة');return;}
   const wb=XLSX.utils.book_new();
-  const tabLabel=productReportTab==='top'?'Top Selling':productReportTab==='returned'?'Most Returned':productReportTab==='cancel'?'Cancel Group':productReportTab==='total'?'Total Products Sold':'Dead Stock';
+  const tabLabel=productReportTab==='top'?'Top Selling':productReportTab==='returned'?'Most Returned':productReportTab==='cancel'?'Cancel Group':productReportTab==='total'?'Total Products Sold':productReportTab==='signed'?'Total Signed Products':'Dead Stock';
   const filters=getProductReportFilters();
   const usedSheetNames=new Set();
   const safeSheetName=(name,index)=>{
@@ -995,6 +1004,7 @@ function exportProductReportExcel(){
 
   let summary=[];
   if(productReportTab==='top'||productReportTab==='total') summary=rows.map((r,i)=>({Rank:i+1,Product:r.name,'Qty Sold':r.qtySold,Revenue:r.revenue,'Orders Count':r.soldTickets.length}));
+  else if(productReportTab==='signed') summary=rows.map((r,i)=>({Rank:i+1,Product:r.name,'Qty Sold':r.qtySigned,Revenue:r.signedRevenue,'Orders Count':r.signedTickets.length}));
   else if(productReportTab==='returned') summary=rows.map((r,i)=>({Rank:i+1,Product:r.name,'Qty Returned':r.qtyReturned,'Return Reason':r.returnReason,'Return Rate %':Number(r.returnRate.toFixed(1)),'Loss Value':r.lossValue,'Orders Count':r.returnedTickets.length}));
   else if(productReportTab==='cancel') summary=rows.map((r,i)=>({Rank:i+1,Product:r.name,'Qty Cancelled':r.qtyCancelled,'Cancel Reason':r.cancelReason,'Cancel Rate %':Number(r.cancelRate.toFixed(1)),'Cancel Value':r.cancelValue,'Orders Count':r.cancelTickets.length}));
   else summary=rows.map((r,i)=>({Rank:i+1,Product:r.name,'Stock Qty':r.stockQty,'Unit Price':r.unitPrice,'Last Movement':r.lastMovement||'No movement','Inactive Days':r.daysInactive===9999?'60+':r.daysInactive}));
@@ -1017,12 +1027,12 @@ function exportProductReportExcel(){
 
   if(productReportTab!=='dead'){
     rows.forEach((r,index)=>{
-      const isSoldReport=productReportTab==='top'||productReportTab==='total';
-      const tickets=isSoldReport?r.soldTickets:productReportTab==='returned'?r.returnedTickets:r.cancelTickets;
+      const isSoldReport=productReportTab==='top'||productReportTab==='total'||productReportTab==='signed';
+      const tickets=productReportTab==='signed'?r.signedTickets:isSoldReport?r.soldTickets:productReportTab==='returned'?r.returnedTickets:r.cancelTickets;
       const metricName=isSoldReport?'Qty Sold':productReportTab==='returned'?'Qty Returned':'Qty Cancelled';
-      const metricValue=isSoldReport?r.qtySold:productReportTab==='returned'?r.qtyReturned:r.qtyCancelled;
+      const metricValue=productReportTab==='signed'?r.qtySigned:isSoldReport?r.qtySold:productReportTab==='returned'?r.qtyReturned:r.qtyCancelled;
       const valueName=isSoldReport?'Revenue':productReportTab==='returned'?'Loss Value':'Cancel Value';
-      const value=isSoldReport?r.revenue:productReportTab==='returned'?r.lossValue:r.cancelValue;
+      const value=productReportTab==='signed'?r.signedRevenue:isSoldReport?r.revenue:productReportTab==='returned'?r.lossValue:r.cancelValue;
       const reason=productReportTab==='returned'?r.returnReason:productReportTab==='cancel'?r.cancelReason:'';
       const detailRows=tickets.map((t,i)=>({
         '#':i+1,
@@ -1192,12 +1202,22 @@ async function refreshBranchStock(){await loadOKBItems();if(currentStockTake?.st
 // ===== Branch Stock V2 — Supabase persistent inventory linked to OKB Items =====
 let branchStockDirty = false;
 let branchStockLoading = false;
+let branchStockPendingReceipts = new Map();
+let branchStockLatestReceipts = new Map();
+let branchStockSelectedItems = new Set();
+let branchStockSignedDeductionEnabled = true;
+const BRANCH_STOCK_LOW_LIMIT = 50;
+const BRANCH_STOCK_CRITICAL_LIMIT = 10;
 
-function canManageBranchStockSystem(){ return isAdmin() || isAccountManager(); }
-function canEditBranchStockCount(){ return canManageBranchStockSystem() || isStoreManager() || isAccountSupervisor() || isCashier(); }
+function canManageBranchStockSystem(){ return isAdmin(); }
+function canViewAllBranchStockBranches(){ return isAdmin() || isAccountManager(); }
+function canEditBranchStockCount(){ return isAdmin() || isAccountManager() || isStoreManager() || isAccountSupervisor() || isCashier(); }
+function canAddBranchStockBalance(){ return hasButtonPermission('btn_branch_stock_add_balance'); }
+function canUseBranchStockActions(){ return hasButtonPermission('btn_branch_stock_actions'); }
+function canEditPendingBranchStockRequest(){ return isAdmin() || isAccountManager(); }
 function getAccessibleStockBranches(){
   const all=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
-  if(canManageBranchStockSystem())return all;
+  if(canViewAllBranchStockBranches())return all;
   if(isStoreManager()||isCashier()||isAccountSupervisor()){
     const managed=getCurrentUserManagedBranches();
     return all.filter(branch=>managed.includes(branch));
@@ -1211,7 +1231,7 @@ function populateStockTakeFilters(){
   select.innerHTML=branches.map(branch=>`<option value="${escapeHTML(branch)}">${escapeHTML(branch)}</option>`).join('');
   if(branches.includes(current))select.value=current;
   else if(branches.length)select.value=branches[0];
-  select.disabled=branches.length<=1&&!canManageBranchStockSystem();
+  select.disabled=branches.length<=1&&!canViewAllBranchStockBranches();
 }
 
 function branchStockSchemaError(error){
@@ -1258,18 +1278,46 @@ async function loadBranchInventory(branch){
     const synced=await syncOKBItemsToBranchInventory(branch,result.data||[]);if(!synced)return;
     result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
     if(result.error){branchStockSchemaError(result.error);return;}
+    const receiptsResult=await supabaseClient.from('branch_stock_receipts').select('*').eq('branch',branch).order('updated_at',{ascending:false});
+    if(receiptsResult.error){branchStockSchemaError(receiptsResult.error);return;}
+    branchStockPendingReceipts=new Map();branchStockLatestReceipts=new Map();branchStockSelectedItems.clear();
+    (receiptsResult.data||[]).forEach(receipt=>{
+      const itemKey=String(receipt.item_id);
+      if(receipt.status==='pending'&&!branchStockPendingReceipts.has(itemKey))branchStockPendingReceipts.set(itemKey,receipt);
+      if(receipt.status!=='pending'&&!branchStockLatestReceipts.has(itemKey))branchStockLatestReceipts.set(itemKey,receipt);
+    });
     const rowsByItem=new Map((result.data||[]).map(row=>[String(row.item_id),row]));
     currentStockTake={branch,name:`جرد ${branch}`,status:'open',updated_at:new Date().toISOString()};
     currentStockTakeRows=okbItems.map((item,index)=>{
       const saved=rowsByItem.get(String(item.id))||{};
       const systemQty=Math.max(0,Number(saved.system_qty||0));
-      return {id:saved.id||null,item_id:String(item.id),product_name:String(item.item_name||`منتج ${index+1}`),system_qty:systemQty,_originalSystemQty:systemQty,actual_qty:Math.max(0,Number(saved.actual_qty||0)),reason:String(saved.variance_reason||''),notes:String(saved.notes||''),updated_by:String(saved.updated_by||''),updated_at:saved.updated_at||null,price:Number(item.price||0),_dirty:false};
+      return {id:saved.id||null,item_id:String(item.id),product_name:String(item.item_name||`منتج ${index+1}`),system_qty:systemQty,_originalSystemQty:systemQty,actual_qty:Math.max(0,Number(saved.actual_qty||0)),reason:String(saved.variance_reason||''),notes:String(saved.notes||''),updated_by:String(saved.updated_by||''),updated_at:saved.updated_at||null,price:Number(item.price||0),pending_receipt:branchStockPendingReceipts.get(String(item.id))||null,last_receipt:branchStockLatestReceipts.get(String(item.id))||null,_dirty:false};
     });
     $('stockTakeWorkspace')?.classList.remove('hidden');
     if($('stockTakeCurrentName'))$('stockTakeCurrentName').textContent=branch;
-    const note=$('stockAccessNote');if(note){note.textContent=canManageBranchStockSystem()?'صلاحيتك: تعديل رصيد السيستم والكمية الفعلية وسبب الفرق والملاحظات لأي فرع.':'صلاحيتك: تعديل الكمية الفعلية وسبب الفرق والملاحظات لفرعك فقط.';note.className=`stock-access-note ${canManageBranchStockSystem()?'manager':'counter'}`;}
-    updateStockTakePermissions();renderStockTakeTable();updateStockTakeSummary();
+    updateStockTakePermissions();renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge();await loadBranchSignedDeductionControl(branch);
   }finally{branchStockLoading=false;}
+}
+
+function renderBranchSignedDeductionControl(){
+  const panel=$('stockSignedControl'),btn=$('stockSignedToggleBtn'),banner=$('stockSignedBypassBanner'),branch=currentStockTake?.branch||$('stockTakeBranch')?.value||'الفرع';
+  if(!isAdmin()){panel?.classList.add('hidden');banner?.classList.add('hidden');return;}
+  panel?.classList.remove('hidden');
+  if(btn){btn.disabled=false;btn.className=`stock-signed-toggle ${branchStockSignedDeductionEnabled?'enabled':'disabled'}`;btn.textContent=branchStockSignedDeductionEnabled?'🔴 إيقاف خصم Signed':'🟢 تشغيل خصم Signed';}
+  if(banner){banner.textContent=`⚠️ خصم Signed متوقف مؤقتًا لفرع ${branch} — الأوردرات تتحول إلى Signed بدون فحص أو خصم المخزون`;banner.classList.toggle('hidden',branchStockSignedDeductionEnabled);}
+}
+async function loadBranchSignedDeductionControl(branch){
+  if(!isAdmin()||!branch){renderBranchSignedDeductionControl();return;}
+  const {data,error}=await supabaseClient.from('branch_stock_controls').select('signed_deduction_enabled').eq('branch',branch).maybeSingle();
+  if(error){console.warn('Signed deduction control:',error.message);$('stockSignedControl')?.classList.add('hidden');$('stockSignedBypassBanner')?.classList.add('hidden');return;}
+  branchStockSignedDeductionEnabled=data?.signed_deduction_enabled!==false;renderBranchSignedDeductionControl();
+}
+async function toggleBranchSignedDeduction(){
+  if(!isAdmin()||!currentStockTake?.branch)return;const branch=currentStockTake.branch,nextEnabled=!branchStockSignedDeductionEnabled;
+  const message=nextEnabled?`إعادة تشغيل خصم Signed لفرع ${branch}؟ سيُطبق فحص وخصم المخزون على الأوردرات الجديدة فقط.`:`إيقاف خصم Signed لفرع ${branch}؟ سيتم السماح بتحويل الأوردرات إلى Signed بدون فحص أو خصم المخزون.`;
+  if(!confirm(message))return;const btn=$('stockSignedToggleBtn');if(btn){btn.disabled=true;btn.textContent='جاري التنفيذ...';}
+  try{const {data,error}=await supabaseClient.rpc('okb_set_branch_signed_deduction',{p_branch:branch,p_enabled:nextEnabled,p_actor:currentUser?.name||currentUser?.username||'Admin'});if(error)throw error;branchStockSignedDeductionEnabled=data!==false;renderBranchSignedDeductionControl();alert(branchStockSignedDeductionEnabled?'✅ تم تشغيل خصم Signed لهذا الفرع':'⚠️ تم إيقاف خصم Signed لهذا الفرع مؤقتًا');}
+  catch(error){alert('تعذر تغيير حالة خصم Signed: '+error.message);renderBranchSignedDeductionControl();}
 }
 
 function getFilteredStockRows(){
@@ -1280,6 +1328,18 @@ function getFilteredStockRows(){
 function syncBranchStockSearch(value){
   const old=$('stockProductSearch');if(old)old.value=value;
   renderStockTakeTable();
+}
+
+function updateBranchStockBulkSelectionUI(){
+  const btn=$('stockBulkAddBtn'),count=branchStockSelectedItems.size;
+  if(btn){btn.textContent=`＋ إضافة جماعية (${count})`;btn.disabled=!canAddBranchStockBalance()||count===0;btn.style.display=canAddBranchStockBalance()?'inline-flex':'none';}
+  const master=$('stockSelectAllVisible');if(master){const selectable=getFilteredStockRows().filter(row=>!row.pending_receipt);const selected=selectable.filter(row=>branchStockSelectedItems.has(String(row.item_id))).length;master.checked=selectable.length>0&&selected===selectable.length;master.indeterminate=selected>0&&selected<selectable.length;}
+}
+function toggleBranchStockSelection(itemId,checked){
+  const id=String(itemId);if(checked)branchStockSelectedItems.add(id);else branchStockSelectedItems.delete(id);updateBranchStockBulkSelectionUI();
+}
+function toggleAllVisibleBranchStock(checked){
+  getFilteredStockRows().filter(row=>!row.pending_receipt).forEach(row=>{const id=String(row.item_id);if(checked)branchStockSelectedItems.add(id);else branchStockSelectedItems.delete(id);});renderStockTakeTable();
 }
 
 function markBranchStockRowDirty(index){
@@ -1298,12 +1358,24 @@ function updateBranchStockField(index,field,value){
 
 function renderStockTakeTable(){
   const body=$('stockTakeTableBody');if(!body)return;
-  const rows=getFilteredStockRows(),canSystem=canManageBranchStockSystem(),canCount=canEditBranchStockCount();
-  if(!rows.length){body.innerHTML='<tr><td colspan="8" class="empty">لا توجد منتجات مطابقة للبحث</td></tr>';return;}
+  currentStockTakeRows.filter(row=>row.pending_receipt).forEach(row=>branchStockSelectedItems.delete(String(row.item_id)));
+  const rows=getFilteredStockRows(),canSystem=canManageBranchStockSystem(),canCount=canEditBranchStockCount(),canAdd=canAddBranchStockBalance(),canActions=canUseBranchStockActions();
+  const selectHead=$('stockSelectHead');if(selectHead)selectHead.innerHTML=canAdd?`<input class="stock-select-all" id="stockSelectAllVisible" type="checkbox" title="تحديد كل النتائج الظاهرة" onchange="toggleAllVisibleBranchStock(this.checked)"> #`:'#';
+  if(!rows.length){body.innerHTML=`<tr><td colspan="${7+(canAdd?1:0)+(canActions?1:0)}" class="empty">لا توجد منتجات مطابقة للبحث</td></tr>`;updateBranchStockBulkSelectionUI();return;}
   body.innerHTML=rows.map((row,i)=>{
     const system=Math.max(0,Number(row.system_qty||0)),actual=Math.max(0,Number(row.actual_qty||0)),diff=actual-system,diffClass=diff>0?'stock-diff-positive':diff<0?'stock-diff-negative':'stock-diff-zero';
-    return `<tr class="${row._dirty?'stock-row-dirty':''}"><td>${i+1}</td><td><div class="stock-product-name">${escapeHTML(row.product_name)}</div><div class="stock-product-meta">OKB Items</div></td><td>${canSystem?`<input class="stock-table-input stock-qty-input" type="number" min="0" step="1" value="${system}" onchange="updateBranchStockField(${row._index},'system_qty',this.value)">`:`<strong>${num(system)}</strong>`}</td><td><input class="stock-table-input stock-actual-input" type="number" min="0" step="1" value="${actual}" ${canCount?'':'disabled'} onchange="updateBranchStockField(${row._index},'actual_qty',this.value)"></td><td class="${diffClass}">${diff>0?'+':''}${num(diff)}</td><td><input class="stock-table-input stock-reason-input" value="${escapeHTML(row.reason)}" ${canCount?'':'disabled'} placeholder="سبب الفرق..." onchange="updateBranchStockField(${row._index},'reason',this.value)"></td><td><input class="stock-table-input stock-notes-input" value="${escapeHTML(row.notes)}" ${canCount?'':'disabled'} placeholder="ملاحظات..." onchange="updateBranchStockField(${row._index},'notes',this.value)"></td><td><span class="stock-last-update">${row.updated_at?formatActivityTime(row.updated_at):'—'}${row.updated_by?`<small>${escapeHTML(row.updated_by)}</small>`:''}</span></td></tr>`;
-  }).join('');
+    const low=system<=BRANCH_STOCK_LOW_LIMIT?`<span class="stock-low-badge ${system<=BRANCH_STOCK_CRITICAL_LIMIT?'critical':''}">${system<=BRANCH_STOCK_CRITICAL_LIMIT?'🔴 Critical Stock':'⚠️ Low Stock'} — ${num(system)}</span>`:'';
+    const pending=row.pending_receipt;
+    const addCell=canAdd?`<td><button class="stock-add-balance-btn" type="button" ${pending?'disabled':''} onclick="openBranchStockAddBalance(${row._index})">＋ إضافة</button>${pending?`<span class="stock-pending-badge">معلق: ${num(pending.added_qty)}</span>${canEditPendingBranchStockRequest()?`<button class="stock-edit-pending-btn" type="button" onclick="openBranchStockEditPending(${row._index})">✏️ تعديل</button>`:''}`:''}</td>`:'';
+    const actionsCell=canActions?`<td class="stock-actions-cell">${pending?`<div class="stock-receipt-actions"><button class="stock-receipt-action accept" type="button" title="استلام مطابق" onclick="openBranchStockReceipt(${row._index},'accepted')">✅</button><button class="stock-receipt-action reject" type="button" title="استلام به اختلاف أو هالك" onclick="openBranchStockReceipt(${row._index},'discrepancy')">❌</button></div>`:'<span class="stock-product-meta">لا يوجد استلام معلق</span>'}</td>`:'';
+    const receipt=row.last_receipt,showSettlement=(isAdmin()||isAccountManager())&&receipt;
+    const added=Number(receipt?.added_qty||0),received=Number(receipt?.received_qty||0),damaged=Number(receipt?.damaged_qty||0),receiptActual=Number(receipt?.actual_qty||0),receiptDiff=receiptActual-added;
+    const receiptExact=showSettlement&&receipt.status==='accepted'&&received===added&&damaged===0&&receiptActual===added;
+    const settlementStatus=receiptExact?'✅ استلام مطابق':'⚠️ استلام غير مطابق';
+    const settlement=showSettlement?(receipt.settlement_confirmed_at?`<div class="stock-settlement-summary ${receiptExact?'matched':'short'}" title="تم التأكيد بواسطة ${escapeHTML(receipt.settlement_confirmed_by||'الإدارة')}">${settlementStatus}</div>`:`<div class="stock-settlement-frame ${receiptExact?'matched':'short'}"><div class="stock-settlement-line stock-settlement-top"><strong>${settlementStatus}</strong><small>${escapeHTML(receipt.received_by||'مدير الفرع')}${receipt.received_at?` — ${formatActivityTime(receipt.received_at)}`:''}</small><div class="stock-settlement-buttons"><button type="button" onclick="confirmBranchStockSettlement(${Number(receipt.id)})">تأكيد</button><button class="resend" type="button" onclick="resendBranchStockReceipt(${Number(receipt.id)})">إرسال مرة أخرى</button></div></div><div class="stock-settlement-line stock-settlement-details"><span>المضاف: <b>${num(added)}</b></span><span>المستلم: <b>${num(received)}</b></span><span>الهالك: <b>${num(damaged)}</b></span><span>الفعلي: <b>${num(receiptActual)}</b></span><span>الفرق: <b>${receiptDiff>0?'+':''}${num(receiptDiff)}</b></span>${receipt.receipt_reason?`<span class="stock-settlement-reason">السبب: ${escapeHTML(receipt.receipt_reason)}</span>`:''}</div></div>`):'';
+    const selectControl=canAdd?`<input type="checkbox" ${branchStockSelectedItems.has(String(row.item_id))?'checked':''} ${pending?'disabled':''} onchange="toggleBranchStockSelection('${escapeHTML(String(row.item_id))}',this.checked)">`:'';
+    return `<tr class="${row._dirty?'stock-row-dirty':''}"><td class="stock-select-cell">${selectControl}${i+1}</td><td><div class="stock-product-name">${escapeHTML(row.product_name)}</div><div class="stock-product-meta">OKB Items</div>${low}</td><td>${canSystem?`<input class="stock-table-input stock-qty-input" type="number" min="0" step="1" value="${system}" onchange="updateBranchStockField(${row._index},'system_qty',this.value)">`:`<strong>${num(system)}</strong>`}</td>${addCell}<td><input class="stock-table-input stock-actual-input" type="number" min="0" step="1" value="${actual}" ${canCount?'':'disabled'} onchange="updateBranchStockField(${row._index},'actual_qty',this.value)"></td><td class="${diffClass}">${diff>0?'+':''}${num(diff)}</td><td class="stock-reason-display">${settlement||'<span class="stock-product-meta">لا يوجد استلام مسجل</span>'}</td><td><span class="stock-last-update">${row.updated_at?formatActivityTime(row.updated_at):'—'}${row.updated_by?`<small>${escapeHTML(row.updated_by)}</small>`:''}</span></td>${actionsCell}</tr>`;
+  }).join('');updateBranchStockBulkSelectionUI();
 }
 
 function updateStockTakeSummary(){
@@ -1316,14 +1388,134 @@ function updateStockTakeSummary(){
   if($('stockVarianceQty'))$('stockVarianceQty').textContent=(variance>0?'+':'')+num(variance);
   if($('stockLastUpdated')){const dates=currentStockTakeRows.map(row=>row.updated_at).filter(Boolean).sort();$('stockLastUpdated').textContent=dates.length?formatActivityTime(dates[dates.length-1]):'لم يتم الحفظ بعد';}
   if($('stockVarianceGain'))$('stockVarianceGain').textContent=money(gain);
-  if($('stockVarianceLoss'))$('stockVarianceLoss').textContent=money(loss);
+  if($('stockVarianceLoss'))$('stockVarianceLoss').textContent=`${money(loss)} ج.م`;
   if($('stockVarianceNet'))$('stockVarianceNet').textContent=(value>0?'+':'')+money(value);
 }
 
 function updateStockTakePermissions(){
   const editable=canEditBranchStockCount();
   ['saveStockDraftBtn','stockTopSaveBtn'].forEach(id=>{const btn=$(id);if(btn){btn.disabled=!editable;btn.style.display=editable?'inline-flex':'none';}});
+  const addHead=$('stockAddBalanceHead');if(addHead)addHead.style.display=canAddBranchStockBalance()?'':'none';
+  const actionsHead=$('stockActionsHead');if(actionsHead)actionsHead.style.display=canUseBranchStockActions()?'':'none';
+  updateBranchStockBulkSelectionUI();
   const status=$('stockTakeStatusText');if(status)status.textContent=editable?'الجرد مفتوح ويمكن حفظ التعديلات والرجوع إليه من أي جهاز.':'عرض فقط — لا توجد صلاحية تعديل لهذا الحساب.';
+}
+
+function ensureBranchStockControlModal(){
+  let modal=$('branchStockControlModal');if(modal)return modal;
+  modal=document.createElement('div');modal.id='branchStockControlModal';modal.className='stock-control-modal';
+  modal.innerHTML=`<div class="stock-control-dialog"><h3 id="stockControlTitle"></h3><p id="stockControlSub"></p><div id="stockControlBody"></div><div class="stock-control-actions"><button class="stock-control-primary" id="stockControlSaveBtn" type="button">حفظ</button><button class="stock-control-cancel" type="button" onclick="closeBranchStockControlModal()">إغلاق</button></div></div>`;
+  modal.addEventListener('click',event=>{if(event.target===modal)closeBranchStockControlModal();});document.body.appendChild(modal);return modal;
+}
+function closeBranchStockControlModal(){const modal=$('branchStockControlModal');if(modal){modal.classList.remove('open');modal.dataset.mode='';modal.dataset.index='';}}
+function openBranchStockAddBalance(index){
+  if(!canAddBranchStockBalance())return;const row=currentStockTakeRows[index];if(!row||row.pending_receipt)return;
+  const modal=ensureBranchStockControlModal();modal.dataset.mode='add';modal.dataset.index=String(index);
+  $('stockControlTitle').textContent='إضافة رصيد الجرد';$('stockControlSub').textContent=`${row.product_name} — فرع ${currentStockTake.branch} — الرصيد الحالي ${num(row.system_qty)}`;
+  $('stockControlBody').innerHTML=`<div class="stock-control-grid"><div><label>الكمية المضافة *</label><input id="stockControlAddedQty" type="number" min="1" step="1" value="1"></div><div><label>الرصيد بعد الاستلام</label><input value="يُحتسب بعد تأكيد Store Manager" disabled></div><div class="wide"><label>ملاحظة أو سبب الإضافة (اختياري)</label><textarea id="stockControlReason" rows="3" placeholder="يمكنك تركها فارغة"></textarea></div></div>`;
+  $('stockControlSaveBtn').textContent='إرسال الرصيد للاستلام';$('stockControlSaveBtn').onclick=submitBranchStockAddBalance;modal.classList.add('open');$('stockControlAddedQty')?.focus();
+}
+async function submitBranchStockAddBalance(){
+  const modal=$('branchStockControlModal'),row=currentStockTakeRows[Number(modal?.dataset.index)];if(!row)return;
+  const qty=Math.floor(Number($('stockControlAddedQty')?.value||0)),reason=String($('stockControlReason')?.value||'').trim();
+  if(qty<=0){alert('اكتب كمية إضافة صحيحة');return;}
+  const btn=$('stockControlSaveBtn');btn.disabled=true;btn.textContent='جاري الحفظ...';
+  try{const {data,error}=await supabaseClient.rpc('okb_request_branch_stock_add',{p_branch:currentStockTake.branch,p_item_id:String(row.item_id),p_qty:qty,p_reason:reason,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;const pending={id:Number(data),branch:currentStockTake.branch,item_id:String(row.item_id),item_name:row.product_name,added_qty:qty,request_reason:reason,status:'pending',requested_by:currentUser?.name||currentUser?.username||'User',requested_at:new Date().toISOString()};row.pending_receipt=pending;branchStockPendingReceipts.set(String(row.item_id),pending);branchStockSelectedItems.delete(String(row.item_id));closeBranchStockControlModal();renderStockTakeTable();alert('✅ تم تسجيل إضافة الرصيد وإرسالها للاستلام');}
+  catch(error){alert('تعذر إضافة الرصيد: '+error.message);}finally{btn.disabled=false;btn.textContent='إرسال الرصيد للاستلام';}
+}
+function openBranchStockBulkAdd(){
+  if(!canAddBranchStockBalance()||!branchStockSelectedItems.size)return;
+  const rows=currentStockTakeRows.filter(row=>branchStockSelectedItems.has(String(row.item_id))&&!row.pending_receipt);if(!rows.length){branchStockSelectedItems.clear();renderStockTakeTable();return;}
+  const modal=ensureBranchStockControlModal();modal.dataset.mode='bulk-add';modal.dataset.index='';
+  $('stockControlTitle').textContent=`إضافة رصيد جماعية — ${rows.length} منتجات`;$('stockControlSub').textContent=`فرع ${currentStockTake.branch} — اكتب الكمية المطلوبة لكل منتج`;
+  $('stockControlBody').innerHTML=`<div class="stock-bulk-list">${rows.map(row=>`<div class="stock-bulk-row"><strong>${escapeHTML(row.product_name)}</strong><span>الحالي: ${num(row.system_qty)}</span><input class="stock-bulk-qty" data-item-id="${escapeHTML(String(row.item_id))}" type="number" min="1" step="1" value="1" aria-label="كمية ${escapeHTML(row.product_name)}"></div>`).join('')}</div><div class="stock-bulk-note"><label>ملاحظة أو سبب الإضافة لكل المنتجات (اختياري)</label><textarea id="stockBulkReason" rows="3" placeholder="يمكنك تركها فارغة"></textarea></div>`;
+  $('stockControlSaveBtn').textContent='إرسال المنتجات للاستلام';$('stockControlSaveBtn').onclick=submitBranchStockBulkAdd;modal.classList.add('open');
+}
+async function submitBranchStockBulkAdd(){
+  const inputs=[...document.querySelectorAll('#stockControlBody .stock-bulk-qty')],reason=String($('stockBulkReason')?.value||'').trim();
+  const items=inputs.map(input=>({item_id:String(input.dataset.itemId||''),qty:Math.floor(Number(input.value||0))}));
+  if(!items.length||items.some(item=>!item.item_id||item.qty<=0)){alert('راجع كميات كل المنتجات؛ يجب أن تكون أكبر من صفر');return;}
+  const btn=$('stockControlSaveBtn');btn.disabled=true;btn.textContent='جاري الحفظ...';
+  try{
+    const {data,error}=await supabaseClient.rpc('okb_request_branch_stock_add_bulk',{p_branch:currentStockTake.branch,p_items:items,p_reason:reason||null,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;
+    const ids=new Map((Array.isArray(data)?data:[]).map(item=>[String(item.item_id),Number(item.receipt_id)])),now=new Date().toISOString(),actor=currentUser?.name||currentUser?.username||'User';
+    items.forEach(item=>{const row=currentStockTakeRows.find(entry=>String(entry.item_id)===item.item_id);if(!row)return;const pending={id:ids.get(item.item_id),branch:currentStockTake.branch,item_id:item.item_id,item_name:row.product_name,added_qty:item.qty,request_reason:reason,status:'pending',requested_by:actor,requested_at:now};row.pending_receipt=pending;branchStockPendingReceipts.set(item.item_id,pending);});
+    branchStockSelectedItems.clear();closeBranchStockControlModal();renderStockTakeTable();alert(`✅ تم إرسال ${items.length} منتجات لاستلام مدير الفرع`);
+  }catch(error){alert('تعذر تنفيذ الإضافة الجماعية: '+error.message);}finally{btn.disabled=false;btn.textContent='إرسال المنتجات للاستلام';}
+}
+function openBranchStockEditPending(index){
+  if(!canEditPendingBranchStockRequest())return;const row=currentStockTakeRows[index],receipt=row?.pending_receipt;if(!row||!receipt)return;
+  const modal=ensureBranchStockControlModal();modal.dataset.mode='edit-pending';modal.dataset.index=String(index);
+  $('stockControlTitle').textContent='✏️ تعديل الكمية المرسلة';$('stockControlSub').textContent=`${row.product_name} — الكمية الحالية ${num(receipt.added_qty)}`;
+  $('stockControlBody').innerHTML=`<div class="stock-control-grid"><div class="wide"><label>الكمية الجديدة *</label><input id="stockControlEditedQty" type="number" min="1" step="1" value="${Number(receipt.added_qty||0)}"></div><div class="wide"><label>سبب التعديل *</label><textarea id="stockControlEditReason" rows="3" placeholder="اكتب سبب تصحيح الكمية"></textarea></div></div>`;
+  $('stockControlSaveBtn').textContent='حفظ التعديل';$('stockControlSaveBtn').onclick=submitBranchStockEditPending;modal.classList.add('open');$('stockControlEditedQty')?.focus();
+}
+async function submitBranchStockEditPending(){
+  const modal=$('branchStockControlModal'),row=currentStockTakeRows[Number(modal?.dataset.index)],receipt=row?.pending_receipt;if(!row||!receipt)return;
+  const qty=Math.floor(Number($('stockControlEditedQty')?.value||0)),reason=String($('stockControlEditReason')?.value||'').trim();
+  if(qty<=0){alert('اكتب كمية صحيحة أكبر من صفر');return;}if(qty===Number(receipt.added_qty)){alert('الكمية الجديدة مطابقة للكمية الحالية');return;}if(!reason){alert('سبب التعديل مطلوب');$('stockControlEditReason')?.focus();return;}
+  const btn=$('stockControlSaveBtn');btn.disabled=true;btn.textContent='جاري الحفظ...';
+  try{const {error}=await supabaseClient.rpc('okb_edit_pending_branch_stock_receipt',{p_receipt_id:Number(receipt.id),p_new_qty:qty,p_reason:reason,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;receipt.added_qty=qty;receipt.request_reason=reason;receipt.updated_at=new Date().toISOString();branchStockPendingReceipts.set(String(row.item_id),receipt);closeBranchStockControlModal();renderStockTakeTable();alert('✅ تم تعديل الكمية المرسلة وستظهر بالقيمة الجديدة لمدير الفرع');}
+  catch(error){alert('تعذر تعديل الكمية: '+error.message);}finally{btn.disabled=false;btn.textContent='حفظ التعديل';}
+}
+function openBranchStockReceipt(index,decision){
+  if(!canUseBranchStockActions())return;const row=currentStockTakeRows[index],receipt=row?.pending_receipt;if(!row||!receipt)return;
+  const modal=ensureBranchStockControlModal();modal.dataset.mode='receipt';modal.dataset.index=String(index);modal.dataset.decision=decision;
+  $('stockControlTitle').textContent=decision==='accepted'?'✅ استلام الجرد مطابق':'❌ استلام الجرد به اختلاف';$('stockControlSub').textContent=`${row.product_name} — أضاف مدير الحسابات ${num(receipt.added_qty)} قطعة`;
+  $('stockControlBody').innerHTML=`<div class="stock-control-grid"><div><label>العدد المضاف من مدير الحسابات</label><input value="${Number(receipt.added_qty||0)}" disabled></div><div><label>الرصيد المستلم *</label><input id="stockControlReceivedQty" type="number" min="0" step="1" value="${Number(receipt.added_qty||0)}" oninput="updateBranchStockReceiptActual()"></div><div><label>الهالك *</label><input id="stockControlDamagedQty" type="number" min="0" step="1" value="0" oninput="updateBranchStockReceiptActual()"></div><div><label>الإجمالي الفعلي</label><input id="stockControlActualQty" value="${Number(receipt.added_qty||0)}" disabled></div><div class="wide"><label>سبب الاختلاف أو الهالك ${decision==='discrepancy'?'*':''}</label><textarea id="stockControlReason" rows="3" placeholder="اكتب السبب بالتفصيل"></textarea></div></div>`;
+  $('stockControlSaveBtn').textContent=decision==='accepted'?'تأكيد الاستلام ✅':'تسجيل الاستلام ❌';$('stockControlSaveBtn').onclick=submitBranchStockReceipt;modal.classList.add('open');
+}
+function updateBranchStockReceiptActual(){const received=Math.max(0,Number($('stockControlReceivedQty')?.value||0)),damaged=Math.max(0,Number($('stockControlDamagedQty')?.value||0));if($('stockControlActualQty'))$('stockControlActualQty').value=Math.max(0,received-damaged);}
+async function submitBranchStockReceipt(){
+  const modal=$('branchStockControlModal'),row=currentStockTakeRows[Number(modal?.dataset.index)],receipt=row?.pending_receipt;if(!row||!receipt)return;
+  const decision=modal.dataset.decision,received=Math.floor(Number($('stockControlReceivedQty')?.value||0)),damaged=Math.floor(Number($('stockControlDamagedQty')?.value||0)),reason=String($('stockControlReason')?.value||'').trim();
+  if(received<0||damaged<0||damaged>received){alert('راجع الرصيد المستلم والهالك');return;}if(decision==='accepted'&&(received!==Number(receipt.added_qty)||damaged!==0)){alert('علامة ✅ للاستلام المطابق فقط. استخدم ❌ عند وجود فرق أو هالك.');return;}if(decision==='discrepancy'&&!reason){alert('سبب الاختلاف أو الهالك مطلوب');$('stockControlReason')?.focus();return;}
+  const btn=$('stockControlSaveBtn');btn.disabled=true;btn.textContent='جاري الحفظ...';
+  try{const {data,error}=await supabaseClient.rpc('okb_receive_branch_stock',{p_receipt_id:Number(receipt.id),p_decision:decision,p_received_qty:received,p_damaged_qty:damaged,p_reason:reason||null,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;const actual=received-damaged,now=new Date().toISOString(),actor=currentUser?.name||currentUser?.username||'User';row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)+actual);row.updated_at=now;row.updated_by=actor;row.pending_receipt=null;row.last_receipt={...receipt,received_qty:received,damaged_qty:damaged,actual_qty:actual,receipt_reason:reason||null,status:decision,received_by:actor,received_at:now,updated_at:now,settlement_confirmed_at:null};branchStockPendingReceipts.delete(String(row.item_id));branchStockLatestReceipts.set(String(row.item_id),row.last_receipt);closeBranchStockControlModal();renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge(currentStockTakeRows);alert(`✅ تم استلام الجرد وإضافة ${num(actual)} قطعة صالحة إلى الرصيد`);}
+  catch(error){alert('تعذر استلام الجرد: '+error.message);}finally{btn.disabled=false;}
+}
+
+async function confirmBranchStockSettlement(receiptId){
+  if(!(isAdmin()||isAccountManager())||!receiptId)return;
+  if(!confirm('تأكيد مراجعة وتسوية استلام الجرد؟ بعد التأكيد ستظهر الحالة المختصرة فقط.'))return;
+  try{
+    const {error}=await supabaseClient.rpc('okb_confirm_branch_stock_settlement',{p_receipt_id:Number(receiptId),p_actor:currentUser?.name||currentUser?.username||'User'});
+    if(error)throw error;
+    const row=currentStockTakeRows.find(item=>Number(item.last_receipt?.id)===Number(receiptId));
+    if(row?.last_receipt){row.last_receipt.settlement_confirmed_at=new Date().toISOString();row.last_receipt.settlement_confirmed_by=currentUser?.name||currentUser?.username||'User';branchStockLatestReceipts.set(String(row.item_id),row.last_receipt);}
+    renderStockTakeTable();
+  }catch(error){alert('تعذر تأكيد التسوية: '+error.message);}
+}
+
+async function resendBranchStockReceipt(receiptId){
+  if(!(isAdmin()||isAccountManager())||!receiptId)return;
+  if(!confirm('إرسال الجرد مرة أخرى لمدير الفرع؟ سيتم إلغاء أثر الاستلام الحالي من الرصيد حتى يدخل Store Manager الأعداد الصحيحة.'))return;
+  try{
+    const {data,error}=await supabaseClient.rpc('okb_resend_branch_stock_receipt',{p_receipt_id:Number(receiptId),p_actor:currentUser?.name||currentUser?.username||'User'});
+    if(error)throw error;
+    const row=currentStockTakeRows.find(item=>Number(item.last_receipt?.id)===Number(receiptId));
+    if(row?.last_receipt){
+      const oldActual=Math.max(0,Number(row.last_receipt.actual_qty||0));
+      const pending={...row.last_receipt,status:'pending',received_qty:null,damaged_qty:null,actual_qty:null,receipt_reason:null,received_by:null,received_by_user_id:null,received_at:null,settlement_confirmed_at:null,settlement_confirmed_by:null,settlement_confirmed_by_user_id:null,updated_at:new Date().toISOString()};
+      row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)-oldActual);row.updated_at=pending.updated_at;row.updated_by=currentUser?.name||currentUser?.username||'User';row.pending_receipt=pending;row.last_receipt=null;
+      branchStockLatestReceipts.delete(String(row.item_id));branchStockPendingReceipts.set(String(row.item_id),pending);
+    }
+    renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge(currentStockTakeRows);
+    alert('✅ تم إرسال الجرد مرة أخرى، وسيظهر لمدير الفرع بعلامتي ✅ و❌');
+  }catch(error){alert('تعذر إعادة إرسال الجرد: '+error.message);}
+}
+
+async function updateBranchStockLowStockBadge(rows=null){
+  const badge=$('branchStockNotification');if(!badge)return;
+  if(!hasRoleFeature('branch_stock')){badge.classList.add('hidden');return;}
+  let source=rows;
+  if(!Array.isArray(source)){
+    const branches=getAccessibleStockBranches();if(!branches.length){badge.classList.add('hidden');return;}
+    const {data,error}=await supabaseClient.from('branch_inventory').select('branch,item_id,system_qty').in('branch',branches).lte('system_qty',BRANCH_STOCK_LOW_LIMIT);
+    if(error){badge.classList.add('hidden');return;}source=data||[];
+  }
+  const count=source.filter(row=>Number(row.system_qty||0)<=BRANCH_STOCK_LOW_LIMIT).length;
+  badge.textContent=count>99?'99+':String(count);badge.classList.toggle('hidden',count===0);badge.title=count?`${count} منتج رصيده 50 أو أقل`:'لا توجد تنبيهات مخزون';
 }
 
 async function saveBranchInventory(){
@@ -1336,6 +1528,7 @@ async function saveBranchInventory(){
   if(error){branchStockSchemaError(error);return;}
   const logs=changed.map(row=>({branch,item_id:String(row.item_id),item_name:row.product_name,system_qty:Number(canManageBranchStockSystem()?row.system_qty:row._originalSystemQty||0),actual_qty:Number(row.actual_qty||0),variance_qty:Number(row.actual_qty||0)-Number(canManageBranchStockSystem()?row.system_qty:row._originalSystemQty||0),variance_reason:String(row.reason||''),notes:String(row.notes||''),changed_by:user,changed_role:String(currentUser?.role||''),created_at:now}));
   const logResult=await supabaseClient.from('branch_stock_logs').insert(logs);if(logResult.error)console.warn('Branch stock history:',logResult.error.message);
+  await Promise.all(changed.map(row=>logActivity('stock_take_count','تعديل كمية الجرد',`المنتج: ${row.product_name} | رصيد السيستم: ${num(canManageBranchStockSystem()?row.system_qty:row._originalSystemQty||0)} | الكمية الفعلية: ${num(row.actual_qty)} | الفرق: ${num(Number(row.actual_qty||0)-Number(canManageBranchStockSystem()?row.system_qty:row._originalSystemQty||0))}${row.reason?` | السبب: ${row.reason}`:''}`,{branch_name:branch})));
   changed.forEach(row=>{row._dirty=false;row._originalSystemQty=Number(row.system_qty||0);row.updated_at=now;row.updated_by=user;});branchStockDirty=false;
   await logActivity('stock_take_draft','حفظ جرد الفرع',`الفرع: ${branch} | عدد المنتجات المعدلة: ${changed.length}`,{branch_name:branch});
   renderStockTakeTable();updateStockTakeSummary();alert(`✅ تم حفظ ${changed.length} منتج في جرد ${branch}`);
@@ -1353,6 +1546,19 @@ function exportStockVarianceExcel(){
   const data=currentStockTakeRows.map((row,i)=>({'#':i+1,'Product Name':row.product_name,'System Qty':Number(row.system_qty||0),'Actual Qty':Number(row.actual_qty||0),'Variance':Number(row.actual_qty||0)-Number(row.system_qty||0),'Variance Reason':row.reason||'','Notes':row.notes||'','Last Updated':row.updated_at?formatActivityTime(row.updated_at):'','Updated By':row.updated_by||''}));
   const ws=XLSX.utils.json_to_sheet(data);ws['!cols']=[{wch:6},{wch:34},{wch:13},{wch:13},{wch:12},{wch:30},{wch:34},{wch:24},{wch:20}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Branch Stock');XLSX.writeFile(wb,`branch-stock-${currentStockTake?.branch||'branch'}-${getCairoDateISO()}.xlsx`);
+}
+
+function printBranchStock(){
+  if(!currentStockTakeRows.length){alert('لا توجد بيانات للطباعة');return;}
+  const branch=escapeHTML(currentStockTake?.branch||'—'),printedAt=escapeHTML(new Date().toLocaleString('ar-EG'));
+  const total=currentStockTakeRows.length;
+  const variance=currentStockTakeRows.reduce((sum,row)=>sum+(Number(row.actual_qty||0)-Number(row.system_qty||0)),0);
+  const gain=currentStockTakeRows.reduce((sum,row)=>{const value=(Number(row.actual_qty||0)-Number(row.system_qty||0))*Number(row.price||0);return sum+(value>0?value:0);},0);
+  const loss=currentStockTakeRows.reduce((sum,row)=>{const value=(Number(row.actual_qty||0)-Number(row.system_qty||0))*Number(row.price||0);return sum+(value<0?Math.abs(value):0);},0);
+  const rows=currentStockTakeRows.map((row,index)=>{const diff=Number(row.actual_qty||0)-Number(row.system_qty||0),receipt=row.last_receipt,status=receipt?(receipt.status==='accepted'?'✅ استلام مطابق':'⚠️ استلام غير مطابق'):'—';return `<tr><td>${index+1}</td><td>${escapeHTML(row.product_name)}</td><td>${num(row.system_qty)}</td><td>${num(row.actual_qty)}</td><td class="${diff<0?'loss':diff>0?'gain':''}">${diff>0?'+':''}${num(diff)}</td><td>${status}</td><td>${escapeHTML(row.updated_by||'—')}</td><td>${row.updated_at?escapeHTML(formatActivityTime(row.updated_at)):'—'}</td></tr>`;}).join('');
+  const report=window.open('','_blank','width=1200,height=850');if(!report){alert('اسمح بفتح نافذة الطباعة من المتصفح');return;}
+  report.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>Branch Stock — ${branch}</title><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,Tahoma,sans-serif;color:#111827;margin:0}.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #111827;padding-bottom:10px;margin-bottom:12px}.head h1{margin:0;font-size:24px}.head p{margin:4px 0 0;color:#4b5563;font-size:12px}.meta{text-align:left;font-size:11px;line-height:1.8}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.card{border:1px solid #cbd5e1;border-radius:8px;padding:9px;text-align:center}.card span{display:block;color:#64748b;font-size:10px}.card strong{display:block;margin-top:4px;font-size:16px}.gain{color:#15803d}.loss{color:#dc2626}table{width:100%;border-collapse:collapse;font-size:10px}th{background:#111827;color:#fff;padding:8px 6px;border:1px solid #374151}td{padding:7px 6px;border:1px solid #cbd5e1;text-align:center}td:nth-child(2){text-align:right;font-weight:700}tr:nth-child(even){background:#f8fafc}.footer{margin-top:10px;padding-top:8px;border-top:1px solid #cbd5e1;color:#64748b;font-size:9px}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="head"><div><h1>Branch Stock — تقرير جرد الفرع</h1><p>تقرير الأرصدة والفروقات وحالة استلام الجرد</p></div><div class="meta"><strong>الفرع: ${branch}</strong><br>تاريخ الطباعة: ${printedAt}<br>بواسطة: ${escapeHTML(currentUser?.name||currentUser?.username||'—')}</div></div><div class="summary"><div class="card"><span>إجمالي المنتجات</span><strong>${num(total)}</strong></div><div class="card"><span>إجمالي فرق الكمية</span><strong>${variance>0?'+':''}${num(variance)}</strong></div><div class="card"><span>قيمة الزيادة</span><strong class="gain">${money(gain)}</strong></div><div class="card"><span>قيمة العجز</span><strong class="loss">${money(loss)}</strong></div></div><table><thead><tr><th>#</th><th>اسم المنتج</th><th>رصيد السيستم</th><th>الكمية الفعلية</th><th>الفرق</th><th>حالة الاستلام</th><th>آخر تعديل بواسطة</th><th>وقت التعديل</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">تم إنشاء التقرير من نظام OKB Branch Stock — هذا التقرير يعكس البيانات الظاهرة وقت الطباعة.</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}<\/script></body></html>`);
+  report.document.close();
 }
 
 
@@ -1388,6 +1594,8 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'branches_treasury', label:'🏦 خزنة الفروع', group:'OKB Stores' },
   { key:'pending', label:'Pending', group:'Main' },
   { key:'branch_stock', label:'Branch Stock', group:'Main' },
+  { key:'btn_branch_stock_add_balance', label:'➕ عمود إضافة رصيد', group:'Branch Stock — تحكم' },
+  { key:'btn_branch_stock_actions', label:'✅❌ عمود الإجراءات', group:'Branch Stock — تحكم' },
   { key:'settings_root', label:'Settings', group:'Settings' },
   { key:'settings_page', label:'Settings — المنتجات والدكاترة والشحن', group:'Settings' },
   { key:'users', label:'Users', group:'Settings' },
@@ -1464,6 +1672,8 @@ function getDefaultRolePermissions(role) {
     stores_report:true,
     pending:operation || branchRole || key === 'account_supervisor',
     branch_stock:branchRole || accounting,
+    btn_branch_stock_add_balance:false,
+    btn_branch_stock_actions:false,
     settings_root:true,
     settings_page:executive,
     users:executive,
@@ -1770,6 +1980,17 @@ function startLiveBusinessSync() {
     .on('postgres_changes', { event:'*', schema:'public', table:'items' }, () => {
       clearTimeout(startLiveBusinessSync.itemsTimer);
       startLiveBusinessSync.itemsTimer = setTimeout(() => loadOKBItems(), 250);
+    })
+    .on('postgres_changes', { event:'*', schema:'public', table:'branch_inventory' }, () => {
+      clearTimeout(startLiveBusinessSync.branchStockTimer);
+      startLiveBusinessSync.branchStockTimer = setTimeout(() => {
+        updateBranchStockLowStockBadge();
+        // تحديث الجدول يدويًا من زر Refresh للحفاظ على موضع الصفحة وعدم إعادة رسمها تلقائيًا.
+      },250);
+    })
+    .on('postgres_changes', { event:'*', schema:'public', table:'branch_stock_receipts' }, () => {
+      clearTimeout(startLiveBusinessSync.branchStockReceiptTimer);
+      startLiveBusinessSync.branchStockReceiptTimer = setTimeout(() => {},250);
     })
     .on('postgres_changes', { event:'*', schema:'public', table:'user' }, payload => {
       applyLiveUserPayload(payload).catch(error => console.error('Live user sync failed:', error));
@@ -2386,6 +2607,7 @@ function getEffectiveOrderPrice(order) {
 }
 
 function getOrderOutstandingBalance(order) {
+  if (String(getOrderDisplayStatus(order) || order?.status || '').trim() === 'Signed') return 0;
   const total = getEffectiveOrderPrice(order);
   const deposit = Math.max(0, Number(order?.deposit || 0));
   const history = getCollectMeta(order).history;
@@ -2396,7 +2618,14 @@ function getOrderOutstandingBalance(order) {
 
 // الرصيد المطلوب من المندوب قبل التحصيل؛ يظل منفصلاً عن Deposit في صفحات التشغيل.
 function getOrderPreCollectionBalance(order) {
+  if (String(getOrderDisplayStatus(order) || order?.status || '').trim() === 'Signed') return 0;
   return Math.max(0, getEffectiveOrderPrice(order) - Math.max(0, Number(order?.deposit || 0)));
+}
+
+function formatOrderRemainingBalance(order, balance) {
+  const status = String(getOrderDisplayStatus(order) || order?.status || '').trim();
+  if (status === 'Signed') return money(0);
+  return Number(balance || 0) > 0 ? money(balance) : '—';
 }
 
 function stripCollectMeta(notes) {
@@ -3209,6 +3438,7 @@ const branchesTreasuryBtn = document.getElementById('branchesTreasuryMenuBtn');
 if (branchesTreasuryBtn) branchesTreasuryBtn.classList.toggle('hidden', !hasRoleFeature('branches_treasury'));
 const branchStockBtn = document.getElementById('branchStockHeaderBtn');
 if (branchStockBtn) branchStockBtn.style.display = hasRoleFeature('branch_stock') ? 'inline-flex' : 'none';
+if(hasRoleFeature('branch_stock'))updateBranchStockLowStockBadge();
 const pendingBtn = document.getElementById('pendingHeaderBtn');
 if (pendingBtn) pendingBtn.style.display = hasRoleFeature('pending') ? 'inline-flex' : 'none';
 const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
@@ -4165,9 +4395,17 @@ function confirmDiscountBeforeOrderSave(scope) {
   return confirm(`⚠️ سيتم تسجيل خصم ${money(discount)} على الأوردر.\nالإجمالي الأصلي: ${money(originalTotal)}\nالإجمالي بعد الخصم: ${money(finalTotal)}\nهل تريد حفظ الأوردر؟`);
 }
 
+const MIN_COUNTABLE_ORDER_PRICE = 40;
+
+function normalizeOrderPriceForStorage(totalValue) {
+  const total = Number(totalValue);
+  if (!Number.isFinite(total) || total < 0) return total;
+  return total < MIN_COUNTABLE_ORDER_PRICE ? 0 : total;
+}
+
 function validateLowValueOrderReason(totalValue, notesElement) {
   const total = Number(totalValue);
-  if (!Number.isFinite(total) || total >= 50) return true;
+  if (!Number.isFinite(total) || total >= MIN_COUNTABLE_ORDER_PRICE) return true;
   const reason = String(notesElement?.value || '').trim();
   if (reason && reason !== 'لا توجد ملاحظات') return true;
   alert('برجاء كتابة السبب في الملاحظات: هل الأوردر استبدال ولا أخطاء ولا هدية؟');
@@ -4964,7 +5202,7 @@ function renderOrders() {
         <td class="region-cell">${o.area || ""}</td>
         <td>${money(price)}</td>
         <td>${deposit > 0 ? `<span class="deposit-badge">💰 ${money(deposit)}</span>` : "—"}</td>
-        <td>${remaining > 0 ? money(remaining) : "—"}</td>
+        <td>${formatOrderRemainingBalance(o, remaining)}</td>
         <td>${paymentProofs}</td>
         <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
         <td class="notes-cell" title="${safeNotes}">${displayNotes || ''}</td>
@@ -5097,7 +5335,7 @@ orderForm.addEventListener("submit", async (e) => {
     releaseDashboardSubmit();
     return;
   }
-  if (!courtesyPrepaidSelected && !(isAdmin()&&dashboardEditingOrder) && !validateLowValueOrderReason(totalPrice, notesEl)) {
+  if (!validateLowValueOrderReason(totalPrice, notesEl)) {
     releaseDashboardSubmit();
     return;
   }
@@ -5112,7 +5350,7 @@ orderForm.addEventListener("submit", async (e) => {
     phone2:           document.getElementById('phone2')?.value.trim() || '', 
     shipping_company: shipEl.value,
     area:             areaEl.value.trim(),
-    price:            totalPrice,
+    price:            normalizeOrderPriceForStorage(totalPrice),
     deposit:          depositValue,
     quantity:         qty,
     delivery_fee:     delivFee,
@@ -6396,7 +6634,10 @@ async function resetShippingDateFilter() {
 function getShippingFilteredOrders() {
   if (!shippingRankOrders || !shippingRankOrders.length) return [];
 
-  let src = shippingRankOrders;
+  // Zero-value orders are operational notes (replacement, error or gift), not
+  // sales. Legacy rows below the minimum are treated exactly like newly saved
+  // rows, which are persisted with price 0.
+  let src = shippingRankOrders.filter(order => normalizeOrderPriceForStorage(getEffectiveOrderPrice(order)) > 0);
 
   if (branchShippingRankOverride) {
     const branchName = branchShippingRankOverride;
@@ -9216,7 +9457,7 @@ function renderBranchOrders() {
       <td class="branch-area-cell">${o.area || ''}</td>
       <td>${money(price)}</td>
       <td>${deposit > 0 ? '<span class="deposit-badge">💰 ' + money(deposit) + '</span>' : '—'}</td>
-      <td>${remaining > 0 ? money(remaining) : '—'}</td>
+      <td>${formatOrderRemainingBalance(o, remaining)}</td>
       <td>${paymentProofs}</td>
       <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
       <td class="branch-notes-cell">${cleanVisibleOrderNotes(o.notes || '')}</td>
@@ -9731,7 +9972,7 @@ document.addEventListener('DOMContentLoaded', function() {
       releaseBranchSubmit();
       return;
     }
-    if (!courtesyPrepaidSelected && !(isAdmin()&&editingOrder) && !validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
+    if (!validateLowValueOrderReason(bTotalPrice, notesEl)) { releaseBranchSubmit(); return; }
 
     const orderData = {
       employee_name:    editingOrder?.employee_name || (currentUser ? currentUser.name : (empEl?.value.trim() || '')),
@@ -9742,7 +9983,7 @@ document.addEventListener('DOMContentLoaded', function() {
       phone2: document.getElementById('bPhone2')?.value.trim() || '',
       shipping_company: getBranchShippingCompanyName(currentBranchName) || shipEl?.value || '',
       area:             areaEl?.value.trim() || '',
-      price:            bTotalPrice,
+      price:            normalizeOrderPriceForStorage(bTotalPrice),
       deposit:          branchDepositValue,
       quantity:         bQty,
       delivery_fee:     bDelivFee,
@@ -11761,7 +12002,7 @@ function printKhaznaReport() {
       <td class="phone-cell">${escapeHTML(o.phone || '')}</td>
       <td class="arabic-cell doctor-cell">${escapeHTML(o.doctor_name || '—')}</td>
       <td class="ticket-cell">${escapeHTML(o.order_number || '—')}</td>
-      <td class="arabic-cell products-cell">${escapeHTML(o.product_names || '—')}</td>
+      <td class="money-cell">${enMoney(Number(getLatestCollectEntry(o)?.shipping || 0))}</td>
       <td class="money-cell">${enMoney(getEffectiveOrderPrice(o))}</td>
       <td class="money-cell">${enMoney(Number(o.deposit || 0))}</td>
       <td class="money-cell">${enMoney(Number(getLatestCollectEntry(o)?.sales || 0))}</td>
@@ -11774,7 +12015,7 @@ function printKhaznaReport() {
     'الموبايل': o.phone || '',
     'الدكتور': o.doctor_name || '',
     'رقم الأوردر': o.order_number || '',
-    'المنتجات': o.product_names || '',
+    'مصروف الشحنة': Number(getLatestCollectEntry(o)?.shipping || 0),
     'السعر': getEffectiveOrderPrice(o),
     'Deposit': Number(o.deposit || 0),
     'التحصيل': Number(getLatestCollectEntry(o)?.sales || 0),
@@ -11871,39 +12112,22 @@ function printKhaznaReport() {
   .stat-box .transfer-line { display:flex; justify-content:space-between; gap:5px; font-size:9px; line-height:1.5; color:#4b5563; }
   .stat-box .transfer-line b { direction:ltr; unicode-bidi:isolate; color:#7e22ce; font-size:9px; white-space:nowrap; }
 
-  table {
-    width:100%;
-    border-collapse:collapse;
-    table-layout:fixed;
-    margin-top:8px;
-  }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:8px; }
   thead { display:table-header-group; }
-  th {
-    background:#f3f4f6;
-    border-bottom:1px solid #d1d5db;
-    padding:6px 5px;
-    font-size:10px;
-    text-align:right;
-    white-space:nowrap;
-  }
-  td {
-    border-bottom:1px solid #e5e7eb;
-    padding:5px;
-    vertical-align:top;
-    line-height:1.45;
-    overflow-wrap:anywhere;
-  }
+  th, td { border:1px solid #bbb; padding:5px; text-align:center; font-size:10px; line-height:1.4; overflow-wrap:anywhere; }
+  th { background:#f3f4f6; font-weight:800; white-space:nowrap; }
   tr { page-break-inside:avoid; break-inside:avoid; }
 
   th:nth-child(1), td:nth-child(1) { width:4%; }
-  th:nth-child(2), td:nth-child(2) { width:12%; }
-  th:nth-child(3), td:nth-child(3) { width:11%; }
-  th:nth-child(4), td:nth-child(4) { width:12%; }
-  th:nth-child(5), td:nth-child(5) { width:8%; }
-  th:nth-child(6), td:nth-child(6) { width:31%; }
-  th:nth-child(7), td:nth-child(7) { width:8%; }
-  th:nth-child(8), td:nth-child(8) { width:7%; }
-  th:nth-child(9), td:nth-child(9) { width:7%; }
+  th:nth-child(2), td:nth-child(2) { width:14%; }
+  th:nth-child(3), td:nth-child(3) { width:12%; }
+  th:nth-child(4), td:nth-child(4) { width:14%; }
+  th:nth-child(5), td:nth-child(5) { width:10%; }
+  th:nth-child(6), td:nth-child(6) { width:10%; }
+  th:nth-child(7), td:nth-child(7) { width:10%; }
+  th:nth-child(8), td:nth-child(8) { width:9%; }
+  th:nth-child(9), td:nth-child(9) { width:9%; }
+  th:nth-child(10), td:nth-child(10) { width:8%; }
 
   .arabic-cell {
     direction:rtl;
@@ -11923,7 +12147,6 @@ function printKhaznaReport() {
     font-family:Arial, sans-serif;
   }
   .ticket-cell { font-weight:800; }
-  .products-cell { font-size:9px; }
   .status-cell { text-align:center; }
   .status-cell span {
     display:inline-block;
@@ -11955,7 +12178,7 @@ function printKhaznaReport() {
     .stat-box .value { font-size:15px; }
     th { font-size:8px; padding:4px 3px; }
     td { font-size:8px; padding:3px; line-height:1.35; }
-    .products-cell, .status-cell span { font-size:7px; }
+    .status-cell span { font-size:7px; }
   }
 </style>
 </head>
@@ -11997,7 +12220,7 @@ function printKhaznaReport() {
           <th>الموبايل</th>
           <th>الدكتور</th>
           <th>رقم الأوردر</th>
-          <th>المنتجات</th>
+          <th>مصروف الشحنة</th>
           <th>السعر</th>
           <th>Deposit</th>
           <th>التحصيل</th>
@@ -12033,7 +12256,7 @@ function printKhaznaReport() {
     }
     const ws = XLSX.utils.json_to_sheet(reportRows);
     ws['!cols'] = [
-      {wch:6},{wch:24},{wch:16},{wch:22},{wch:14},{wch:70},{wch:12},{wch:12},{wch:12},{wch:12}
+      {wch:6},{wch:24},{wch:16},{wch:22},{wch:14},{wch:16},{wch:12},{wch:12},{wch:12},{wch:12}
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Report');

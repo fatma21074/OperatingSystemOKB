@@ -554,6 +554,7 @@
 </button>
 <button class="branch-stock-btn" id="branchStockHeaderBtn" type="button" onclick="showBranchStockPage()" title="Branch Stock">
   <span class="branch-stock-icon" aria-hidden="true">
+    <span class="branch-stock-notification hidden" id="branchStockNotification" aria-label="Low stock products count">0</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path><path d="M9 11v4M15 11v4"></path></svg>
   </span>
   <span class="branch-stock-label">Branch Stock</span>
@@ -776,17 +777,31 @@
         <div class="branch-stock-title-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path></svg></div>
         <div><h1>Branch Stock</h1><p>جرد دائم للفروع مرتبط مباشرة بمنتجات OKB Items</p></div>
       </div>
-      <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+      <div class="branch-stock-header-actions">
+        <button class="stock-action-btn stock-save-btn" id="stockTopSaveBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
+        <button class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
+        <button class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
+        <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+      </div>
     </div>
 
     <div class="stock-take-start stock-control-bar">
       <div><label>Branch — الفرع</label><select id="stockTakeBranch" onchange="changeBranchStockBranch()"></select></div>
       <div><label>Search Product — بحث</label><input id="stockProductSearchTop" type="search" placeholder="ابحث باسم المنتج..." oninput="syncBranchStockSearch(this.value)"></div>
       <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock(this)">↻ Refresh</button>
-      <button class="stock-action-btn stock-save-btn" id="stockTopSaveBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
+      <button class="stock-action-btn stock-bulk-add-btn" id="stockBulkAddBtn" type="button" onclick="openBranchStockBulkAdd()" disabled>＋ إضافة جماعية (0)</button>
     </div>
 
-    <div class="stock-access-note" id="stockAccessNote"></div>
+    <div class="stock-signed-bypass-banner hidden" id="stockSignedBypassBanner"></div>
+
+    <div class="stock-variance-panel" id="stockVariancePanel">
+      <h2>Variance Report — تقرير الفروقات</h2>
+      <div class="stock-variance-summary">
+        <div><span>الزيادة</span><strong id="stockVarianceGain">0</strong></div>
+        <div class="stock-variance-loss-card"><span>العجز</span><strong id="stockVarianceLoss">0 ج.م</strong></div>
+        <div><span>صافي قيمة الفرق</span><strong id="stockVarianceNet">0</strong></div>
+      </div>
+    </div>
 
     <div class="stock-take-workspace" id="stockTakeWorkspace">
       <div class="stock-take-kpis">
@@ -834,27 +849,16 @@
 
       <div class="table-wrap">
         <table class="stock-take-table">
-          <thead><tr><th>#</th><th>اسم المنتج</th><th>رصيد السيستم</th><th>الكمية الفعلية</th><th>الفرق +/-</th><th>سبب الفرق</th><th>الملاحظات</th><th>آخر تعديل</th></tr></thead>
+          <thead><tr><th id="stockSelectHead">#</th><th>اسم المنتج</th><th>رصيد السيستم</th><th id="stockAddBalanceHead">إضافة رصيد</th><th>الكمية الفعلية</th><th>الفرق +/-</th><th class="stock-reason-head">سبب الفرق</th><th>آخر تعديل</th><th id="stockActionsHead">الإجراءات</th></tr></thead>
           <tbody id="stockTakeTableBody"></tbody>
         </table>
       </div>
 
-      <div class="stock-take-actions">
-        <button class="stock-action-btn stock-save-btn" id="saveStockDraftBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
-        <button class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
-        <button class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
-        <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock(this)">↻ Refresh</button>
-      </div>
+    </div>
 
-      <div class="stock-variance-panel" id="stockVariancePanel">
-        <h2>Variance Report — تقرير الفروقات</h2>
-        <div class="stock-variance-summary">
-          <div><span>الزيادة</span><strong id="stockVarianceGain">0</strong></div>
-          <div><span>العجز</span><strong id="stockVarianceLoss">0</strong></div>
-          <div><span>صافي قيمة الفرق</span><strong id="stockVarianceNet">0</strong></div>
-        </div>
-        <div id="stockTakeStatusText" class="product-report-note">يتم حفظ الجرد على Supabase ويمكن الرجوع إليه من أي جهاز.</div>
-      </div>
+    <div class="stock-signed-control hidden" id="stockSignedControl">
+      <button class="stock-signed-toggle enabled" id="stockSignedToggleBtn" type="button" onclick="toggleBranchSignedDeduction()">🔴 إيقاف خصم Signed</button>
+      <small id="stockSignedControlNote">التحكم يخص الفرع المحدد فقط ويظهر للـAdmin.</small>
     </div>
   </div>
 </section>
@@ -889,6 +893,7 @@
       <button class="product-report-tab" id="productTabReturned" type="button" onclick="setProductReportTab('returned')">Most Returned</button>
       <button class="product-report-tab" id="productTabDead" type="button" onclick="setProductReportTab('dead')">Dead Stock</button>
       <button class="product-report-tab" id="productTabTotal" type="button" onclick="setProductReportTab('total')">Total Products Sold</button>
+      <button class="product-report-tab" id="productTabSigned" type="button" onclick="setProductReportTab('signed')">Total Signed Products</button>
     </div>
 
     <div class="product-report-panel">
@@ -932,7 +937,7 @@
       <div><label>من تاريخ</label><input id="activityLogFrom" type="date"></div>
       <div><label>إلى تاريخ</label><input id="activityLogTo" type="date"></div>
       <div><label>بحث</label><input id="activityLogSearch" type="text" placeholder="اسم المستخدم، Ticket ID، العميل أو تفاصيل الحركة..."></div>
-      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option><option value="chat_message">رسالة Chat</option><option value="chat_attachment">مرفق Chat</option></select></div>
+      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="stock_balance_add">إضافة رصيد الجرد</option><option value="stock_receipt">استلام الجرد</option><option value="stock_signed_deduction">خصم رصيد عند Signed</option><option value="stock_take_count">تعديل كمية الجرد</option><option value="stock_take_draft">حفظ جرد الفرع</option><option value="stock_take_refresh">تحديث بيانات الجرد</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option><option value="chat_message">رسالة Chat</option><option value="chat_attachment">مرفق Chat</option></select></div>
       <button class="btn-filter" type="button" onclick="loadActivityLogs()">🔍 Filter</button>
       <button class="btn-reset-date" type="button" onclick="resetActivityLogFilters()">✕ Reset</button>
     </div>
@@ -1762,7 +1767,7 @@
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">إجمالي إثبات الدفع</p>
 <strong id="kTransfers" style="font-size:24px;color:#a855f7;">0</strong>
 <div style="margin-top:8px;display:grid;gap:4px;font-size:10px;color:var(--text-muted);">
-<span>تحويلات السكرتارية: <b id="kUpfrontTransfers" style="color:#c084fc;">0</b></span>
+<span style="font-size:12px;font-weight:700;">تحويلات السكرتارية: <b id="kUpfrontTransfers" style="color:#c084fc;font-size:13px;">0</b></span>
 <span style="font-size:12px;font-weight:700;">تحويلات التحصيل من المندوب: <b id="kCollectionTransfers" style="color:#c084fc;font-size:13px;">0</b></span>
 </div>
 </div>
