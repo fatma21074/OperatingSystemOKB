@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260902-live-permissions-v90">
+  <link rel="stylesheet" href="css/style.css?v=20260912-all-branches-treasury-zero-v141">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -539,6 +539,7 @@
     <button class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Stores Report</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
     <button class="okb-stores-report-btn doctor-rank-page-item hidden" id="doctorRankStoresMenuBtn" type="button" onclick="showDoctorRankPage()"><span>👨‍⚕️ Doctor Rank</span></button>
     <button class="okb-stores-report-btn branches-treasury-page-item hidden" id="branchesTreasuryMenuBtn" type="button" onclick="showBranchesTreasuryPage()"><span>🏦 خزنة الفروع</span></button>
+    <button class="okb-stores-report-btn commission-page-item hidden" id="commissionMenuBtn" type="button" onclick="showCommissionPage()"><span>Commission 🚩</span></button>
   </div>
 </div>
 <button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
@@ -725,8 +726,8 @@
 <span class="active-filter-badge" id="activeDateBadge">📅 فيلتر تاريخ مفعّل</span>
 <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل أو Ticket ID أو Barcode..."/>
 <select id="filterStatus">
-<option value="Signed" selected>Signed</option>
-<option value="الكل">كل الحالات</option>
+<option value="الكل" selected>كل الحالات</option>
+<option value="Signed">Signed</option>
 <option value="UrgentOrder">استعجال الأوردر</option>
 <option value="ReplacementOrder">استبدال الأوردر</option>
 <option value="ErrorOrder">أخطاء❌</option>
@@ -757,7 +758,7 @@
 <tr>
 <th class="admin-only"><input class="row-check" id="selectPageOrders" onchange="toggleSelectCurrentPage(this)" title="اختيار كل العملاء في الصفحة" type="checkbox"/></th>
 <th>#</th><th>الموظف</th><th>الدكتور</th><th>رقم الأوردر</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
-<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>المدفوع</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
+<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>Deposit</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr>
 </thead>
 <tbody id="ordersTableBody"></tbody>
@@ -937,7 +938,7 @@
       <div><label>من تاريخ</label><input id="activityLogFrom" type="date"></div>
       <div><label>إلى تاريخ</label><input id="activityLogTo" type="date"></div>
       <div><label>بحث</label><input id="activityLogSearch" type="text" placeholder="اسم المستخدم، Ticket ID، العميل أو تفاصيل الحركة..."></div>
-      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="stock_balance_add">إضافة رصيد الجرد</option><option value="stock_receipt">استلام الجرد</option><option value="stock_signed_deduction">خصم رصيد عند Signed</option><option value="stock_take_count">تعديل كمية الجرد</option><option value="stock_take_draft">حفظ جرد الفرع</option><option value="stock_take_refresh">تحديث بيانات الجرد</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option><option value="chat_message">رسالة Chat</option><option value="chat_attachment">مرفق Chat</option></select></div>
+      <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="stock_balance_add">إضافة رصيد الجرد</option><option value="stock_receipt">استلام الجرد</option><option value="stock_signed_deduction">خصم رصيد عند Signed</option><option value="stock_take_count">تعديل كمية الجرد</option><option value="stock_take_draft">حفظ جرد الفرع</option><option value="stock_take_refresh">تحديث بيانات الجرد</option><option value="commission_approved">اعتماد العمولة</option><option value="commission_unlocked">فتح اعتماد العمولة</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option><option value="chat_message">رسالة Chat</option><option value="chat_attachment">مرفق Chat</option></select></div>
       <button class="btn-filter" type="button" onclick="loadActivityLogs()">🔍 Filter</button>
       <button class="btn-reset-date" type="button" onclick="resetActivityLogFilters()">✕ Reset</button>
     </div>
@@ -1018,15 +1019,26 @@
       <div class="shipping-chart-card" id="shippingBranchPerformanceCard">
         <div class="section-head" style="margin-bottom:12px;">
           <h2 style="margin:0!important;">🏪 Branch Performance</h2>
-          <span style="font-size:12px;color:#94A3B8;">ترتيب الفروع حسب الأداء</span>
+          <span id="branchPerformanceRankingSubtitle" style="font-size:12px;color:#94A3B8;">بيانات الأداء القياسية للفترة المحددة</span>
         </div>
-        <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
-          <table style="min-width:760px;">
+        <div class="branch-performance-tabs" role="tablist" aria-label="نوع ترتيب الفروع">
+          <button class="branch-performance-tab active" id="branchDetailsRankingBtn" type="button" onclick="setBranchPerformanceRanking('details')">تفاصيل الأداء الحالي</button>
+          <button class="branch-performance-tab" id="branchDeliveryRankingBtn" type="button" onclick="setBranchPerformanceRanking('delivery')">🏆 ترتيب الأداء</button>
+          <button class="branch-performance-tab" id="branchReturnsRankingBtn" type="button" onclick="setBranchPerformanceRanking('returns')">📉 الأكثر تقليلًا للمرتجعات</button>
+        </div>
+        <div id="branchRankingView" class="hidden">
+          <div class="branch-ranking-period" id="branchRankingPeriod">—</div>
+          <div class="branch-ranking-board" id="branchRankingBoard"></div>
+        </div>
+        <div id="branchPerformanceDetailsView">
+          <div class="table-wrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
+          <table class="branch-performance-details-table" style="min-width:760px;">
             <thead><tr>
-              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th><th>Group Cancel</th>
+              <th>Rank</th><th>Branch</th><th>Total</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Conversion</th><th>Return</th>
             </tr></thead>
             <tbody id="branchPerformanceBody"></tbody>
           </table>
+          </div>
         </div>
       </div>
       <div class="shipping-chart-card" id="shippingCompanyPerformanceCard">
@@ -1428,6 +1440,47 @@
 </table>
 </div>
 </div>
+
+<div class="card hidden" id="stickyNoteSettingsCard">
+  <div class="sticky-note-settings-head">
+    <div>
+      <h2>Sticky Note</h2>
+      <p>حدد رسالة مؤقتة تظهر بجانب اسم الفرع أسفل صفحة الفرع خلال المدة المختارة.</p>
+    </div>
+    <span class="sticky-note-admin-chip">Admin فقط</span>
+  </div>
+  <form id="stickyNoteSettingsForm">
+    <div class="sticky-note-settings-grid">
+      <div>
+        <label for="stickyNoteBranch">اسم الفرع</label>
+        <select id="stickyNoteBranch" required onchange="loadStickyNoteSetting()">
+          <option value="مدينة نصر">فرع مدينة نصر</option>
+          <option value="اسكندرية">فرع اسكندرية</option>
+          <option value="طنطا">فرع طنطا</option>
+          <option value="المنصورة">فرع المنصورة</option>
+        </select>
+      </div>
+      <div>
+        <label for="stickyNoteFrom">من — التاريخ والوقت</label>
+        <input id="stickyNoteFrom" type="datetime-local" required />
+      </div>
+      <div>
+        <label for="stickyNoteTo">إلى — التاريخ والوقت</label>
+        <input id="stickyNoteTo" type="datetime-local" required />
+      </div>
+      <div class="sticky-note-text-field">
+        <label for="stickyNoteText">نص العرض</label>
+        <textarea id="stickyNoteText" maxlength="300" rows="3" required placeholder="اكتب النص الذي سيظهر بجانب اسم الفرع..."></textarea>
+        <small><span id="stickyNoteTextCount">0</span> / 300</small>
+      </div>
+    </div>
+    <div class="actions sticky-note-settings-actions">
+      <button class="success" id="saveStickyNoteBtn" type="submit">💾 حفظ Sticky Note</button>
+      <button class="danger" id="disableStickyNoteBtn" type="button" onclick="disableStickyNote()">إيقاف العرض</button>
+      <span id="stickyNoteSettingsStatus" role="status"></span>
+    </div>
+  </form>
+</div>
 </section>
 <!-- ===== Role Permissions Page ===== -->
 <section class="hidden" id="permissionPage">
@@ -1614,6 +1667,67 @@
 <div class="pagination" id="branchOrdersPagination"></div>
 </div>
 </section>
+
+<!-- ===== Commission Dashboard ===== -->
+<section id="commissionPage" class="page hidden commission-page" dir="rtl">
+  <div class="commission-shell">
+    <div class="commission-head">
+      <div><span class="commission-eyebrow">الملخص المالي</span><h1>العمولات</h1><p>متابعة أداء ومستحقات الفروع ومدير الفروع طبقًا لنظام العمولات المعتمد</p></div>
+      <div class="commission-controls">
+        <label class="commission-date-field"><span>من</span><input id="commissionFromDate" type="date" onchange="syncCommissionComparisonDates()"></label>
+        <label class="commission-date-field"><span>إلى</span><input id="commissionToDate" type="date" onchange="syncCommissionComparisonDates()"></label>
+        <div class="commission-comparison-range">
+          <label class="commission-auto-compare"><input id="commissionAutoCompare" type="checkbox" checked onchange="toggleCommissionAutoComparison(this.checked)"><span>مقارنة تلقائية</span></label>
+          <label class="commission-date-field"><span>مقارنة من</span><input id="commissionCompareFromDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
+          <label class="commission-date-field"><span>مقارنة إلى</span><input id="commissionCompareToDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
+        </div>
+        <button class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
+        <button class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
+        <select id="commissionBranchFilter" onchange="renderCommissionDashboard()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+        <button type="button" onclick="refreshCommissionDashboard(this)">↻ Refresh</button>
+        <button class="commission-export commission-nav-action" type="button" onclick="exportCommissionWorkbook()">Export</button>
+        <div class="commission-report-tabs" role="tablist" aria-label="تقارير العمولات">
+          <button data-commission-view="dashboard" type="button" onclick="setCommissionView('dashboard',this)">Overview</button>
+          <button class="active" data-commission-view="total" type="button" onclick="setCommissionView('total',this)">Total Commission</button>
+          <button data-commission-view="comparison" type="button" onclick="setCommissionView('comparison',this)">المقارنة الشهرية</button>
+          <button data-commission-view="rtd" type="button" onclick="setCommissionView('rtd',this)">مكافأة الـ RTD</button>
+          <button data-commission-view="development" type="button" onclick="setCommissionView('development',this)">مكافأة التطوير</button>
+          <button id="commissionApproveBtn" class="commission-approve-btn hidden" type="button" onclick="openCommissionApprovalModal()">اعتماد العمولة 🔒</button>
+        </div>
+      </div>
+    </div>
+    <div id="commissionApprovalBanner" class="commission-approval-banner hidden"></div>
+    <div id="commissionNotice" class="commission-notice hidden"></div>
+    <div class="commission-kpis" id="commissionKpis">
+      <article class="commission-kpi featured"><span>صافي العمولات</span><strong id="commissionNet">0 ج.م</strong><small id="commissionNetCompare">— فترة المقارنة</small></article>
+      <article class="commission-kpi commission-growth-kpi"><span>التطور عن الفترة السابقة</span><strong id="commissionGrowth">0%</strong><small id="commissionGrowthDetails">نسبة التسليم الحالية مقارنة بالسابق</small></article>
+      <article class="commission-kpi"><span>إجمالي المبيعات</span><strong id="commissionSales">0 ج.م</strong><small id="commissionSalesCompare">— فترة المقارنة</small></article>
+      <article class="commission-kpi"><span>العمولة الأساسية</span><strong id="commissionBase">0 ج.م</strong><small id="commissionTierSummary">حسب شرائح التسليم</small></article>
+      <article class="commission-kpi"><span>المكافآت والخصومات</span><strong><b class="commission-positive" id="commissionRewards">+0</b> <b class="commission-negative" id="commissionPenalties">-0</b></strong><small>RTD + التطوير الشهري</small></article>
+    </div>
+    <div class="commission-visuals" id="commissionVisuals">
+      <article class="commission-panel"><h2>المقارنة الشهرية</h2><div class="commission-chart-box"><canvas id="commissionMonthlyChart"></canvas></div></article>
+      <article class="commission-panel"><h2>توزيع صافي العمولات</h2><div class="commission-chart-box commission-donut-box"><canvas id="commissionDistributionChart"></canvas></div><div id="commissionDistributionLegend" class="commission-legend"></div></article>
+    </div>
+    <article class="commission-panel commission-table-panel">
+      <div class="commission-table-title"><div><span id="commissionReportPeriod" class="commission-period-label"></span><h2 id="commissionTableTitle">لوحة العرض</h2></div><button type="button" onclick="toggleCommissionRules()">تفاصيل طريقة الاحتساب ‹</button></div>
+      <div id="commissionReportSummary" class="commission-report-summary"></div>
+      <div class="table-wrap"><table class="commission-table"><thead><tr id="commissionTableHead"></tr></thead><tbody id="commissionTableBody"></tbody></table></div>
+      <div id="commissionRules" class="commission-rules hidden"></div>
+    </article>
+  </div>
+</section>
+
+<div id="commissionApprovalModal" class="commission-approval-modal" role="dialog" aria-modal="true" aria-labelledby="commissionApprovalTitle">
+  <div class="commission-approval-dialog">
+    <div class="commission-approval-head"><div><span>إقفال الفترة</span><h2 id="commissionApprovalTitle">اعتماد العمولة 🔒</h2></div><button type="button" onclick="closeCommissionApprovalModal()">✕</button></div>
+    <div id="commissionApprovalSummary" class="commission-approval-summary"></div>
+    <label class="commission-approval-note"><span>ملاحظة الاعتماد (اختياري)</span><textarea id="commissionApprovalNote" rows="3" placeholder="اكتب أي ملاحظة إدارية على الاعتماد"></textarea></label>
+    <label id="commissionPendingOverrideWrap" class="commission-pending-override hidden"><input id="commissionPendingOverride" type="checkbox" onchange="toggleCommissionPendingOverride()"><span>اعتماد استثنائي رغم وجود Pending</span></label>
+    <label id="commissionOverrideReasonWrap" class="commission-approval-note hidden"><span>سبب الاعتماد الاستثنائي (إجباري)</span><textarea id="commissionOverrideReason" rows="2"></textarea></label>
+    <div class="commission-approval-actions"><button class="commission-approval-cancel" type="button" onclick="closeCommissionApprovalModal()">إلغاء</button><button id="commissionApprovalConfirmBtn" class="commission-approve-confirm" type="button" onclick="confirmCommissionApproval()">تأكيد الاعتماد 🔒</button></div>
+  </div>
+</div>
 
 <!-- ===== OKB Stores Returned / Cancel Report ===== -->
 <section class="hidden" id="okbStoresReportPage">
@@ -1857,6 +1971,11 @@
 </main>
 </div>
 
+<div class="branch-floating-sticky hidden" id="branchFloatingSticky" aria-live="polite">
+  <span class="branch-floating-badge" id="branchFloatingBadge">فرع</span>
+  <span class="branch-floating-message hidden" id="branchFloatingMessage"></span>
+</div>
+
 <!-- ===== My Account Modal ===== -->
 <div class="my-account-modal" id="myAccountModal" onclick="if(event.target===this)closeMyAccountModal()">
   <div class="my-account-dialog" role="dialog" aria-modal="true" aria-labelledby="myAccountTitle">
@@ -1962,7 +2081,7 @@
 </div>
 <div style="background:var(--bg-soft);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:14px;">
 <label style="display:block;font-size:11px;color:#ef4444;font-weight:700;margin-bottom:6px;">🚚 إجمالي مصروف الشحنات</label>
-<input id="collectShippingInput" oninput="calcCollect()" placeholder="0.00" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid rgba(239,68,68,0.35);background:var(--bg-card);color:var(--text-primary);font-size:15px;font-weight:700;text-align:center;outline:none;" type="number"/>
+<input id="collectShippingInput" oninput="calcCollect()" onkeydown="handleCollectShippingEnter(event)" placeholder="0.00" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid rgba(239,68,68,0.35);background:var(--bg-card);color:var(--text-primary);font-size:15px;font-weight:700;text-align:center;outline:none;" type="number"/>
 </div>
 </div>
 <div id="collectUpfrontProofInfo" style="display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-5px 0 18px;padding:10px 12px;border-radius:10px;border:1px solid rgba(99,102,241,.30);background:rgba(99,102,241,.07);font-size:11px;font-weight:800;color:var(--text-primary);"></div>
@@ -2024,7 +2143,7 @@
 <input id="collectDateInput" type="date" style="height:38px;padding:7px 10px;border-radius:10px;border:1px solid rgba(99,102,241,.42);background:var(--bg-soft);color:var(--text-primary);font-size:12px;font-weight:800;outline:none;color-scheme:dark;"/>
 </div>
 <button onclick="closeCollectModal()" style="padding:10px 18px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إلغاء</button>
-<button onclick="confirmCollectOrder()" style="padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.22));backdrop-filter:blur(12px);color:#fff;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 14px rgba(100,210,240,0.2);text-shadow:0 1px 2px rgba(0,0,0,0.2);">✅ تحصيل الأوردر</button>
+<button id="collectConfirmBtn" type="button" onclick="confirmCollectOrder()" style="padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.22));backdrop-filter:blur(12px);color:#fff;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 14px rgba(100,210,240,0.2);text-shadow:0 1px 2px rgba(0,0,0,0.2);">✅ تحصيل الأوردر</button>
 </div>
 </div>
 </div>
@@ -2174,6 +2293,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="js/main.js?v=20260903-fast-all-branches-treasury-v97"></script>
+<script src="js/main.js?v=20260912-all-branches-treasury-zero-v141"></script>
 </body>
 </html>

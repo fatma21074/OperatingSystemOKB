@@ -145,6 +145,9 @@ let orders = [];
 let shippingRankOrders = [];
 let shippingRankOrdersScope = '';
 let shippingRankLoadToken = 0;
+let branchRankingPreviousOrders = [];
+let branchRankingPreviousRange = null;
+let branchPerformanceRankingMode = 'details';
 let doctorRankOrders = [];
 let doctorRankOrdersScope = '';
 let doctorRankLoadToken = 0;
@@ -154,6 +157,9 @@ let dailyReportLoadToken = 0;
 let users = [];
 let editId = null;
 let currentUser = null;
+let activeBranchStickyNote = null;
+let branchStickyNoteTimer = null;
+let branchStickyNoteLoading = false;
 let charts = {};
 let selectedOrderIds = new Set();
 let dashboardOrderSubmitInProgress = false;
@@ -576,8 +582,8 @@ async function logActivity(actionType, actionTitle, actionDetails = '', extra = 
     return false;
   }
 }
-function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',khazna_shipping_adjusted:'🧾',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',stock_balance_add:'➕',stock_balance_edit:'✏️',stock_receipt:'📥',stock_receipt_resend:'↩️',stock_receipt_confirm:'☑️',stock_signed_control:'⏻',stock_signed_bypass:'⚠️',stock_signed_deduction:'📦',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
-function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_note_added:'إضافة ملاحظة',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',khazna_shipping_adjusted:'تصحيح مصروفات الشحن',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد الفرع',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',stock_balance_add:'إضافة رصيد الجرد',stock_balance_edit:'تعديل رصيد مرسل',stock_receipt:'استلام الجرد',stock_receipt_resend:'إعادة إرسال الجرد',stock_receipt_confirm:'تأكيد تسوية الاستلام',stock_signed_control:'التحكم في خصم Signed',stock_signed_bypass:'Signed بدون خصم مخزون',stock_signed_deduction:'خصم رصيد عند Signed',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
+function activityIcon(type){ const map={order_created:'➕',order_updated:'✏️',order_cancelled:'⛔',order_collected:'💰',order_deleted:'🗑️',customer_updated:'👤',daily_locked:'🔒',daily_unlocked:'🔓',khazna_shipping_adjusted:'🧾',password_changed:'🔐',user_management:'👤',login:'↪️',logout:'↩️',data_exported:'📤',stock_take_start:'📋',stock_take_count:'🔢',stock_take_scan:'▣',stock_take_reason:'📝',stock_take_draft:'💾',stock_take_close:'🔒',stock_take_refresh:'↻',stock_balance_add:'➕',stock_balance_edit:'✏️',stock_receipt:'📥',stock_receipt_resend:'↩️',stock_receipt_confirm:'☑️',stock_signed_control:'⏻',stock_signed_bypass:'⚠️',stock_signed_deduction:'📦',commission_approved:'🔒',commission_unlocked:'🔓',order_discount:'🏷️',order_transfer:'🔄',payment_proof_attached:'📎',chat_message:'💬',chat_attachment:'🖼️'}; return map[type]||'⚡'; }
+function activityTypeLabel(type){ const map={order_created:'إضافة أوردر',order_updated:'تعديل أوردر',order_note_added:'إضافة ملاحظة',order_cancelled:'إلغاء أوردر',order_collected:'تحصيل أوردر',order_deleted:'حذف أوردر',customer_updated:'تعديل ملف عميل',daily_locked:'قفل يومية',daily_unlocked:'فتح يومية',khazna_shipping_adjusted:'تصحيح مصروفات الشحن',password_changed:'تغيير كلمة مرور',user_management:'إدارة مستخدم',login:'تسجيل دخول',logout:'تسجيل خروج',data_exported:'تصدير بيانات',stock_take_start:'بدء جرد',stock_take_count:'تعديل كمية جرد',stock_take_scan:'مسح باركود بالجرد',stock_take_reason:'سبب فرق الجرد',stock_take_draft:'حفظ جرد الفرع',stock_take_close:'قفل الجرد',stock_take_refresh:'تحديث بيانات الجرد',stock_balance_add:'إضافة رصيد الجرد',stock_balance_edit:'تعديل رصيد مرسل',stock_receipt:'استلام الجرد',stock_receipt_resend:'إعادة إرسال الجرد',stock_receipt_confirm:'تأكيد تسوية الاستلام',stock_signed_control:'التحكم في خصم Signed',stock_signed_bypass:'Signed بدون خصم مخزون',stock_signed_deduction:'خصم رصيد عند Signed',commission_approved:'اعتماد العمولة',commission_unlocked:'فتح اعتماد العمولة',order_discount:'خصم أوردر',order_transfer:'تحويل لشركة شحن',payment_proof_attached:'إرفاق إثبات دفع',chat_message:'رسالة Chat',chat_attachment:'مرفق Chat'}; return map[type]||type||'Activity'; }
 function getAuditActivityIssueText(activity){
   if(!String(activity?.action_type||'').startsWith('secretary_audit_'))return '';
   try{
@@ -1082,8 +1088,9 @@ function setSavedStockTakes(list){ localStorage.setItem(STOCK_TAKES_STORAGE_KEY,
 function stockTakeStorageId(){ return `ST-${Date.now()}-${Math.random().toString(36).slice(2,7)}`; }
 function getAccessibleStockBranches(){
   const all=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
-  if(isStoreManager()||isCashier()||isAccountSupervisor()){ const m=getCurrentUserManagedBranches(); return m.length?m:[]; }
-  return all;
+  if(isAdmin())return all;
+  const managed=getCurrentUserManagedBranches();
+  return all.filter(branch=>managed.includes(branch));
 }
 function populateStockTakeFilters(){
   const b=$('stockTakeBranch'); if(b){ const cur=b.value; b.innerHTML=getAccessibleStockBranches().map(x=>`<option value="${escapeHTML(x)}">${escapeHTML(x)}</option>`).join(''); if([...b.options].some(o=>o.value===cur))b.value=cur; }
@@ -1210,7 +1217,7 @@ const BRANCH_STOCK_LOW_LIMIT = 50;
 const BRANCH_STOCK_CRITICAL_LIMIT = 10;
 
 function canManageBranchStockSystem(){ return isAdmin(); }
-function canViewAllBranchStockBranches(){ return isAdmin() || isAccountManager(); }
+function canViewAllBranchStockBranches(){ return isAdmin(); }
 function canEditBranchStockCount(){ return isAdmin() || isAccountManager() || isStoreManager() || isAccountSupervisor() || isCashier(); }
 function canAddBranchStockBalance(){ return hasButtonPermission('btn_branch_stock_add_balance'); }
 function canUseBranchStockActions(){ return hasButtonPermission('btn_branch_stock_actions'); }
@@ -1218,11 +1225,8 @@ function canEditPendingBranchStockRequest(){ return isAdmin() || isAccountManage
 function getAccessibleStockBranches(){
   const all=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
   if(canViewAllBranchStockBranches())return all;
-  if(isStoreManager()||isCashier()||isAccountSupervisor()){
-    const managed=getCurrentUserManagedBranches();
-    return all.filter(branch=>managed.includes(branch));
-  }
-  return [];
+  const managed=getCurrentUserManagedBranches();
+  return all.filter(branch=>managed.includes(branch));
 }
 
 function populateStockTakeFilters(){
@@ -1628,6 +1632,8 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'btn_order_cancel', label:'إلغاء الأوردر', group:'الأوردر — طباعة وإلغاء' },
   { key:'btn_cancel_doctor_group', label:'إلغاء من الدكتور على الجروب', group:'أنواع الإلغاء' },
   { key:'btn_cancel_customer_courier', label:'إلغاء من العميل مع المندوب', group:'أنواع الإلغاء' },
+  { key:'commission', label:'عرض صفحة Commission 🚩', group:'Commission 🚩' },
+  { key:'btn_commission_approve', label:'اعتماد العمولة 🔒', group:'Commission 🚩' },
 ];
 const ROLE_BRANCH_FEATURES = {
   'مدينة نصر':'branch_nasr',
@@ -1681,6 +1687,8 @@ function getDefaultRolePermissions(role) {
     chat:true,
     doctor_rank_stores:false,
     branches_treasury:false,
+    commission:false,
+    btn_commission_approve:false,
     activity_log:false,
     secretary_audit:executive,
     product_reports:operation || branchRole || accounting,
@@ -1728,7 +1736,10 @@ function hasRoleFeature(feature) {
   if (typeof userPermissions === 'string') {
     try { userPermissions = JSON.parse(userPermissions); } catch (e) { userPermissions = null; }
   }
-  const roleAllowed = Boolean(getPermissionsForRole(currentUser.role)[feature]);
+  const rolePermissions=getPermissionsForRole(currentUser.role);
+  const roleAllowed=Boolean(rolePermissions[feature]);
+  if(feature==='okb_stores'&&Boolean(rolePermissions.commission))return true;
+  if(feature==='commission')return roleAllowed;
   // A permission granted by either the Role matrix or the user's individual
   // permissions is enough. A stale individual `false` must never cancel a
   // newer permission that the admin granted to the whole Role.
@@ -2067,12 +2078,13 @@ function renderRolePermissionMatrix() {
   if(status){status.textContent='';status.className='';}
   const grid = document.getElementById('permissionFeaturesGrid');
   if (!grid) return;
-  const groups = [...new Set(ROLE_PERMISSION_FEATURES.map(feature => feature.group))];
+  const roleFeatures = ROLE_PERMISSION_FEATURES;
+  const groups = [...new Set(roleFeatures.map(feature => feature.group))];
   grid.innerHTML = groups.map(group => `
     <section class="permission-table-group">
       <div class="permission-table-title"><h3>${escapeHTML(group)}</h3></div>
       <div class="permission-table-wrap"><table class="permission-matrix-table"><tbody>
-        ${ROLE_PERMISSION_FEATURES.filter(feature => feature.group === group).map(feature => `<tr><td>${escapeHTML(feature.label)}</td><td><input class="permission-compact-check" type="checkbox" data-permission-feature="${feature.key}" ${permissions[feature.key] ? 'checked' : ''}></td></tr>`).join('')}
+        ${roleFeatures.filter(feature => feature.group === group).map(feature => `<tr><td>${escapeHTML(feature.label)}</td><td><input class="permission-compact-check" type="checkbox" data-permission-feature="${feature.key}" ${permissions[feature.key] ? 'checked' : ''}></td></tr>`).join('')}
       </tbody></table></div>
     </section>
   `).join('');
@@ -2450,6 +2462,7 @@ const COLLECT_META_REGEX = /\n?\[COLLECT_META:([\s\S]*?)\]\s*$/;
 const ORDER_META_PREFIX = "[ORDER_META:";
 const ORDER_META_REGEX = /\n?\[ORDER_META:([\s\S]*?)\]\s*$/;
 const ORDER_FLAG_NOTE_PREFIX = "تصنيف السيستم:";
+const ORDER_FLAG_VISIBLE_LABELS = ['استعجال الأوردر', 'استبدال الأوردر', 'أخطاء', 'أخطاء❌'];
 
 function getOrderMeta(order) {
   const notes = String(order?.notes || "").replace(COLLECT_META_REGEX,'').trim();
@@ -2475,14 +2488,14 @@ function buildNotesWithOrderMeta(notes, meta) {
   const collectMatch=source.match(COLLECT_META_REGEX);
   let cleanNotes = stripOrderMeta(source.replace(COLLECT_META_REGEX, "").trim())
     .split(/\n+/).map(line=>line.trim())
-    .filter(line=>line && !line.startsWith(ORDER_FLAG_NOTE_PREFIX) && line !== 'لا توجد ملاحظات').join('\n');
+    .filter(line=>line && !line.startsWith(ORDER_FLAG_NOTE_PREFIX) && !ORDER_FLAG_VISIBLE_LABELS.includes(line) && line !== 'لا توجد ملاحظات').join('\n');
   const safeMeta = { ...(meta || {}), discount: Number(meta?.discount || 0) };
   const flagNotes = [
-    safeMeta.urgent === true ? `${ORDER_FLAG_NOTE_PREFIX} استعجال الأوردر` : '',
-    safeMeta.replacement === true ? `${ORDER_FLAG_NOTE_PREFIX} استبدال الأوردر` : '',
-    safeMeta.error_order === true ? `${ORDER_FLAG_NOTE_PREFIX} أخطاء❌` : ''
+    safeMeta.urgent === true ? 'استعجال الأوردر' : '',
+    safeMeta.replacement === true ? 'استبدال الأوردر' : '',
+    safeMeta.error_order === true ? 'أخطاء❌' : ''
   ].filter(Boolean);
-  cleanNotes = [cleanNotes, ...flagNotes].filter(Boolean).join('\n');
+  cleanNotes = [...flagNotes, cleanNotes].filter(Boolean).join('\n');
   const orderBlock=`${cleanNotes || "لا توجد ملاحظات"}\n${ORDER_META_PREFIX}${JSON.stringify(safeMeta)}]`;
   return collectMatch ? `${orderBlock}\n${COLLECT_META_PREFIX}${collectMatch[1]}]` : orderBlock;
 }
@@ -2503,7 +2516,7 @@ function getOrderFlagMeta(order) {
 
 function getOrderFlagLabels(order) {
   const flags = getOrderFlagMeta(order);
-  return [flags.urgent ? 'استعجال' : '', flags.replacement ? 'استبدال' : '', flags.errorOrder ? 'أخطاء' : ''].filter(Boolean);
+  return [flags.urgent ? 'استعجال' : '', flags.replacement ? 'استبدال' : '', flags.errorOrder ? 'أخطاء❌' : ''].filter(Boolean);
 }
 
 function isErrorOrder(order) {
@@ -2525,6 +2538,7 @@ function isPriorityOrder(order) {
 }
 
 function getOrderPriorityRowClass(order) {
+  if (normalizeOrderPriceForStorage(getEffectiveOrderPrice(order)) === 0) return 'order-zero-value-row';
   const flags = getOrderFlagMeta(order);
   if (flags.errorOrder || flags.replacement) return 'order-priority-row';
   if (flags.urgent) return 'order-urgent-row';
@@ -2625,7 +2639,7 @@ function getOrderPreCollectionBalance(order) {
 function formatOrderRemainingBalance(order, balance) {
   const status = String(getOrderDisplayStatus(order) || order?.status || '').trim();
   if (status === 'Signed') return money(0);
-  return Number(balance || 0) > 0 ? money(balance) : '—';
+  return money(Math.max(0, Number(balance || 0)));
 }
 
 function stripCollectMeta(notes) {
@@ -3262,6 +3276,7 @@ async function openAuthenticatedApp(activityTitle, activityDetails) {
   setupUserView();
   startRolePermissionsSync();
   startLiveBusinessSync();
+  startBranchStickyNoteClock();
   await showInitialPermittedPage();
 
   // All heavy datasets load in parallel after the interface is already visible.
@@ -3436,6 +3451,8 @@ const storesReportBtn = document.getElementById('okbStoresReportMenuBtn');
 if (storesReportBtn) storesReportBtn.style.display = hasRoleFeature('stores_report') ? '' : 'none';
 const branchesTreasuryBtn = document.getElementById('branchesTreasuryMenuBtn');
 if (branchesTreasuryBtn) branchesTreasuryBtn.classList.toggle('hidden', !hasRoleFeature('branches_treasury'));
+const commissionBtn = document.getElementById('commissionMenuBtn');
+if (commissionBtn) commissionBtn.classList.toggle('hidden', !hasRoleFeature('commission'));
 const branchStockBtn = document.getElementById('branchStockHeaderBtn');
 if (branchStockBtn) branchStockBtn.style.display = hasRoleFeature('branch_stock') ? 'inline-flex' : 'none';
 if(hasRoleFeature('branch_stock'))updateBranchStockLowStockBadge();
@@ -3481,11 +3498,14 @@ document.querySelectorAll('.users-page-item').forEach(el => el.classList.toggle(
 document.querySelectorAll('.daily-report-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDailyReport));
 document.querySelectorAll('.doctor-rank-page-item').forEach(el => el.classList.toggle('hidden', !canOpenDoctorRank));
 document.querySelectorAll('.branches-treasury-page-item').forEach(el => el.classList.toggle('hidden', !hasRoleFeature('branches_treasury')));
+document.querySelectorAll('.commission-page-item').forEach(el => el.classList.toggle('hidden', !hasRoleFeature('commission')));
 document.querySelectorAll('.permission-page-item').forEach(el => el.classList.toggle('hidden', !isAdmin()));
 document.querySelectorAll('.chat-page-item').forEach(el => el.classList.toggle('hidden', !hasRoleFeature('chat')));
 if (settingsHeaderWrap) settingsHeaderWrap.style.display = hasRoleFeature('settings_root') ? 'inline-flex' : 'none';
 const cleanAllDoctorsBtn = document.getElementById('cleanAllDoctorsBtn');
 if (cleanAllDoctorsBtn) cleanAllDoctorsBtn.style.display = isAdmin() ? '' : 'none';
+const stickyNoteSettingsCard = document.getElementById('stickyNoteSettingsCard');
+if (stickyNoteSettingsCard) stickyNoteSettingsCard.classList.toggle('hidden', !isAdmin());
 const activityBtn = document.getElementById("activityLogHeaderBtn");
 if (activityBtn) activityBtn.style.display = hasRoleFeature('activity_log') ? "inline-flex" : "none";
 document.querySelectorAll('[data-page="usersPage"]').forEach(el => {
@@ -3551,6 +3571,7 @@ setTimeout(ensureCashierBranchReportButton, 100);
 
 function resetAppState() {
   stopRolePermissionsSync();
+  stopBranchStickyNoteClock();
   stopPendingHeaderNotifications();
   stopOKBStoresReportNotifications();
   stopLastSeenHeartbeat();
@@ -3560,6 +3581,7 @@ function resetAppState() {
   okbItems = [];
   doctorsList = [];
   shippingSystems = [];
+  activeBranchStickyNote = null;
   editId = null;
   currentUser = null;
   selectedOrderIds = new Set();
@@ -3575,6 +3597,9 @@ function resetAppState() {
   shippingAutoMonthKey = '';
   shippingRankOrders = [];
   shippingRankOrdersScope = '';
+  branchRankingPreviousOrders = [];
+  branchRankingPreviousRange = null;
+  branchPerformanceRankingMode = 'details';
   doctorRankOrders = [];
   doctorRankOrdersScope = '';
   doctorWeeklyOrdersSource = [];
@@ -3596,7 +3621,7 @@ function resetAppState() {
   });
   const av = $("userAvatar"); if (av) av.textContent = "U";
 
-  ["orderForm", "userForm", "itemForm", "doctorSettingsForm", "shippingSettingsForm"].forEach(id => {
+  ["orderForm", "userForm", "itemForm", "doctorSettingsForm", "shippingSettingsForm", "stickyNoteSettingsForm"].forEach(id => {
     const f = $(id); if (f) f.reset();
   });
 
@@ -3970,13 +3995,14 @@ async function exportOKBStoresReportExcel(){
 }
 
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "secretaryAuditPage", "financialAuditPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "commissionPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "secretaryAuditPage", "financialAuditPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
+  renderBranchFloatingSticky();
 }
 
-async function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); const range=setDashboardCurrentMonthRange(); if(ordersDataScope!==`range:${range.key}`)await loadOrders({from:range.from,to:range.to,scope:range.key}); else renderOrders(); }
+async function showOrdersPage() { if(!hasRoleFeature('dashboard')){alert('غير مسموح لك بفتح Dashboard');return;} hideAllPages(); $("ordersPage").classList.remove("hidden"); setActiveMenu("ordersPage"); if(filterStatus)filterStatus.value='الكل'; const range=setDashboardCurrentMonthRange(); if(ordersDataScope!==`range:${range.key}`)await loadOrders({from:range.from,to:range.to,scope:range.key}); else renderOrders(); }
 function showAnalyticsPage() { if (isStoreManager()) return; hideAllPages(); $("analyticsPage").classList.remove("hidden"); renderAnalytics(); setActiveMenu("analyticsPage"); }
 async function showShippingRankPage(mode = 'branch') {
   if (!canViewShippingRank()) return;
@@ -3984,6 +4010,7 @@ async function showShippingRankPage(mode = 'branch') {
   closeShippingRankMenu();
   branchShippingRankOverride = null;
   shippingRankMode = mode === 'company' ? 'company' : 'branch';
+  if (shippingRankMode === 'branch') branchPerformanceRankingMode = 'details';
   selectedShippingCompanies = [];
   pageState.shippingRank = 1;
   setShippingCurrentMonthRange(true);
@@ -4069,13 +4096,14 @@ function showBranchsPage() {
   loadOKBItems();
   loadDoctors();
   loadShippingSystems();
+  if (isAdmin()) loadStickyNoteSetting();
 }
 
 async function refreshSettingsPage(button) {
   const oldText = button?.textContent;
   if (button) { button.disabled = true; button.textContent = 'جاري التحديث...'; }
   try {
-    await Promise.all([loadOKBItems(), loadDoctors(), loadShippingSystems()]);
+    await Promise.all([loadOKBItems(), loadDoctors(), loadShippingSystems(), isAdmin() ? loadStickyNoteSetting() : Promise.resolve()]);
   } finally {
     if (button) { button.disabled = false; button.textContent = oldText || '↻ Refresh'; }
   }
@@ -5201,7 +5229,7 @@ function renderOrders() {
         <td>${o.shipping_company || ""}</td>
         <td class="region-cell">${o.area || ""}</td>
         <td>${money(price)}</td>
-        <td>${deposit > 0 ? `<span class="deposit-badge">💰 ${money(deposit)}</span>` : "—"}</td>
+        <td>${deposit > 0 ? `<span class="deposit-badge">💰 ${money(deposit)}</span>` : money(0)}</td>
         <td>${formatOrderRemainingBalance(o, remaining)}</td>
         <td>${paymentProofs}</td>
         <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
@@ -6047,16 +6075,141 @@ function calculateBranchMiniDashboardStats(list, options = {}) {
   };
 }
 
+const BRANCH_PERFORMANCE_MAP = [
+  { branch: 'مدينة نصر', key: 'nasr-city' },
+  { branch: 'اسكندرية', key: 'alexandria' },
+  { branch: 'طنطا', key: 'tanta' },
+  { branch: 'المنصورة', key: 'mansoura' }
+];
+
+function getPreviousMonthComparisonRange(fromDate, toDate) {
+  const parse = value => {
+    const [year, month, day] = String(value || '').split('-').map(Number);
+    return year && month && day ? { year, month, day } : null;
+  };
+  const from = parse(fromDate), to = parse(toDate);
+  if (!from || !to) return null;
+  const previousMonth = ({ year, month, day }, useMonthEnd = false) => {
+    const base = new Date(Date.UTC(year, month - 2, 1));
+    const targetYear = base.getUTCFullYear(), targetMonthIndex = base.getUTCMonth();
+    const lastDay = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0)).getUTCDate();
+    const targetDay = useMonthEnd ? lastDay : Math.min(day, lastDay);
+    return `${targetYear}-${String(targetMonthIndex + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+  };
+  const currentLastDay = new Date(Date.UTC(to.year, to.month, 0)).getUTCDate();
+  const isFullMonth = from.year === to.year && from.month === to.month && from.day === 1 && to.day === currentLastDay;
+  return { from: previousMonth(from), to: previousMonth(to, isFullMonth) };
+}
+
+function filterBranchRankingOrders(source) {
+  let rows = (Array.isArray(source) ? source : []).filter(order =>
+    normalizeOrderPriceForStorage(getEffectiveOrderPrice(order)) > 0 && isShippingRankBranchOrder(order)
+  );
+  if (branchShippingRankOverride) {
+    const branchName = branchShippingRankOverride;
+    const shippingName = getBranchShippingCompanyName(branchName);
+    rows = rows.filter(order => order.branch === branchName || order.shipping_company === branchName || order.shipping_company === shippingName);
+  } else if (isStoreManager() || isAccountSupervisor()) {
+    const managed = getCurrentUserManagedBranches();
+    const shippingNames = managed.map(getBranchShippingCompanyName).filter(Boolean);
+    rows = rows.filter(order => managed.includes(order.branch) || managed.includes(order.shipping_company) || shippingNames.includes(order.shipping_company));
+  }
+  return rows;
+}
+
+function getBranchRankingRows(source) {
+  const rows = filterBranchRankingOrders(source);
+  return BRANCH_PERFORMANCE_MAP.map(item => {
+    const list = rows.filter(order => getProductReportOrderBranch(order) === item.key);
+    const stats = calculateBranchMiniDashboardStats(list, { excludeGroupCancelFromTotal: true });
+    return {
+      name: item.branch,
+      key: item.key,
+      ...stats,
+      conversionValue: Number(String(stats.conversionRate).replace('%', '')) || 0,
+      returnValue: Number(String(stats.returnRate).replace('%', '')) || 0
+    };
+  });
+}
+
+function setBranchPerformanceRanking(mode) {
+  branchPerformanceRankingMode = mode === 'delivery' || mode === 'returns' ? mode : 'details';
+  renderBranchPerformanceRanking();
+}
+
+function renderBranchPerformanceRanking() {
+  const board = document.getElementById('branchRankingBoard');
+  if (!board) return;
+  document.getElementById('branchDetailsRankingBtn')?.classList.toggle('active', branchPerformanceRankingMode === 'details');
+  document.getElementById('branchDeliveryRankingBtn')?.classList.toggle('active', branchPerformanceRankingMode === 'delivery');
+  document.getElementById('branchReturnsRankingBtn')?.classList.toggle('active', branchPerformanceRankingMode === 'returns');
+  document.getElementById('branchPerformanceDetailsView')?.classList.toggle('hidden', branchPerformanceRankingMode !== 'details');
+  document.getElementById('branchRankingView')?.classList.toggle('hidden', branchPerformanceRankingMode === 'details');
+  const subtitle = document.getElementById('branchPerformanceRankingSubtitle');
+  if (subtitle) subtitle.textContent = branchPerformanceRankingMode === 'details'
+    ? 'بيانات الأداء القياسية للفترة المحددة'
+    : branchPerformanceRankingMode === 'returns'
+      ? 'ترتيب الفروع حسب أكبر انخفاض في نسبة المرتجعات'
+      : 'ترتيب الفروع حسب أعلى نسبة تسليم';
+  if (branchPerformanceRankingMode === 'details') return;
+  const currentRows = getBranchRankingRows(getShippingFilteredOrders());
+  const previousRows = getBranchRankingRows(branchRankingPreviousOrders);
+  const previousByKey = new Map(previousRows.map(row => [row.key, row]));
+  const rows = currentRows.filter(row => row.rawTotal > 0).map(row => {
+    const previous = previousByKey.get(row.key);
+    const hasPrevious = Number(previous?.rawTotal || 0) > 0;
+    return {
+      ...row,
+      previousConversion: hasPrevious ? previous.conversionValue : null,
+      previousReturn: hasPrevious ? previous.returnValue : null,
+      deliveryChange: hasPrevious ? row.conversionValue - previous.conversionValue : null,
+      returnReduction: hasPrevious ? previous.returnValue - row.returnValue : null
+    };
+  });
+  rows.sort(branchPerformanceRankingMode === 'returns'
+    ? (a, b) => Number(b.returnReduction ?? -Infinity) - Number(a.returnReduction ?? -Infinity) || a.returnValue - b.returnValue || b.total - a.total
+    : (a, b) => b.conversionValue - a.conversionValue || b.signed - a.signed || a.returnValue - b.returnValue || a.cancelled - b.cancelled
+  );
+  const period = document.getElementById('branchRankingPeriod');
+  const currentFrom = document.getElementById('shippingFromDate')?.value || shippingDateFrom || '—';
+  const currentTo = document.getElementById('shippingToDate')?.value || shippingDateTo || '—';
+  if (period) period.textContent = branchRankingPreviousRange
+    ? `الفترة الحالية ${currentFrom} ← ${currentTo} • المقارنة ${branchRankingPreviousRange.from} ← ${branchRankingPreviousRange.to}`
+    : `الفترة الحالية ${currentFrom} ← ${currentTo}`;
+  if (!rows.length) {
+    board.innerHTML = '<div class="empty">لا توجد بيانات فروع في الفترة المحددة</div>';
+    return;
+  }
+  const maxReduction = Math.max(1, ...rows.map(row => Math.max(0, Number(row.returnReduction || 0))));
+  board.innerHTML = rows.map((row, index) => {
+    const returnsMode = branchPerformanceRankingMode === 'returns';
+    const currentValue = returnsMode ? row.returnValue : row.conversionValue;
+    const previousValue = returnsMode ? row.previousReturn : row.previousConversion;
+    const change = returnsMode ? row.returnReduction : row.deliveryChange;
+    const good = change !== null && change > 0;
+    const bad = change !== null && change < 0;
+    const changeText = change === null
+      ? 'لا توجد مقارنة'
+      : returnsMode
+        ? `${good ? '↓ ' : bad ? '↑ ' : ''}${Math.abs(change).toFixed(1)}%`
+        : `${good ? '▲ +' : bad ? '▼ ' : ''}${change.toFixed(1)}%`;
+    const barWidth = returnsMode ? Math.max(0, Number(change || 0)) / maxReduction * 100 : currentValue;
+    const subtitle = returnsMode ? `${row.returned} مرتجع من ${row.total}` : `${row.signed} Signed من ${row.total}`;
+    return `<div class="branch-ranking-row">
+      <div class="branch-ranking-position">${index + 1}</div>
+      <div class="branch-ranking-name">${escapeHTML(row.name)}<small>${subtitle}</small></div>
+      <div class="branch-ranking-bars">
+        <div class="branch-ranking-bar-line"><span>السابق</span><div class="branch-ranking-track"><span class="branch-ranking-fill" style="width:${Math.max(0, Math.min(100, Number(previousValue || 0)))}%"></span></div><b>${previousValue === null ? '—' : previousValue.toFixed(1) + '%'}</b></div>
+        <div class="branch-ranking-bar-line"><span>الحالي</span><div class="branch-ranking-track"><span class="branch-ranking-fill current" style="width:${Math.max(0, Math.min(100, barWidth))}%"></span></div><b>${currentValue.toFixed(1)}%</b></div>
+      </div>
+      <div class="branch-ranking-change ${good ? 'good' : bad ? 'bad' : 'neutral'}">${returnsMode ? 'خفض المرتجعات ' : 'التطور '}${changeText}</div>
+    </div>`;
+  }).join('');
+}
+
 function getBranchPerformanceRows() {
   const src = getShippingFilteredOrders();
-  const branchesMap = [
-    { branch: "مدينة نصر", key: "nasr-city" },
-    { branch: "اسكندرية", key: "alexandria" },
-    { branch: "طنطا", key: "tanta" },
-    { branch: "المنصورة", key: "mansoura" }
-  ];
-
-  return branchesMap.map(item => {
+  return BRANCH_PERFORMANCE_MAP.map(item => {
     const list = src.filter(order => getProductReportOrderBranch(order) === item.key);
     const stats = calculateBranchMiniDashboardStats(list, { excludeGroupCancelFromTotal: true });
     return {
@@ -6097,19 +6250,19 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
   if (!tbody) return;
 
   const activeRows = rows.filter(r => Number(r.rawTotal ?? r.total ?? 0) > 0);
+  const isBranchPerformance = tbodyId === "branchPerformanceBody";
   if (!activeRows.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="empty">${emptyText}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${isBranchPerformance ? 8 : 9}" class="empty">${emptyText}</td></tr>`;
     return;
   }
 
-  const showCancel = tbodyId === "branchPerformanceBody";
   tbody.innerHTML = activeRows.map((r, i) => {
     const returnValue = Number(String(r.returnRate || "0").replace("%", "")) || 0;
     const conversionValue = Number(String(r.conversionRate || "0").replace("%", "")) || 0;
     const returnColor = returnValue > 10 ? "#EF4444" : "#57D85A";
     const conversionColor = conversionValue >= 90 ? "#57D85A" : "#F59E0B";
     return `<tr>
-      <td>${num(i + 1)}</td>
+      <td>${isBranchPerformance ? `<span class="branch-performance-rank-number">${num(i + 1)}</span>` : num(i + 1)}</td>
       <td>${r.name}</td>
       <td>${num(r.total)}</td>
       <td>${num(r.signed)}</td>
@@ -6117,7 +6270,7 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
       <td>${num(r.returned)}</td>
       <td style="color:${conversionColor};font-weight:900">${r.conversionRate}</td>
       <td style="color:${returnColor};font-weight:900">${r.returnRate}</td>
-      <td>${showCancel ? num(r.cancelled || 0) : Number(r.score || 0).toFixed(1)}</td>
+      ${isBranchPerformance ? '' : `<td>${Number(r.score || 0).toFixed(1)}</td>`}
     </tr>`;
   }).join("");
 }
@@ -6133,7 +6286,10 @@ function renderGlobalShippingSections() {
   if(branchCard)branchCard.classList.toggle('hidden',shippingRankMode!=='branch');
   if(companyCard)companyCard.classList.toggle('hidden',shippingRankMode!=='company');
   const grid=box?.querySelector('.shipping-charts-grid');if(grid)grid.style.gridTemplateColumns='1fr';
-  if(shippingRankMode==='branch')renderPerformanceRows("branchPerformanceBody", getBranchPerformanceRows(), "No branch performance data");
+  if(shippingRankMode==='branch'){
+    renderBranchPerformanceRanking();
+    renderPerformanceRows("branchPerformanceBody", getBranchPerformanceRows(), "No branch performance data");
+  }
   else renderPerformanceRows("shippingCompanyPerformanceBody", getShippingCompanyPerformanceRows(), "No shipping company data");
 }
 
@@ -6565,10 +6721,26 @@ async function loadShippingRankRange(options = {}) {
   const scope = `${from}:${to}`;
   if (!options.force && shippingRankOrdersScope === scope) return shippingRankOrders;
   const token = ++shippingRankLoadToken;
-  const data = await fetchShippingRankOrdersForRange(from, to);
+  const comparisonRange = shippingRankMode === 'branch' && !isStoreManager()
+    ? getPreviousMonthComparisonRange(from, to)
+    : null;
+  const previousRequest = comparisonRange
+    ? fetchShippingRankOrdersForRange(comparisonRange.from, comparisonRange.to)
+        .then(rows => ({ rows, range: comparisonRange }))
+        .catch(error => {
+          console.warn('Branch Rank previous-period comparison unavailable:', error);
+          return { rows: [], range: comparisonRange };
+        })
+    : Promise.resolve({ rows: [], range: null });
+  const [data, previous] = await Promise.all([
+    fetchShippingRankOrdersForRange(from, to),
+    previousRequest
+  ]);
   if (token !== shippingRankLoadToken) return shippingRankOrders;
   shippingRankOrders = data;
   shippingRankOrdersScope = scope;
+  branchRankingPreviousOrders = previous.rows;
+  branchRankingPreviousRange = previous.range;
   return data;
 }
 
@@ -6626,6 +6798,7 @@ async function onShippingFilterChange() {
 
 async function resetShippingDateFilter() {
   setShippingCurrentMonthRange(true);
+  if (shippingRankMode === 'branch') branchPerformanceRankingMode = 'details';
   try { await loadShippingRankRange({ force:true }); }
   catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   renderShippingRank(); renderShippingCharts();
@@ -7635,7 +7808,7 @@ async function exportDoctorRank() {
 // ===== دوال المستخدمين =====
 function onNewRoleChange() {
   const role = $("newRole").value;
-  $("newUserBranchesWrap").classList.toggle("hidden", !["store_manager","cashier","account_supervisor"].includes(role));
+  $("newUserBranchesWrap").classList.toggle("hidden", role==="admin");
 }
 
 function getSelectedNewUserBranches() {
@@ -7652,10 +7825,10 @@ userForm.addEventListener("submit", async (e) => {
 
   const userData = { name: newUserName.value.trim(), username: newUsername.value.trim(), password: newPassword.value.trim(), role: role, active: true };
 
-  if (!execOnly && ["store_manager","cashier","account_supervisor"].includes(role)) {
+  if (!execOnly && role!=="admin") {
     const branches = getSelectedNewUserBranches();
-    if (!branches.length) { alert("اختر فرع واحد على الأقل لهذا الحساب"); return; }
-    userData.managed_branches = JSON.stringify(branches);
+    if (["store_manager","cashier","account_supervisor"].includes(role)&&!branches.length) { alert("اختر فرع واحد على الأقل لهذا الحساب"); return; }
+    userData.managed_branches = branches.length?JSON.stringify(branches):null;
   }
 
   if (!userData.name || !userData.username || !userData.password || !userData.role) { alert("املى كل بيانات المستخدم"); return; }
@@ -7700,12 +7873,10 @@ function renderUsers() {
   }
   usersTableBody.innerHTML = users.map(u => {
     let managedBranchesText = "—";
-    if (["store_manager", "cashier", "account_supervisor"].includes(String(u.role || "").toLowerCase())) {
-      try {
-        const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
-        managedBranchesText = arr.length ? arr.join(", ") : "—";
-      } catch (e) { managedBranchesText = "—"; }
-    }
+    try {
+      const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
+      managedBranchesText = arr.length ? arr.join(", ") : "—";
+    } catch (e) { managedBranchesText = "—"; }
 
     const canManageThisUser = isAdmin();
 
@@ -7757,7 +7928,7 @@ window.toggleUserActive = async function (id, currentActive) {
 // ===== تعديل صلاحية المستخدم (Admin Only) =====
 function onEditRoleChange() {
   const role = $("editRoleSelect").value;
-  $("editRoleBranchesWrap").classList.toggle("hidden", !["store_manager","cashier","account_supervisor"].includes(role));
+  $("editRoleBranchesWrap").classList.toggle("hidden", role==="admin");
 }
 
 window.openEditRoleModal = function (id) {
@@ -7771,7 +7942,7 @@ window.openEditRoleModal = function (id) {
   $("editRoleSelect").value = String(u.role || "agent").toLowerCase();
 
   document.querySelectorAll(".edit-role-branch-cb").forEach(cb => cb.checked = false);
-  if (["store_manager", "cashier", "account_supervisor"].includes(String(u.role || "").toLowerCase())) {
+  if (String(u.role||'').toLowerCase()!=="admin") {
     try {
       const arr = Array.isArray(u.managed_branches) ? u.managed_branches : JSON.parse(u.managed_branches || "[]");
       document.querySelectorAll(".edit-role-branch-cb").forEach(cb => { cb.checked = arr.includes(cb.value); });
@@ -7792,10 +7963,10 @@ async function saveEditedRole() {
   const newRoleVal = $("editRoleSelect").value;
 
   const updateData = { role: newRoleVal };
-  if (["store_manager","cashier","account_supervisor"].includes(newRoleVal)) {
+  if (newRoleVal!=="admin") {
     const branches = Array.from(document.querySelectorAll(".edit-role-branch-cb:checked")).map(cb => cb.value);
-    if (!branches.length) { alert("اختر فرع واحد على الأقل لهذا الحساب"); return; }
-    updateData.managed_branches = JSON.stringify(branches);
+    if (["store_manager","cashier","account_supervisor"].includes(newRoleVal)&&!branches.length) { alert("اختر فرع واحد على الأقل لهذا الحساب"); return; }
+    updateData.managed_branches = branches.length?JSON.stringify(branches):null;
   } else {
     updateData.managed_branches = null;
   }
@@ -8317,6 +8488,189 @@ window.deleteShippingSystem = async function (id) {
   if (error) { alert("مشكلة في الحذف: " + error.message); return; }
   await loadShippingSystems();
 };
+
+// ===== Branch Sticky Note =====
+const BRANCH_STICKY_NOTE_BRANCHES = ['مدينة نصر', 'اسكندرية', 'طنطا', 'المنصورة'];
+
+function stickyNoteLocalDateTimeValue(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+}
+
+function setStickyNoteSettingsStatus(message, type = '') {
+  const status = document.getElementById('stickyNoteSettingsStatus');
+  if (!status) return;
+  status.textContent = message || '';
+  status.style.color = type === 'success' ? '#34d399' : type === 'error' ? '#fb7185' : 'var(--text-muted)';
+}
+
+function setStickyNoteFormDefaults() {
+  const from = document.getElementById('stickyNoteFrom');
+  const to = document.getElementById('stickyNoteTo');
+  const text = document.getElementById('stickyNoteText');
+  const count = document.getElementById('stickyNoteTextCount');
+  const start = new Date();
+  const end = new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000));
+  if (from) from.value = stickyNoteLocalDateTimeValue(start);
+  if (to) to.value = stickyNoteLocalDateTimeValue(end);
+  if (text) text.value = '';
+  if (count) count.textContent = '0';
+}
+
+async function loadStickyNoteSetting() {
+  if (!isAdmin()) return;
+  const branch = document.getElementById('stickyNoteBranch')?.value;
+  if (!BRANCH_STICKY_NOTE_BRANCHES.includes(branch)) return;
+  setStickyNoteSettingsStatus('جاري تحميل إعداد الفرع...');
+  const { data, error } = await supabaseClient
+    .from('branch_sticky_notes')
+    .select('branch_name,display_text,starts_at,ends_at,active')
+    .eq('branch_name', branch)
+    .maybeSingle();
+  if (error) {
+    console.warn('Sticky Note settings load failed:', error.message);
+    setStickyNoteSettingsStatus('تعذر تحميل الإعداد. تأكد من تشغيل Migration 022.', 'error');
+    return;
+  }
+  if (!data) {
+    setStickyNoteFormDefaults();
+    setStickyNoteSettingsStatus('لا توجد Sticky Note محفوظة لهذا الفرع.');
+    return;
+  }
+  const text = document.getElementById('stickyNoteText');
+  const count = document.getElementById('stickyNoteTextCount');
+  if (text) text.value = data.display_text || '';
+  if (count) count.textContent = String((data.display_text || '').length);
+  const from = document.getElementById('stickyNoteFrom');
+  const to = document.getElementById('stickyNoteTo');
+  if (from) from.value = stickyNoteLocalDateTimeValue(data.starts_at);
+  if (to) to.value = stickyNoteLocalDateTimeValue(data.ends_at);
+  setStickyNoteSettingsStatus(data.active ? 'Sticky Note مفعلة حسب المدة المحددة.' : 'Sticky Note متوقفة حاليًا.');
+}
+
+async function saveStickyNote(event) {
+  event?.preventDefault();
+  if (!isAdmin()) { alert('إدارة Sticky Note متاحة للأدمن فقط'); return; }
+  const branch = document.getElementById('stickyNoteBranch')?.value;
+  const displayText = document.getElementById('stickyNoteText')?.value.trim() || '';
+  const startsValue = document.getElementById('stickyNoteFrom')?.value || '';
+  const endsValue = document.getElementById('stickyNoteTo')?.value || '';
+  const startsAt = new Date(startsValue);
+  const endsAt = new Date(endsValue);
+  if (!BRANCH_STICKY_NOTE_BRANCHES.includes(branch)) { alert('اختر فرعًا صحيحًا'); return; }
+  if (!displayText) { alert('اكتب نص العرض'); return; }
+  if (displayText.length > 300) { alert('نص العرض لا يزيد عن 300 حرف'); return; }
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) { alert('حدد تاريخ ووقت البداية والنهاية'); return; }
+  if (endsAt <= startsAt) { alert('تاريخ ووقت النهاية يجب أن يكون بعد البداية'); return; }
+  const button = document.getElementById('saveStickyNoteBtn');
+  const oldText = button?.textContent || '💾 حفظ Sticky Note';
+  if (button) { button.disabled = true; button.textContent = 'جاري الحفظ...'; }
+  setStickyNoteSettingsStatus('جاري الحفظ...');
+  try {
+    const { error } = await supabaseClient.from('branch_sticky_notes').upsert({
+      branch_name: branch,
+      display_text: displayText,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      active: true
+    }, { onConflict:'branch_name' });
+    if (error) throw error;
+    setStickyNoteSettingsStatus('تم حفظ وتفعيل Sticky Note بنجاح.', 'success');
+    await logActivity('settings_updated', 'تحديث Sticky Note', `الفرع: ${branch} | المدة: ${startsValue} → ${endsValue}`, { branch_name:branch });
+    if (currentBranchName === branch) loadBranchStickyNote(branch);
+  } catch (error) {
+    console.error('Sticky Note save failed:', error);
+    setStickyNoteSettingsStatus('تعذر الحفظ: ' + (error.message || error), 'error');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText; }
+  }
+}
+
+async function disableStickyNote() {
+  if (!isAdmin()) { alert('إدارة Sticky Note متاحة للأدمن فقط'); return; }
+  const branch = document.getElementById('stickyNoteBranch')?.value;
+  if (!BRANCH_STICKY_NOTE_BRANCHES.includes(branch)) return;
+  if (!confirm(`إيقاف Sticky Note الخاصة بفرع ${branch}؟`)) return;
+  const button = document.getElementById('disableStickyNoteBtn');
+  const oldText = button?.textContent || 'إيقاف العرض';
+  if (button) { button.disabled = true; button.textContent = 'جاري الإيقاف...'; }
+  try {
+    const { error } = await supabaseClient.from('branch_sticky_notes').update({ active:false }).eq('branch_name', branch);
+    if (error) throw error;
+    setStickyNoteSettingsStatus('تم إيقاف Sticky Note.', 'success');
+    await logActivity('settings_updated', 'إيقاف Sticky Note', `الفرع: ${branch}`, { branch_name:branch });
+    if (currentBranchName === branch) { activeBranchStickyNote = null; renderBranchFloatingSticky(); }
+  } catch (error) {
+    console.error('Sticky Note disable failed:', error);
+    setStickyNoteSettingsStatus('تعذر إيقاف العرض: ' + (error.message || error), 'error');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = oldText; }
+  }
+}
+
+function isActiveBranchStickyNote(note) {
+  if (!note?.active || !note.display_text) return false;
+  const now = Date.now();
+  const start = new Date(note.starts_at).getTime();
+  const end = new Date(note.ends_at).getTime();
+  return Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end;
+}
+
+function renderBranchFloatingSticky() {
+  const shell = document.getElementById('branchFloatingSticky');
+  const branchBadge = document.getElementById('branchFloatingBadge');
+  const message = document.getElementById('branchFloatingMessage');
+  const branchPageVisible = Boolean(currentUser && currentBranchName && !document.getElementById('branchPage')?.classList.contains('hidden'));
+  if (!shell || !branchBadge || !message) return;
+  shell.classList.toggle('hidden', !branchPageVisible);
+  document.body.classList.toggle('branch-floating-sticky-visible', branchPageVisible);
+  if (!branchPageVisible) return;
+  branchBadge.textContent = `فرع ${currentBranchName}`;
+  const showMessage = activeBranchStickyNote?.branch_name === currentBranchName && isActiveBranchStickyNote(activeBranchStickyNote);
+  message.classList.toggle('hidden', !showMessage);
+  message.textContent = showMessage ? activeBranchStickyNote.display_text : '';
+}
+
+async function loadBranchStickyNote(branchName = currentBranchName) {
+  if (!currentUser || !BRANCH_STICKY_NOTE_BRANCHES.includes(branchName) || branchStickyNoteLoading) return;
+  branchStickyNoteLoading = true;
+  try {
+    const { data, error } = await supabaseClient
+      .from('branch_sticky_notes')
+      .select('branch_name,display_text,starts_at,ends_at,active')
+      .eq('branch_name', branchName)
+      .maybeSingle();
+    if (error) throw error;
+    if (branchName === currentBranchName) activeBranchStickyNote = data || null;
+  } catch (error) {
+    console.warn('Branch Sticky Note load failed:', error.message || error);
+    if (branchName === currentBranchName) activeBranchStickyNote = null;
+  } finally {
+    branchStickyNoteLoading = false;
+    renderBranchFloatingSticky();
+  }
+}
+
+function stopBranchStickyNoteClock() {
+  if (branchStickyNoteTimer) clearInterval(branchStickyNoteTimer);
+  branchStickyNoteTimer = null;
+  document.body.classList.remove('branch-floating-sticky-visible');
+}
+
+function startBranchStickyNoteClock() {
+  stopBranchStickyNoteClock();
+  branchStickyNoteTimer = setInterval(() => {
+    if (!document.getElementById('branchPage')?.classList.contains('hidden') && currentBranchName) loadBranchStickyNote(currentBranchName);
+    else renderBranchFloatingSticky();
+  }, 60000);
+}
+
+document.getElementById('stickyNoteSettingsForm')?.addEventListener('submit', saveStickyNote);
+document.getElementById('stickyNoteText')?.addEventListener('input', event => {
+  const count = document.getElementById('stickyNoteTextCount');
+  if (count) count.textContent = String(event.currentTarget.value.length);
+});
 
 // ===== دوال التقارير =====
 let reportMode = "daily";
@@ -9175,6 +9529,9 @@ async function openBranchPage(branchName) {
 
   const title = document.getElementById('branchPageTitle');
   if (title) title.textContent = '📦 Dashboard — فرع ' + branchName;
+  activeBranchStickyNote = null;
+  renderBranchFloatingSticky();
+  loadBranchStickyNote(branchName);
 
   const uName = document.getElementById('userNameHere');
   const uRole = document.getElementById('userRoleHere');
@@ -9270,7 +9627,7 @@ function cleanVisibleOrderNotes(notes) {
     .replace(ORDER_META_REGEX, '')
     .replace(COLLECT_META_REGEX, '')
     .split(/\n+/)
-    .map(line => line.trim())
+    .map(line => line.trim().replace(/^تصنيف السيستم:\s*/, ''))
     .filter(line => line && line !== 'لا توجد ملاحظات')
     .join('\n')
     .trim();
@@ -9456,7 +9813,7 @@ function renderBranchOrders() {
       <td>${o.shipping_company || ''}</td>
       <td class="branch-area-cell">${o.area || ''}</td>
       <td>${money(price)}</td>
-      <td>${deposit > 0 ? '<span class="deposit-badge">💰 ' + money(deposit) + '</span>' : '—'}</td>
+      <td>${deposit > 0 ? '<span class="deposit-badge">💰 ' + money(deposit) + '</span>' : money(0)}</td>
       <td>${formatOrderRemainingBalance(o, remaining)}</td>
       <td>${paymentProofs}</td>
       <td><span class="chip ${statusClass}">${getOrderDisplayStatus(o)}</span></td>
@@ -11791,8 +12148,8 @@ function renderKhaznaOrders() {
       <td>${escapeHTML(o.phone || '')}</td>
       <td>${escapeHTML(o.doctor_name || '—')}</td>
       <td>${enMoney(price)}</td>
-      <td>${deposit > 0 ? enMoney(deposit) : '—'}</td>
-      <td>${collectedFromCustomer > 0 ? enMoney(collectedFromCustomer) : '—'}</td>
+      <td>${enMoney(deposit)}</td>
+      <td>${enMoney(collectedFromCustomer)}</td>
       <td>${getPaymentProofsCellHtml(o)}</td>
       <td>${enMoney(shippingExpense)}</td>
       <td><span class="chip ${statusClass}" style="font-size:10px;">${getOrderDisplayStatus(o)}</span></td>
@@ -12633,6 +12990,22 @@ async function openCollectModal(orderId, customerName, price, deposit, src) {
   }
   selectCollectPaymentMethod(_collectIsFullyPrepaid ? 'Prepaid' : (last && last.payment_method ? last.payment_method : 'COD'));
   calcCollect();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const shippingInput = document.getElementById('collectShippingInput');
+    const modal = document.getElementById('collectOrderModal');
+    if (!shippingInput || modal?.style.display !== 'flex') return;
+    shippingInput.focus({ preventScroll: true });
+    shippingInput.select();
+  }));
+}
+
+function handleCollectShippingEnter(event) {
+  if (!event || event.key !== 'Enter' || event.repeat || event.isComposing) return;
+  event.preventDefault();
+  const modal = document.getElementById('collectOrderModal');
+  const confirmBtn = document.getElementById('collectConfirmBtn');
+  if (!_collectOrderId || modal?.style.display !== 'flex' || !confirmBtn || confirmBtn.disabled) return;
+  confirmBtn.click();
 }
 
 function closeCollectModal() {
@@ -12786,7 +13159,7 @@ async function confirmCollectOrder() {
 
   if (proofFile && !validateImageFile(proofFile)) return;
 
-  const confirmBtn = document.querySelector('#collectOrderModal button[onclick="confirmCollectOrder()"]');
+  const confirmBtn = document.getElementById('collectConfirmBtn');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'جاري التحصيل...'; }
 
   try {
@@ -14426,7 +14799,7 @@ function renderBranchesTreasury() {
     const statusClass=order.status==='Signed'?'chip-signed':'chip-returned';
     return `<tr><td>${index+1}</td><td><strong>${escapeHTML(getTicketId(order)||'—')}</strong></td>
       <td>${escapeHTML(order.customer_name||'')}</td><td>${escapeHTML(order.phone||'')}</td><td>${escapeHTML(order.doctor_name||'—')}</td><td>${escapeHTML(pendingOrderBranch(order)||'—')}</td>
-      <td>${enMoney(price)}</td><td>${deposit?enMoney(deposit):'—'}</td><td>${collected?enMoney(collected):'—'}</td><td>${getPaymentProofsCellHtml(order)}</td>
+      <td>${enMoney(price)}</td><td>${enMoney(deposit)}</td><td>${enMoney(collected)}</td><td>${getPaymentProofsCellHtml(order)}</td>
       <td>${enMoney(Number(last?.shipping||0))}</td><td><span class="chip ${statusClass}">${escapeHTML(getOrderDisplayStatus(order))}</span></td><td>${formatEnglishDateTime(getOrderAccountingDateISO(order))}</td>
       <td><div style="display:flex;gap:6px;align-items:center;"><button class="operation-manager-report-btn" type="button" onclick="openBranchesTreasuryOrder('${order.id}')">Ticket ID</button><button type="button" onclick="printBranchesTreasuryOrder('${order.id}')" class="operation-manager-report-btn">🖨️ طباعة</button></div></td></tr>`;
   }).join('') : '<tr><td colspan="14" class="empty">لا توجد أوردرات مطابقة للفلاتر</td></tr>';
@@ -14983,6 +15356,236 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('bFilterDoctor', 'ابحث باسم الدكتور أو الكود...');
 });
 
+// ===== Commission — approved branch commission workbook =====
+const COMMISSION_TIERS = [
+  {min:0,max:85,label:'أقل من 85%',manager:0,officer:0,alex:0},
+  {min:85,max:87,label:'85% - 86.99%',manager:3000,officer:750,alex:750},
+  {min:87,max:90,label:'87% - 89.99%',manager:5000,officer:1750,alex:1750},
+  {min:90,max:Infinity,label:'90% فأكثر — Premium',manager:6500,officer:2250,alex:2250}
+];
+const COMMISSION_BRANCH_CODE = {'اسكندرية':'ALEX','مدينة نصر':'CAIRO','طنطا':'TANTA','المنصورة':'MANSOURA'};
+const COMMISSION_ADJUSTMENT_PER_POINT = 200;
+let commissionData = null;
+let commissionActiveView = 'total';
+let commissionCurrentApproval = null;
+const commissionRangeCache = new Map();
+let commissionComparisonRefreshTimer = null;
+
+function commissionShiftMonth(dateText,delta=-1){
+  const match=String(dateText||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!match)return'';
+  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),targetIndex=month-1+delta,targetYear=year+Math.floor(targetIndex/12),targetMonth=((targetIndex%12)+12)%12,lastDay=new Date(Date.UTC(targetYear,targetMonth+1,0)).getUTCDate();
+  return `${targetYear}-${String(targetMonth+1).padStart(2,'0')}-${String(Math.min(day,lastDay)).padStart(2,'0')}`;
+}
+function commissionDateRange(from,to,previousFrom='',previousTo=''){
+  const valid=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));if(!valid(from)||!valid(to)||from>to)return null;
+  const compareFrom=valid(previousFrom)?previousFrom:commissionShiftMonth(from,-1),compareTo=valid(previousTo)?previousTo:commissionShiftMonth(to,-1);if(compareFrom>compareTo)return null;
+  return {from,to,previousFrom:compareFrom,previousTo:compareTo,month:`${from} → ${to}`,previousMonth:`${compareFrom} → ${compareTo}`};
+}
+function syncCommissionComparisonDates(force=false){
+  const auto=document.getElementById('commissionAutoCompare'),from=document.getElementById('commissionFromDate')?.value,to=document.getElementById('commissionToDate')?.value,compareFrom=document.getElementById('commissionCompareFromDate'),compareTo=document.getElementById('commissionCompareToDate');
+  if(!compareFrom||!compareTo)return;if(force||auto?.checked){compareFrom.value=commissionShiftMonth(from,-1);compareTo.value=commissionShiftMonth(to,-1);}compareFrom.disabled=Boolean(auto?.checked);compareTo.disabled=Boolean(auto?.checked);
+}
+function setCommissionCurrentMonthRange(){const today=getCairoDateISO(),from=`${today.slice(0,7)}-01`;const fromEl=document.getElementById('commissionFromDate'),toEl=document.getElementById('commissionToDate');if(fromEl)fromEl.value=from;if(toEl)toEl.value=today;syncCommissionComparisonDates(true);return commissionDateRange(from,today,commissionShiftMonth(from,-1),commissionShiftMonth(today,-1));}
+function toggleCommissionAutoComparison(enabled){syncCommissionComparisonDates(Boolean(enabled));if(enabled)scheduleCommissionComparisonRefresh();}
+function scheduleCommissionComparisonRefresh(){clearTimeout(commissionComparisonRefreshTimer);commissionComparisonRefreshTimer=setTimeout(()=>{const from=document.getElementById('commissionCompareFromDate')?.value,to=document.getElementById('commissionCompareToDate')?.value;if(from&&to&&from<=to)loadCommissionDashboard();},350);}
+function commissionPercent(part,total){return total?part/total*100:0;}
+function commissionTier(rate){return COMMISSION_TIERS.find(tier=>rate>=tier.min&&rate<tier.max)||COMMISSION_TIERS[0];}
+function commissionOrderBranch(order){
+  const direct=pendingOrderBranch(order);if(direct)return direct;
+  const normalized=getProductReportOrderBranch(order);
+  return {'nasr-city':'مدينة نصر','alexandria':'اسكندرية','tanta':'طنطا','mansoura':'المنصورة'}[normalized]||getBranchNameFromShippingCompany(order?.shipping_company)||'';
+}
+function commissionAccessibleBranches(){
+  if(isAdmin())return [...PENDING_BRANCH_NAMES];
+  return getCurrentUserManagedBranches().filter(branch=>PENDING_BRANCH_NAMES.includes(branch));
+}
+function canApproveCommission(){
+  if(isAdmin())return true;
+  return hasRoleFeature('btn_commission_approve')&&PENDING_BRANCH_NAMES.every(branch=>commissionAccessibleBranches().includes(branch));
+}
+function setupCommissionBranchFilter(){
+  const select=document.getElementById('commissionBranchFilter');if(!select)return;
+  const branches=commissionAccessibleBranches(),current=select.value;
+  select.innerHTML=(branches.length>1?'<option value="all">كل الفروع</option>':'')+branches.map(branch=>`<option value="${escapeHTML(branch)}">${escapeHTML(branch)}</option>`).join('');
+  select.value=branches.includes(current)?current:(branches.length>1?'all':branches[0]||'');
+  select.disabled=branches.length<=1;
+}
+function commissionEligibleOrder(order){
+  if(!PENDING_BRANCH_NAMES.includes(commissionOrderBranch(order)))return false;
+  if(normalizeOrderPriceForStorage(getEffectiveOrderPrice(order))<=0)return false;
+  return !['Cancel','Fake Doctor','Fake Delivery update'].includes(String(getOrderDisplayStatus(order)||order?.status||'').trim());
+}
+function commissionPeriodRows(orders,branches=commissionAccessibleBranches()){
+  const eligible=(orders||[]).filter(commissionEligibleOrder);
+  return branches.map(branch=>{
+    const list=eligible.filter(order=>commissionOrderBranch(order)===branch),signed=list.filter(order=>String(getOrderDisplayStatus(order)||order.status)==='Signed'),rtd=list.filter(order=>String(getOrderDisplayStatus(order)||order.status)==='Returned');
+    // إجمالي المبيعات يخرج من نفس المحرك المالي المركزي المستخدم في الخزنة
+    // والمراجعة المالية، بعد تطبيق أهلية أوردرات العمولة على نفس النطاق.
+    const financial=calculateFinancialSummary(signed);
+    return {branch,code:COMMISSION_BRANCH_CODE[branch],total:list.length,signed:signed.length,rtd:rtd.length,pending:Math.max(0,list.length-signed.length-rtd.length),sales:financial.totalSales};
+  });
+}
+function commissionBuildData(currentOrders,previousOrders,range,branches=commissionAccessibleBranches()){
+  const current=commissionPeriodRows(currentOrders,branches),previous=commissionPeriodRows(previousOrders,branches);
+  const rows=current.map(row=>{
+    const old=previous.find(item=>item.branch===row.branch)||{total:0,signed:0,rtd:0,sales:0};
+    const hasBaseline=old.total>0,delivery=commissionPercent(row.signed,row.total),previousDelivery=commissionPercent(old.signed,old.total),rtdRate=commissionPercent(row.rtd,row.total),previousRtd=commissionPercent(old.rtd,old.total),tier=commissionTier(delivery);
+    const rtdAdjustment=hasBaseline?Math.round((previousRtd-rtdRate)*COMMISSION_ADJUSTMENT_PER_POINT):0,developmentAdjustment=hasBaseline?Math.round((delivery-previousDelivery)*COMMISSION_ADJUSTMENT_PER_POINT):0,base=row.branch==='اسكندرية'?tier.alex:tier.officer;
+    const net=base+rtdAdjustment+developmentAdjustment;
+    return {...row,previousTotal:old.total,previousSales:old.sales,hasBaseline,delivery,previousDelivery,development:hasBaseline?delivery-previousDelivery:0,rtdRate,previousRtd,rtdDifference:hasBaseline?previousRtd-rtdRate:0,tier:tier.label,base,rtdAdjustment,developmentAdjustment,net};
+  });
+  const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0),prevTotal=previous.reduce((total,row)=>total+row.total,0),managerTotal=sum('total'),managerSigned=sum('signed'),managerRtd=sum('rtd'),managerDelivery=commissionPercent(managerSigned,managerTotal),managerPrevSigned=previous.reduce((t,r)=>t+r.signed,0),managerPrevDelivery=commissionPercent(managerPrevSigned,prevTotal),managerRtdRate=commissionPercent(managerRtd,managerTotal),managerPrevRtd=commissionPercent(previous.reduce((t,r)=>t+r.rtd,0),prevTotal),managerTier=commissionTier(managerDelivery);
+  const managerHasBaseline=prevTotal>0,managerRtdAdjustment=managerHasBaseline?Math.round((managerPrevRtd-managerRtdRate)*COMMISSION_ADJUSTMENT_PER_POINT):0,managerDevelopmentAdjustment=managerHasBaseline?Math.round((managerDelivery-managerPrevDelivery)*COMMISSION_ADJUSTMENT_PER_POINT):0,managerBase=managerTier.manager;
+  const manager={branch:'مدير الفروع',code:'MANAGER',total:managerTotal,signed:managerSigned,rtd:managerRtd,pending:sum('pending'),sales:sum('sales'),previousSales:previous.reduce((t,r)=>t+r.sales,0),hasBaseline:managerHasBaseline,delivery:managerDelivery,previousDelivery:managerPrevDelivery,development:managerHasBaseline?managerDelivery-managerPrevDelivery:0,rtdRate:managerRtdRate,previousRtd:managerPrevRtd,rtdDifference:managerHasBaseline?managerPrevRtd-managerRtdRate:0,tier:managerTier.label,base:managerBase,rtdAdjustment:managerRtdAdjustment,developmentAdjustment:managerDevelopmentAdjustment,net:managerBase+managerRtdAdjustment+managerDevelopmentAdjustment};
+  return {range,rows,manager,all:(isAdmin()||canApproveCommission())?[...rows,manager]:rows,scope:(isAdmin()||canApproveCommission())?'all':branches.join('|')};
+}
+function commissionFmtMoney(value){return `${new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(Number(value)||0)} ج.م`;}
+function commissionFmtPct(value){return `${Number(value||0).toFixed(2)}%`;}
+function commissionSigned(value){const n=Math.round(Number(value)||0);return `${n>0?'+':''}${new Intl.NumberFormat('en-US').format(n)}`;}
+
+async function showCommissionPage(){
+  if(!hasRoleFeature('commission')){alert('صفحة Commission غير مضافة لصلاحيات حسابك');return;}
+  if(!isAdmin()&&!commissionAccessibleBranches().length){alert('صلاحية Commission مفعلة، لكن لا يوجد فرع مسند إلى حسابك. راجع الأدمن.');return;}
+  closeOKBStoresMenu();hideAllPages();document.getElementById('commissionPage')?.classList.remove('hidden');setActiveMenu('commissionPage');
+  setupCommissionBranchFilter();document.getElementById('commissionApproveBtn')?.classList.toggle('hidden',!hasRoleFeature('btn_commission_approve'));
+  const from=document.getElementById('commissionFromDate'),to=document.getElementById('commissionToDate');if(!from?.value||!to?.value)setCommissionCurrentMonthRange();else syncCommissionComparisonDates(!document.getElementById('commissionCompareFromDate')?.value);
+  await loadCommissionDashboard();
+}
+async function applyCommissionDateRange(){const from=document.getElementById('commissionFromDate')?.value,to=document.getElementById('commissionToDate')?.value,compareFrom=document.getElementById('commissionCompareFromDate')?.value,compareTo=document.getElementById('commissionCompareToDate')?.value;if(!from||!to||!compareFrom||!compareTo){alert('اختار الفترة الأساسية وفترة المقارنة');return;}if(from>to||compareFrom>compareTo){alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');return;}await loadCommissionDashboard();}
+async function resetCommissionDateRange(){
+  const auto=document.getElementById('commissionAutoCompare');if(auto)auto.checked=true;setCommissionCurrentMonthRange();setupCommissionBranchFilter();commissionActiveView='total';document.querySelectorAll('[data-commission-view]').forEach(item=>item.classList.toggle('active',item.dataset.commissionView==='total'));await loadCommissionDashboard();
+}
+async function fetchCommissionOrdersForRange(from,to,branches){
+  const rows=[];let offset=0;
+  while(true){const {data,error}=await supabaseClient.rpc('okb_get_commission_orders',{p_from:from,p_to:to}).order('created_at',{ascending:false}).range(offset,offset+999);if(error)throw error;rows.push(...(data||[]));if(!data||data.length<1000)break;offset+=1000;}
+  return rows.filter(order=>{const date=getLocalDateISO(order.created_at);return date>=from&&date<=to&&branches.includes(commissionOrderBranch(order));});
+}
+async function loadCommissionDashboard(force=false){
+  const from=document.getElementById('commissionFromDate')?.value,to=document.getElementById('commissionToDate')?.value,compareFrom=document.getElementById('commissionCompareFromDate')?.value,compareTo=document.getElementById('commissionCompareToDate')?.value,range=commissionDateRange(from,to,compareFrom,compareTo);if(!range)return;
+  const notice=document.getElementById('commissionNotice');if(notice){notice.textContent='جاري تحميل ومراجعة بيانات العمولة...';notice.classList.remove('hidden');}
+  try{
+    const branches=commissionAccessibleBranches();if(!branches.length)throw new Error('لا يوجد فرع مسند إلى حسابك');
+    const scope=(isAdmin()||canApproveCommission())?'all':branches.join('|'),key=`${range.from}:${range.to}:${range.previousFrom}:${range.previousTo}:${scope}`;let data=!force?commissionRangeCache.get(key):null;
+    commissionCurrentApproval=canApproveCommission()?await loadCommissionApprovalRecord(range):null;
+    if(commissionCurrentApproval?.snapshot){data=commissionCurrentApproval.snapshot;data.range=range;}
+    if(!data){const [current,previous]=await Promise.all([fetchCommissionOrdersForRange(range.from,range.to,branches),fetchCommissionOrdersForRange(range.previousFrom,range.previousTo,branches)]);data=commissionBuildData(current,previous,range,branches);commissionRangeCache.set(key,data);if(commissionRangeCache.size>4)commissionRangeCache.delete(commissionRangeCache.keys().next().value);}
+    commissionData=data;renderCommissionApprovalState();renderCommissionDashboard();ensureChartLibrary().then(()=>{if(commissionActiveView==='dashboard')renderCommissionCharts(getCommissionVisibleRows());}).catch(()=>{});
+    if(notice)notice.classList.add('hidden');
+  }catch(error){if(notice){notice.textContent=`تعذر تحميل بيانات العمولة: ${error?.message||error}`;notice.classList.remove('hidden');}}
+}
+async function refreshCommissionDashboard(button){const old=button?.textContent||'↻ Refresh';if(button){button.disabled=true;button.textContent='جاري التحديث...';}try{await loadCommissionDashboard(true);}finally{if(button){button.disabled=false;button.textContent=old;}}}
+async function loadCommissionApprovalRecord(range){
+  const {data,error}=await supabaseClient.from('commission_approvals').select('*').eq('period_from',range.from).eq('period_to',range.to).eq('comparison_from',range.previousFrom).eq('comparison_to',range.previousTo).eq('branch_scope','all').eq('status','approved').order('approved_at',{ascending:false}).limit(1).maybeSingle();
+  if(error){if(!['42P01','PGRST205'].includes(String(error.code||'')))console.warn('Commission approval load:',error.message);return null;}return data||null;
+}
+function renderCommissionApprovalState(){
+  const banner=document.getElementById('commissionApprovalBanner'),button=document.getElementById('commissionApproveBtn');if(!banner)return;
+  button?.classList.toggle('hidden',!hasRoleFeature('btn_commission_approve'));
+  if(!commissionCurrentApproval){banner.classList.add('hidden');if(button){button.disabled=false;button.textContent='اعتماد العمولة 🔒';}return;}
+  const approvedAt=formatEnglishDateTime(commissionCurrentApproval.approved_at),actor=commissionCurrentApproval.approved_by||'Admin';
+  banner.innerHTML=`<div><strong>🔒 العمولة معتمدة وثابتة</strong><span>${escapeHTML(actor)} — ${escapeHTML(approvedAt)}</span></div>${isAdmin()?'<button type="button" onclick="unlockCommissionApproval()">فتح الاعتماد</button>':''}`;
+  banner.classList.remove('hidden');if(button){button.disabled=true;button.textContent='تم اعتماد العمولة 🔒';}
+}
+function openCommissionApprovalModal(){
+  if(!hasRoleFeature('btn_commission_approve')||!commissionData)return;
+  if(!canApproveCommission()){alert('اعتماد العمولة الشهرية يحتاج ربط حسابك بكل الفروع. راجع الأدمن.');return;}
+  if(commissionCurrentApproval){alert('هذه الفترة معتمدة بالفعل');return;}
+  const currentMonthStart=`${getCairoDateISO().slice(0,7)}-01`,rangeMonth=commissionData.range.from.slice(0,7),lastDay=new Date(Date.UTC(Number(rangeMonth.slice(0,4)),Number(rangeMonth.slice(5,7)),0)).getUTCDate(),monthEnd=`${rangeMonth}-${String(lastDay).padStart(2,'0')}`;
+  if(commissionData.range.from!==`${rangeMonth}-01`||commissionData.range.to!==monthEnd){alert('اعتماد العمولة يحتاج شهرًا كاملًا من أول يوم إلى آخر يوم. التقارير الجزئية تظل متاحة للمراجعة فقط.');return;}
+  if(commissionData.range.to>=currentMonthStart){alert('اعتماد العمولة متاح بعد انتهاء الشهر فقط. يمكنك مراجعة بيانات الشهر الحالي بدون اعتمادها.');return;}
+  const rows=commissionData.rows||[],manager=commissionData.manager||{},sum=key=>commissionData.all.reduce((total,row)=>total+Number(row[key]||0),0),pending=Number(manager.pending||0);
+  const summary=document.getElementById('commissionApprovalSummary');if(summary)summary.innerHTML=commissionMiniCard('الفترة',escapeHTML(commissionData.range.month))+commissionMiniCard('صافي الاستحقاق',commissionFmtMoney(sum('net')))+commissionMiniCard('إجمالي Signed',enNumber(manager.signed||0))+commissionMiniCard('RTD',enNumber(manager.rtd||0))+commissionMiniCard('Pending',enNumber(pending),pending?'bad':'good')+commissionMiniCard('الفروع',enNumber(rows.length));
+  const override=document.getElementById('commissionPendingOverrideWrap');override?.classList.toggle('hidden',pending<1);const check=document.getElementById('commissionPendingOverride');if(check)check.checked=false;document.getElementById('commissionOverrideReasonWrap')?.classList.add('hidden');
+  const note=document.getElementById('commissionApprovalNote'),reason=document.getElementById('commissionOverrideReason');if(note)note.value='';if(reason)reason.value='';
+  document.getElementById('commissionApprovalModal')?.classList.add('open');
+}
+function closeCommissionApprovalModal(){document.getElementById('commissionApprovalModal')?.classList.remove('open');}
+function toggleCommissionPendingOverride(){document.getElementById('commissionOverrideReasonWrap')?.classList.toggle('hidden',!document.getElementById('commissionPendingOverride')?.checked);}
+async function confirmCommissionApproval(){
+  if(!canApproveCommission()||!commissionData)return;const manager=commissionData.manager||{},pending=Number(manager.pending||0),override=Boolean(document.getElementById('commissionPendingOverride')?.checked),reason=String(document.getElementById('commissionOverrideReason')?.value||'').trim(),note=String(document.getElementById('commissionApprovalNote')?.value||'').trim();
+  if(pending>0&&!override){alert(`يوجد ${pending} أوردر Pending. راجعها أو فعّل الاعتماد الاستثنائي.`);return;}if(pending>0&&reason.length<3){alert('اكتب سبب الاعتماد الاستثنائي');return;}
+  if(!confirm(`اعتماد عمولة الفترة ${commissionData.range.month}؟\nبعد الاعتماد ستظهر الأرقام من Snapshot ثابت.`))return;
+  const button=document.getElementById('commissionApprovalConfirmBtn');if(button){button.disabled=true;button.textContent='جاري الاعتماد...';}
+  const sum=key=>commissionData.all.reduce((total,row)=>total+Number(row[key]||0),0);
+  const payload={p_period_from:commissionData.range.from,p_period_to:commissionData.range.to,p_comparison_from:commissionData.range.previousFrom,p_comparison_to:commissionData.range.previousTo,p_snapshot:commissionData,p_total_net:sum('net'),p_total_base:sum('base'),p_total_rewards:commissionData.all.reduce((s,r)=>s+Math.max(0,Number(r.rtdAdjustment||0))+Math.max(0,Number(r.developmentAdjustment||0)),0),p_total_penalties:commissionData.all.reduce((s,r)=>s+Math.abs(Math.min(0,Number(r.rtdAdjustment||0)))+Math.abs(Math.min(0,Number(r.developmentAdjustment||0))),0),p_total_orders:Number(manager.total||0),p_signed_count:Number(manager.signed||0),p_rtd_count:Number(manager.rtd||0),p_pending_count:pending,p_note:note||null,p_override_reason:pending?reason:null,p_actor:currentUser?.name||currentUser?.username||'Admin'};
+  const {error}=await supabaseClient.rpc('okb_approve_commission',payload);if(button){button.disabled=false;button.textContent='تأكيد الاعتماد 🔒';}
+  if(error){alert('تعذر اعتماد العمولة: '+error.message);return;}closeCommissionApprovalModal();commissionRangeCache.clear();await loadCommissionDashboard(true);
+}
+async function unlockCommissionApproval(){
+  if(!isAdmin()||!commissionCurrentApproval)return;const reason=prompt('اكتب سبب فتح اعتماد العمولة (إجباري):','');if(!reason||reason.trim().length<3)return;
+  if(!confirm('سيتم فتح الفترة وإعادة الحساب من البيانات الحالية. هل تريد المتابعة؟'))return;
+  const {error}=await supabaseClient.rpc('okb_unlock_commission_approval',{p_approval_id:commissionCurrentApproval.id,p_reason:reason.trim(),p_actor:currentUser?.name||currentUser?.username||'Admin'});if(error){alert('تعذر فتح الاعتماد: '+error.message);return;}
+  commissionCurrentApproval=null;commissionRangeCache.clear();await loadCommissionDashboard(true);
+}
+function getCommissionVisibleRows(){if(!commissionData)return[];const branch=document.getElementById('commissionBranchFilter')?.value||'all';return branch==='all'?commissionData.all:commissionData.rows.filter(row=>row.branch===branch);}
+function setCommissionView(view,button){commissionActiveView=['total','dashboard','comparison','rtd','development'].includes(view)?view:'total';document.querySelectorAll('[data-commission-view]').forEach(item=>item.classList.toggle('active',item.dataset.commissionView===commissionActiveView));if(button)button.classList.add('active');renderCommissionDashboard();}
+function commissionMiniCard(label,value,tone=''){return `<div class="commission-mini-card"><span>${escapeHTML(label)}</span><strong class="${tone}">${value}</strong></div>`;}
+function commissionStatus(value,positiveLabel='تحسن — مستحق مكافأة',negativeLabel='تراجع — مستحق خصم'){return value>0?positiveLabel:value<0?negativeLabel:'ثابت — بدون تعديل';}
+function renderCommissionDashboard(){
+  if(!commissionData)return;const rows=getCommissionVisibleRows(),branch=document.getElementById('commissionBranchFilter')?.value||'all',kpiRows=branch==='all'?commissionData.all:rows;
+  const total=key=>kpiRows.reduce((sum,row)=>sum+Number(row[key]||0),0),net=total('net'),base=total('base'),adjustments=kpiRows.flatMap(row=>[row.rtdAdjustment,row.developmentAdjustment]),rewards=adjustments.filter(v=>v>0).reduce((a,b)=>a+b,0),penalties=Math.abs(adjustments.filter(v=>v<0).reduce((a,b)=>a+b,0));
+  const salesRows=branch==='all'?commissionData.rows:rows, sales=salesRows.reduce((s,r)=>s+r.sales,0),previousSales=salesRows.reduce((s,r)=>s+r.previousSales,0),salesChange=previousSales?(sales-previousSales)/previousSales*100:null;
+  document.getElementById('commissionNet').textContent=commissionFmtMoney(net);document.getElementById('commissionBase').textContent=commissionFmtMoney(base);document.getElementById('commissionSales').textContent=commissionFmtMoney(sales);document.getElementById('commissionRewards').textContent=`+${new Intl.NumberFormat('en-US').format(rewards)}`;document.getElementById('commissionPenalties').textContent=`-${new Intl.NumberFormat('en-US').format(penalties)}`;
+  document.getElementById('commissionSalesCompare').textContent=salesChange===null?'لا توجد مبيعات في فترة المقارنة':`${salesChange>=0?'+':''}${salesChange.toFixed(1)}% عن فترة المقارنة`;
+  document.getElementById('commissionNetCompare').textContent=`الفترة: ${commissionData.range.month}`;
+  document.getElementById('commissionTierSummary').textContent=branch==='all'?(isAdmin()?`مدير الفروع: ${commissionData.manager.tier}`:`نطاق حسابك: ${commissionData.manager.tier}`):(rows[0]?.tier||'—');
+  const growthRow=branch==='all'?commissionData.manager:rows[0],growth=Number(growthRow?.development||0),growthEl=document.getElementById('commissionGrowth'),growthDetails=document.getElementById('commissionGrowthDetails');
+  if(growthEl){growthEl.textContent=`${growth>=0?'+':''}${commissionFmtPct(growth)}`;growthEl.classList.toggle('positive',growth>0);growthEl.classList.toggle('negative',growth<0);}
+  if(growthDetails)growthDetails.textContent=growthRow?.hasBaseline?`التسليم: ${commissionFmtPct(growthRow.previousDelivery)} ← ${commissionFmtPct(growthRow.delivery)}`:'لا توجد بيانات كافية للفترة السابقة';
+  const kpis=document.getElementById('commissionKpis'),visuals=document.getElementById('commissionVisuals'),title=document.getElementById('commissionTableTitle'),period=document.getElementById('commissionReportPeriod'),summary=document.getElementById('commissionReportSummary'),head=document.getElementById('commissionTableHead'),body=document.getElementById('commissionTableBody');
+  kpis?.classList.toggle('hidden',!['total','dashboard'].includes(commissionActiveView));visuals?.classList.toggle('hidden',commissionActiveView!=='dashboard');if(period)period.textContent=`الفترة الحالية: ${commissionData.range.from} → ${commissionData.range.to} • المقارنة: ${commissionData.range.previousFrom} → ${commissionData.range.previousTo}`;
+  const rowClass=row=>row.code==='MANAGER'?'manager-row':'';
+  if(commissionActiveView==='total'){
+    if(title)title.textContent='إجمالي العمولات — القرار النهائي';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>تسليم السابق</th><th>تسليم الحالي</th><th>تطوير التسليم</th><th>RTD السابق</th><th>RTD الحالي</th><th>فرق RTD</th><th>الشريحة الحالية</th><th>البونص الأساسي</th><th>RTD ±</th><th>التطوير ±</th><th>الإجمالي</th>';
+    if(summary)summary.innerHTML=commissionMiniCard('إجمالي الاستحقاق',commissionFmtMoney(net))+commissionMiniCard('العمولة الأساسية',commissionFmtMoney(base))+commissionMiniCard('إجمالي المكافآت',commissionFmtMoney(rewards),'good')+commissionMiniCard('إجمالي الخصومات',commissionFmtMoney(penalties),'bad');
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td>${commissionFmtPct(row.previousRtd)}</td><td>${commissionFmtPct(row.rtdRate)}</td><td class="${row.rtdDifference>=0?'good':'bad'}">${row.rtdDifference>=0?'+':''}${commissionFmtPct(row.rtdDifference)}</td><td>${escapeHTML(row.tier)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="${row.rtdAdjustment>=0?'good':'bad'}">${commissionSigned(row.rtdAdjustment)}</td><td class="${row.developmentAdjustment>=0?'good':'bad'}">${commissionSigned(row.developmentAdjustment)}</td><td class="${row.net<0?'bad':'gold'}">${commissionFmtMoney(row.net)}</td></tr>`).join('')||'<tr><td colspan="12">لا توجد بيانات</td></tr>';return;
+  }
+  if(commissionActiveView==='dashboard'){
+    if(title)title.textContent='لوحة العرض — الأداء والبونص';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>إجمالي الطلبات</th><th>Signed</th><th>RTD</th><th>Pending</th><th>نسبة التسليم</th><th>الشريحة الحالية</th><th>البونص المستحق</th>';
+    const manager=commissionData.manager,branchBase=commissionData.rows.reduce((s,r)=>s+r.base,0);if(summary)summary.innerHTML=isAdmin()?(commissionMiniCard('إجمالي الحافز',commissionFmtMoney(branchBase+manager.base))+commissionMiniCard('بونص مدير الفروع',commissionFmtMoney(manager.base))+commissionMiniCard('بونص الفروع',commissionFmtMoney(branchBase))+commissionMiniCard('إجمالي Signed',enNumber(manager.signed))+commissionMiniCard('نسبة التحويل الكلية',commissionFmtPct(manager.delivery))):(commissionMiniCard('بونص الفروع المتاحة',commissionFmtMoney(branchBase))+commissionMiniCard('إجمالي Signed',enNumber(manager.signed))+commissionMiniCard('نسبة التحويل',commissionFmtPct(manager.delivery)));
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${enNumber(row.total)}</td><td>${enNumber(row.signed)}</td><td>${enNumber(row.rtd)}</td><td>${enNumber(row.pending)}</td><td class="${row.delivery>=90?'good':row.delivery<85?'bad':'gold'}">${commissionFmtPct(row.delivery)}</td><td>${escapeHTML(row.tier)}</td><td class="gold">${commissionFmtMoney(row.base)}</td></tr>`).join('')||'<tr><td colspan="8">لا توجد بيانات</td></tr>';
+    renderCommissionCharts(rows);return;
+  }
+  if(commissionActiveView==='comparison'){
+    if(title)title.textContent='المقارنة الشهرية — الأداء والبونص';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>نسبة الفترة السابقة</th><th>نسبة الفترة الحالية</th><th>التطور</th><th>البونص الحالي</th><th>الاتجاه</th>';
+    if(summary)summary.innerHTML=commissionMiniCard('متوسط الفترة السابقة',commissionFmtPct(commissionData.manager.previousDelivery))+commissionMiniCard('متوسط الفترة الحالية',commissionFmtPct(commissionData.manager.delivery))+commissionMiniCard(isAdmin()?'تطور مدير الفروع':'تطور نطاق حسابك',`${commissionData.manager.development>=0?'+':''}${commissionFmtPct(commissionData.manager.development)}`,commissionData.manager.development>=0?'good':'bad')+commissionMiniCard('البونص الأساسي الحالي',commissionFmtMoney(total('base')));
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>0?'تحسن':row.development<0?'تراجع':'ثابت'}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>';return;
+  }
+  if(commissionActiveView==='rtd'){
+    const branchRtd=commissionData.rows.reduce((s,r)=>s+r.rtdAdjustment,0);if(title)title.textContent='مكافأة / خصم RTD — مقارنة الفترة السابقة';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>RTD السابق</th><th>RTD الحالي</th><th>فرق RTD (+ تحسن / - ارتفاع)</th><th>قيمة 1%</th><th>مكافأة / خصم RTD</th><th>الحالة</th>';
+    if(summary)summary.innerHTML=commissionMiniCard('قيمة النقطة',commissionFmtMoney(COMMISSION_ADJUSTMENT_PER_POINT))+commissionMiniCard('صافي الفروع',commissionFmtMoney(branchRtd),branchRtd>=0?'good':'bad')+(isAdmin()?commissionMiniCard('صافي مدير الفروع',commissionFmtMoney(commissionData.manager.rtdAdjustment),commissionData.manager.rtdAdjustment>=0?'good':'bad')+commissionMiniCard('إجمالي تعديل RTD',commissionFmtMoney(branchRtd+commissionData.manager.rtdAdjustment)):'');
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousRtd)}</td><td>${commissionFmtPct(row.rtdRate)}</td><td class="${row.rtdDifference>=0?'good':'bad'}">${row.rtdDifference>=0?'+':''}${commissionFmtPct(row.rtdDifference)}</td><td>${commissionFmtMoney(COMMISSION_ADJUSTMENT_PER_POINT)}</td><td class="${row.rtdAdjustment>=0?'good':'bad'}">${commissionSigned(row.rtdAdjustment)} ج.م</td><td class="status-text ${row.rtdDifference>0?'good':row.rtdDifference<0?'bad':'neutral'}">${commissionStatus(row.rtdDifference,'تحسن RTD — مستحق مكافأة','ارتفاع RTD — مستحق خصم')}</td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>';return;
+  }
+  const branchDevelopment=commissionData.rows.reduce((s,r)=>s+r.developmentAdjustment,0);if(title)title.textContent='مكافأة / خصم التطوير — مقارنة نسبة التسليم';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>نسبة الفترة السابقة</th><th>نسبة الفترة الحالية</th><th>فرق التسليم (+ تحسن / - تراجع)</th><th>قيمة 1%</th><th>مكافأة / خصم التطوير</th><th>الحالة</th>';
+  if(summary)summary.innerHTML=commissionMiniCard('قيمة النقطة',commissionFmtMoney(COMMISSION_ADJUSTMENT_PER_POINT))+commissionMiniCard('صافي الفروع',commissionFmtMoney(branchDevelopment),branchDevelopment>=0?'good':'bad')+(isAdmin()?commissionMiniCard('صافي مدير الفروع',commissionFmtMoney(commissionData.manager.developmentAdjustment),commissionData.manager.developmentAdjustment>=0?'good':'bad')+commissionMiniCard('إجمالي تعديل التطوير',commissionFmtMoney(branchDevelopment+commissionData.manager.developmentAdjustment)):'');
+  if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td>${commissionFmtMoney(COMMISSION_ADJUSTMENT_PER_POINT)}</td><td class="${row.developmentAdjustment>=0?'good':'bad'}">${commissionSigned(row.developmentAdjustment)} ج.م</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${commissionStatus(row.development)}</td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>';
+}
+function renderCommissionCharts(rows){
+  if(typeof Chart==='undefined')return;['commissionMonthlyChart','commissionDistributionChart'].forEach(id=>{if(charts[id]){charts[id].destroy();delete charts[id];}});
+  const labels=rows.map(r=>r.branch),text='#d8dde2',grid='rgba(216,179,95,.12)';
+  const bar=document.getElementById('commissionMonthlyChart');if(bar)charts.commissionMonthlyChart=new Chart(bar,{type:'bar',data:{labels,datasets:[{label:'الفترة السابقة',data:rows.map(r=>r.previousDelivery),backgroundColor:'rgba(128,135,141,.58)',borderColor:'#9ca3af',borderWidth:1},{label:'الفترة الحالية',data:rows.map(r=>r.delivery),backgroundColor:'rgba(216,179,95,.82)',borderColor:'#f3d37f',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:text}}},scales:{y:{beginAtZero:true,max:100,ticks:{color:text,callback:v=>v+'%'},grid:{color:grid}},x:{ticks:{color:text},grid:{display:false}}}}});
+  const distributionValues=rows.map(r=>Math.max(0,Number(r.net)||0));
+  const donut=document.getElementById('commissionDistributionChart'),colors=['#f5d77f','#d5ad52','#a97e2d','#77561d','#56616b'];if(donut)charts.commissionDistributionChart=new Chart(donut,{type:'doughnut',data:{labels,data:undefined,datasets:[{data:distributionValues,backgroundColor:colors,borderColor:'#0a0f13',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false}}}});
+  const legend=document.getElementById('commissionDistributionLegend'),total=distributionValues.reduce((s,value)=>s+value,0);if(legend)legend.innerHTML=rows.map((r,i)=>`<span><i style="background:${colors[i%colors.length]}"></i>${escapeHTML(r.branch)} ${total?(distributionValues[i]/total*100).toFixed(1):'0.0'}%</span>`).join('');
+}
+function toggleCommissionRules(){const el=document.getElementById('commissionRules');if(!el)return;el.classList.toggle('hidden');el.innerHTML=`<strong>قواعد ملف العمولات المعتمد:</strong> أقل من 85% بدون عمولة. من 85% إلى 86.99%: مسؤول الفرع 750 ج.م ومدير الفروع 3,000 ج.م. من 87% إلى 89.99%: 1,750 و5,000 ج.م. من 90% فأكثر: 2,250 و6,500 ج.م. كل نقطة تحسن في التسليم = +200 ج.م، وكل نقطة تراجع = -200 ج.م. كل نقطة انخفاض في RTD = +200 ج.م، وكل نقطة ارتفاع = -200 ج.م. الإجمالي النهائي = البونص الأساسي + تعديل RTD + تعديل التطوير، وقد يكون موجبًا أو سالبًا. الأوردرات صفر وCancel وFake مستبعدة.`;}
+
+async function exportCommissionWorkbook(){
+  if(!commissionData){alert('حدّث بيانات العمولة أولًا');return;}if(typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة');return;}
+  const wb=new ExcelJS.Workbook();wb.creator='OKB Commission System';wb.created=new Date();wb.calcProperties.fullCalcOnLoad=true;
+  const gold='FFD8B35F',dark='FF10171D',black='FF090D11',white='FFF5F5F5',green='FF22C55E',red='FFEF4444',pct='0.00%',moneyFmt='#,##0 "ج.م"';
+  const styleSheet=ws=>{ws.views=[{rightToLeft:true,state:'frozen',ySplit:5}];ws.properties.defaultRowHeight=22;ws.eachRow((row,index)=>{row.alignment={horizontal:'center',vertical:'middle'};if(index<=5){row.font={bold:true,color:{argb:index===1?gold:white}};row.fill={type:'pattern',pattern:'solid',fgColor:{argb:index===1?black:dark}};}});};
+  const addTitle=(ws,title,subtitle,lastCol)=>{ws.mergeCells(1,1,1,lastCol);ws.getCell(1,1).value=title;ws.getCell(1,1).font={bold:true,size:20,color:{argb:gold}};ws.getCell(1,1).fill={type:'pattern',pattern:'solid',fgColor:{argb:black}};ws.mergeCells(2,1,2,lastCol);ws.getCell(2,1).value=subtitle;ws.getCell(2,1).font={color:{argb:'FFB6BEC5'}};};
+  const tiers=wb.addWorksheet('شرائح البونص');addTitle(tiers,'نظام شرائح البونص المعتمد',`قيمة التعديل لكل نقطة: ${COMMISSION_ADJUSTMENT_PER_POINT} ج.م`,6);tiers.addRow([]);tiers.addRow(['من نسبة','إلى أقل من','الشريحة','بونص مدير الفروع','بونص مسؤول الشحن','بونص ALEX']);COMMISSION_TIERS.forEach(t=>tiers.addRow([t.min/100,Number.isFinite(t.max)?t.max/100:1,t.label,t.manager,t.officer,t.alex]));tiers.getColumn(1).numFmt=pct;tiers.getColumn(2).numFmt=pct;[4,5,6].forEach(c=>tiers.getColumn(c).numFmt=moneyFmt);tiers.columns.forEach(c=>c.width=23);styleSheet(tiers);
+  const dashboard=wb.addWorksheet('لوحة العرض');addTitle(dashboard,'لوحة عرض العمولات',`${commissionData.range.month} • بيانات مباشرة من نظام OKB`,11);dashboard.addRow([]);dashboard.addRow(['الفرع / المسؤول','Total Orders','Signed','RTD','Pending','نسبة التسليم','الشريحة','العمولة الأساسية','المبيعات','صافي العمولة','ملاحظة']);commissionData.all.forEach(r=>dashboard.addRow([r.code,r.total,r.signed,r.rtd,r.pending,r.delivery/100,r.tier,r.base,r.sales,r.net,r.code==='MANAGER'?'نسبة المدير محسوبة من إجمالي Signed ÷ إجمالي Total':'']));dashboard.getColumn(6).numFmt=pct;[8,9,10].forEach(c=>dashboard.getColumn(c).numFmt=moneyFmt);dashboard.columns.forEach((c,i)=>c.width=i===10?44:19);styleSheet(dashboard);
+  const comparison=wb.addWorksheet('مقارنة شهرية');addTitle(comparison,'مقارنة نسبة التسليم',`${commissionData.range.previousMonth} مقابل ${commissionData.range.month}`,8);comparison.addRow([]);comparison.addRow(['الفرع / المسؤول','نسبة فترة المقارنة','نسبة الفترة الأساسية','التطور','الاتجاه','الشريحة الحالية','العمولة الأساسية','صافي العمولة']);commissionData.all.forEach(r=>comparison.addRow([r.code,r.previousDelivery/100,r.delivery/100,r.development/100,r.development>0?'تحسن':r.development<0?'تراجع':'ثابت',r.tier,r.base,r.net]));[2,3,4].forEach(c=>comparison.getColumn(c).numFmt=pct);[7,8].forEach(c=>comparison.getColumn(c).numFmt=moneyFmt);comparison.columns.forEach(c=>c.width=23);styleSheet(comparison);
+  const rtd=wb.addWorksheet('مكافأة ال RTD');addTitle(rtd,'مكافأة وخصم RTD','انخفاض كل نقطة = +200 ج.م • ارتفاع كل نقطة = -200 ج.م',7);rtd.addRow([]);rtd.addRow(['الفرع / المسؤول','RTD السابق','RTD الحالي','الفرق','الاتجاه','قيمة النقطة','التعديل']);commissionData.all.forEach(r=>rtd.addRow([r.code,r.previousRtd/100,r.rtdRate/100,r.rtdDifference/100,r.rtdDifference>0?'تحسن':r.rtdDifference<0?'تراجع':'ثابت',COMMISSION_ADJUSTMENT_PER_POINT,r.rtdAdjustment]));[2,3,4].forEach(c=>rtd.getColumn(c).numFmt=pct);[6,7].forEach(c=>rtd.getColumn(c).numFmt=moneyFmt);rtd.columns.forEach(c=>c.width=24);styleSheet(rtd);
+  const development=wb.addWorksheet('مكافأة التطوير');addTitle(development,'مكافأة وخصم التطوير','تحسن كل نقطة تسليم = +200 ج.م • التراجع = -200 ج.م',7);development.addRow([]);development.addRow(['الفرع / المسؤول','التسليم السابق','التسليم الحالي','التطور','الاتجاه','قيمة النقطة','التعديل']);commissionData.all.forEach(r=>development.addRow([r.code,r.previousDelivery/100,r.delivery/100,r.development/100,r.development>0?'تحسن':r.development<0?'تراجع':'ثابت',COMMISSION_ADJUSTMENT_PER_POINT,r.developmentAdjustment]));[2,3,4].forEach(c=>development.getColumn(c).numFmt=pct);[6,7].forEach(c=>development.getColumn(c).numFmt=moneyFmt);development.columns.forEach(c=>c.width=24);styleSheet(development);
+  const total=wb.addWorksheet('Total Commission');addTitle(total,'إجمالي استحقاق العمولات','البونص الأساسي + تعديل RTD + تعديل التطوير',13);total.addRow([]);total.addRow(['الفرع / المسؤول','التسليم السابق','التسليم الحالي','التطور','RTD السابق','RTD الحالي','فرق RTD','الشريحة','العمولة الأساسية','تعديل RTD','تعديل التطوير','الإجمالي النهائي','المبيعات']);commissionData.all.forEach(r=>total.addRow([r.code,r.previousDelivery/100,r.delivery/100,r.development/100,r.previousRtd/100,r.rtdRate/100,r.rtdDifference/100,r.tier,r.base,r.rtdAdjustment,r.developmentAdjustment,r.net,r.sales]));[2,3,4,5,6,7].forEach(c=>total.getColumn(c).numFmt=pct);[9,10,11,12,13].forEach(c=>total.getColumn(c).numFmt=moneyFmt);total.columns.forEach(c=>c.width=21);styleSheet(total);
+  [dashboard,comparison,rtd,development,total].forEach(ws=>ws.eachRow((row,index)=>{if(index>5)row.eachCell(cell=>{if(typeof cell.value==='number'&&cell.value<0)cell.font={bold:true,color:{argb:red}};});}));
+  const buffer=await wb.xlsx.writeBuffer(),blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`OKB_Commission_${commissionData.range.from}_${commissionData.range.to}.xlsx`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 async function refreshDashboardPage(button) {
   const oldText = button?.textContent || '↻ Refresh';
   if (button) { button.disabled = true; button.textContent = '↻ جاري التحديث...'; }
@@ -15019,7 +15622,7 @@ async function refreshBranchPage(button) {
   const oldText = button?.textContent || '↻ Refresh';
   if (button) { button.disabled = true; button.textContent = '↻ جاري التحديث...'; }
   try {
-    await Promise.all([loadBranchOrders(), loadDoctors(), loadOKBItems(), loadShippingSystems()]);
+    await Promise.all([loadBranchOrders(), loadDoctors(), loadOKBItems(), loadShippingSystems(), loadBranchStickyNote(currentBranchName)]);
     renderBranchOrders();
   } catch (error) {
     console.error('Branch refresh error:', error);
