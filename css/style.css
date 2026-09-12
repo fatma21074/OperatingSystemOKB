@@ -1257,6 +1257,10 @@ body.doctor-readonly .branch-bulk-edit,body.doctor-readonly .branch-bulk-delete,
 .order-priority-row td,.order-priority-row button.customer-profile-link{color:#ef4444!important;font-weight:900!important}
 .order-zero-value-row{box-shadow:inset 0 0 0 2px #ff2d55,0 0 15px rgba(255,45,85,.72)!important;background:rgba(255,45,85,.07)!important}
 .order-zero-value-row td{border-top:1px solid rgba(255,45,85,.55)!important;border-bottom:1px solid rgba(255,45,85,.55)!important}
+.branch-inline-edit-btn{display:inline-flex;align-items:center;gap:5px;min-height:27px;padding:3px 9px 3px 4px;border:1px solid #fbe2a6;border-radius:9px;background:radial-gradient(circle at 58% 42%,#343434 0,#161616 48%,#000 100%);color:#f5b25f;font-size:11px;font-weight:900;cursor:pointer;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 4px 12px rgba(0,0,0,.35);transition:border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease}
+.branch-inline-edit-btn:hover{color:#ffd58f;border-color:#ffd58f;box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 0 12px rgba(245,178,95,.3);transform:translateY(-1px)}
+.branch-inline-edit-btn:focus-visible{outline:2px solid #f5b25f;outline-offset:2px}
+.branch-inline-edit-icon{display:inline-grid;place-items:center;width:19px;height:19px;border:1px solid #fbe2a6;border-radius:50%;background:radial-gradient(circle,#343434 0,#050505 72%);color:#f5b25f;font-size:13px;line-height:1}
 .order-urgent-row{color:#22c55e!important;box-shadow:inset 0 0 0 2px #22c55e,0 0 13px rgba(34,197,94,.55)!important;background:rgba(34,197,94,.065)!important}
 .order-urgent-row td,.order-urgent-row button.customer-profile-link{color:#22c55e!important;font-weight:900!important}
 .error-order-flag-check .error-order-flag-text{display:inline-flex;direction:rtl;align-items:center;gap:5px;color:#fff!important;font-weight:900!important;text-shadow:none}
@@ -1315,7 +1319,7 @@ body.doctor-readonly .branch-bulk-edit,body.doctor-readonly .branch-bulk-delete,
   font-size:12px;
 }
 #branchOrdersTableBody td.branch-actions-cell{
-  min-width:190px;
+  min-width:250px;
   white-space:normal!important;
 }
 #branchOrdersTableBody td.branch-actions-cell > div{

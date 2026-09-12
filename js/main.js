@@ -4168,6 +4168,16 @@ function openHeaderSettingsPage(page) {
 }
 
 async function showInitialPermittedPage() {
+  let hardRefreshBranchName = '';
+  try { hardRefreshBranchName = sessionStorage.getItem('okb_hard_refresh_branch') || ''; }
+  catch (error) { console.warn('Branch restore marker could not be read:', error); }
+  if (hardRefreshBranchName) {
+    try { sessionStorage.removeItem('okb_hard_refresh_branch'); }
+    catch (error) { console.warn('Branch restore marker could not be cleared:', error); }
+    if (canOpenPermissionBranch(hardRefreshBranchName) && canAccessBranch(hardRefreshBranchName)) {
+      return openBranchPage(hardRefreshBranchName);
+    }
+  }
   if (hasRoleFeature('dashboard')) return showOrdersPage();
   if (hasRoleFeature('okb_stores')) {
     const firstBranch = Object.keys(ROLE_BRANCH_FEATURES).find(branch =>
@@ -9662,6 +9672,7 @@ function getOrderDisplayStatus(order) {
 
 function matchesOrderStatusFilter(order, filterValue) {
   if (!filterValue || filterValue === 'الكل') return true;
+  if (filterValue === 'ZeroOrders') return Number(order?.price || 0) === 0;
   const flags=getOrderFlagMeta(order);
   if (filterValue === 'UrgentOrder') return flags.urgent === true;
   if (filterValue === 'ReplacementOrder') return flags.replacement === true;
@@ -9680,6 +9691,24 @@ function getBranchStatusButtonHtml(order) {
   if (!canChangeBranchOrderStatus()) return '';
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) return disabledActionButton('إلغاء', 'هذه اليومية مقفولة');
   return `<button onclick="openBranchCancelStatusModal('${order.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#EF4444,#B91C1C);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(239,68,68,.25);">إلغاء</button>`;
+}
+
+function canUseBranchInlineEdit(order, showMessage = false) {
+  const deny = message => { if (showMessage) alert(message); return false; };
+  if (!order) return deny('تعذر العثور على الأوردر');
+  if (!hasButtonPermission('btn_branch_edit')) return deny('زر التعديل غير مضاف لصلاحيات حسابك');
+  if (isAdmin()) return true;
+  if (!isSecretary() && !isExecutiveAssistant()) return deny('زر التعديل المباشر غير متاح لهذا الـ Role.');
+  if (String(order.status || '').trim().toLowerCase() !== 'delivering') {
+    return deny('زر التعديل متاح في حالة Delivering فقط.');
+  }
+  return true;
+}
+
+function editBranchOrderInline(orderId) {
+  const order = branchOrders.find(item => String(item.id) === String(orderId));
+  if (!canUseBranchInlineEdit(order, true)) return;
+  editBranchOrder(orderId);
 }
 function openBranchCancelStatusModal(orderId) {
   const order = branchOrders.find(x => String(x.id) === String(orderId)); if (!order) return;
@@ -9779,7 +9808,7 @@ function renderBranchOrders() {
   if (!tbody) return;
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="17" class="empty">لا توجد أوردرات لهذا الفرع</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="16" class="empty">لا توجد أوردرات لهذا الفرع</td></tr>';
     syncBranchSelectionUI([]);
     return;
   }
@@ -9810,7 +9839,6 @@ function renderBranchOrders() {
       <td>${o.phone || ''}</td>
       <td>${o.phone2 || ""}</td>
       <td>${o.order_number || ""}</td>
-      <td>${o.shipping_company || ''}</td>
       <td class="branch-area-cell">${o.area || ''}</td>
       <td>${money(price)}</td>
       <td>${deposit > 0 ? '<span class="deposit-badge">💰 ' + money(deposit) + '</span>' : money(0)}</td>
@@ -9823,6 +9851,7 @@ function renderBranchOrders() {
         <div style="display:flex;gap:5px;align-items:center;">
           ${getCollectButtonHtml(o, 'branch')}
           ${hasButtonPermission('btn_order_print') ? `<button onclick="printBranchOrderReceipt('${o.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">🖨️ طباعة</button>` : ''}
+          ${canUseBranchInlineEdit(o) ? `<button class="branch-inline-edit-btn" type="button" onclick="editBranchOrderInline('${o.id}')"><span class="branch-inline-edit-icon" aria-hidden="true">✎</span><span>تعديل</span></button>` : ''}
           ${getBranchStatusButtonHtml(o)}
         </div>
       </td>
@@ -15630,4 +15659,29 @@ async function refreshBranchPage(button) {
   } finally {
     if (button) { button.disabled = false; button.textContent = oldText; }
   }
+}
+
+async function hardRefreshBranch(button) {
+  if (!currentBranchName || !canOpenPermissionBranch(currentBranchName) || !canAccessBranch(currentBranchName)) {
+    alert('تعذر تحديث الفرع: لا توجد صلاحية حالية لفتح الصفحة');
+    return;
+  }
+  if (button) { button.disabled = true; button.textContent = '⚡ جاري التحديث...'; }
+  try {
+    sessionStorage.setItem('okb_hard_refresh_branch', currentBranchName);
+  } catch (error) {
+    console.warn('Branch restore marker could not be saved:', error);
+  }
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.allSettled(keys.map(key => caches.delete(key)));
+    }
+  } catch (error) {
+    console.warn('Branch hard refresh cache cleanup:', error);
+  }
+  const refreshUrl = new URL(window.location.href);
+  refreshUrl.searchParams.set('hard', Date.now().toString());
+  refreshUrl.hash = '';
+  window.location.replace(refreshUrl.toString());
 }

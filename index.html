@@ -727,6 +727,7 @@
 <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل أو Ticket ID أو Barcode..."/>
 <select id="filterStatus">
 <option value="الكل" selected>كل الحالات</option>
+<option value="ZeroOrders">🔴 أوردرات صفر</option>
 <option value="Signed">Signed</option>
 <option value="UrgentOrder">استعجال الأوردر</option>
 <option value="ReplacementOrder">استبدال الأوردر</option>
@@ -1512,7 +1513,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1 id="branchPageTitle">📦 Dashboard — فرع</h1>
-<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="refreshBranchPage(this)">↻ Refresh</button></div>
+<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button></div>
 </div>
 <form id="branchOrderForm">
 <div class="form-grid">
@@ -1625,6 +1626,7 @@
 <input id="bSearchInput" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..."/>
 <select id="bFilterStatus">
 <option value="الكل">كل الحالات</option>
+<option value="ZeroOrders">🔴 أوردرات صفر</option>
 <option value="UrgentOrder">استعجال الأوردر</option>
 <option value="ReplacementOrder">استبدال الأوردر</option>
 <option value="ErrorOrder">أخطاء❌</option>
@@ -1659,7 +1661,7 @@
 <table>
 <thead><tr>
 <th><input class="row-check" id="selectBranchPageOrders" onchange="toggleSelectCurrentBranchPage(this)" title="تحديد كل العملاء في الصفحة" type="checkbox"/></th><th>#</th><th>Ticket ID</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th><th>رقم الاوردر </th>
-<th>الشحن</th><th>المنطقة</th><th>السعر</th><th>Deposit</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
+<th>المنطقة</th><th>السعر</th><th>Deposit</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr></thead>
 <tbody id="branchOrdersTableBody"></tbody>
 </table>
@@ -2293,6 +2295,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="js/main.js?v=20260912-all-branches-treasury-zero-v141"></script>
+<script src="js/main.js?v=20260912-delivering-inline-edit-v145"></script>
 </body>
 </html>
