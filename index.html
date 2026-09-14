@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260912-all-branches-treasury-zero-v141">
+  <link rel="stylesheet" href="css/style.css?v=20260914-pending-operation-weeks-v151">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -536,7 +536,7 @@
     <button class="okb-branch-btn" data-branch="اسكندرية" onclick="openBranchPage('اسكندرية')">فرع اسكندرية</button>
     <button class="okb-branch-btn" data-branch="طنطا" onclick="openBranchPage('طنطا')">فرع طنطا</button>
     <button class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
-    <button class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Stores Report</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
+    <button class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Abnormal</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
     <button class="okb-stores-report-btn doctor-rank-page-item hidden" id="doctorRankStoresMenuBtn" type="button" onclick="showDoctorRankPage()"><span>👨‍⚕️ Doctor Rank</span></button>
     <button class="okb-stores-report-btn branches-treasury-page-item hidden" id="branchesTreasuryMenuBtn" type="button" onclick="showBranchesTreasuryPage()"><span>🏦 خزنة الفروع</span></button>
     <button class="okb-stores-report-btn commission-page-item hidden" id="commissionMenuBtn" type="button" onclick="showCommissionPage()"><span>Commission 🚩</span></button>
@@ -1135,7 +1135,7 @@
     <div class="doctor-rank-kpi"><span>إجمالي الأوردرات</span><strong id="doctorRankTotalOrders">0</strong><small>حسب التاريخ والفرع</small></div>
     <div class="doctor-rank-kpi"><span>Signed</span><strong class="green" id="doctorRankSignedCount">0</strong><small>أوردر مؤكد</small></div>
     <div class="doctor-rank-kpi"><span>Returned</span><strong class="red" id="doctorRankReturnedCount">0</strong><small>أوردر مرتجع</small></div>
-    <div class="doctor-rank-kpi"><span>Cancel Group</span><strong class="red" id="doctorRankCancelCount">0</strong><small>إلغاء من الجروب</small></div>
+    <div class="doctor-rank-kpi"><span>Delivering</span><strong class="cyan" id="doctorRankDeliveringCount">0</strong><small>حسب التاريخ والفرع</small></div>
     <div class="doctor-rank-kpi"><span>Conversion Rate</span><strong class="cyan" id="doctorRankConversionRate">0%</strong><small>Signed ÷ Total</small></div>
     <div class="doctor-rank-kpi"><span>Cancel Group Rate</span><strong class="red" id="doctorRankCancelRate">0%</strong><small>Cancel ÷ Total</small></div>
   </div>
@@ -1228,6 +1228,8 @@
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <input id="customRoleNameInput" type="text" placeholder="اسم الـ Role الجديدة" style="min-width:260px;"/>
       <button class="success" type="button" onclick="createCustomRole()">＋ إضافة Role</button>
+      <button class="soft" id="usersRefreshBtn" type="button" onclick="refreshUsersPage(this)">Refresh</button>
+      <span id="usersRefreshStatus" role="status" style="font-size:12px;color:var(--text-muted);"></span>
     </div>
   </div>
 </div>
@@ -1263,7 +1265,7 @@
 <div class="actions"><button class="success" type="submit">Add User</button><button class="soft" onclick="userForm.reset(); $('newUserBranchesWrap').classList.add('hidden');" type="button">Clear</button></div>
 </form>
 </div>
-<div class="card"><h2>Current Users</h2>
+<div class="card"><div class="current-users-header"><h2>Current Users</h2><input id="usersSearch" type="search" dir="auto" aria-label="بحث بالاسم أو Username أو Role" placeholder="بحث بالاسم أو Username أو Role..." oninput="renderUsers()" autocomplete="off"></div>
 <div class="table-wrap">
 <table>
 <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>الفروع المُدارة</th><th>Active</th><th>الإجراءات</th><th>Last Seen</th></tr></thead>
@@ -1685,15 +1687,16 @@
         </div>
         <button class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
         <button class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
+        <button class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button>
         <select id="commissionBranchFilter" onchange="renderCommissionDashboard()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
-        <button type="button" onclick="refreshCommissionDashboard(this)">↻ Refresh</button>
-        <button class="commission-export commission-nav-action" type="button" onclick="exportCommissionWorkbook()">Export</button>
         <div class="commission-report-tabs" role="tablist" aria-label="تقارير العمولات">
           <button data-commission-view="dashboard" type="button" onclick="setCommissionView('dashboard',this)">Overview</button>
           <button class="active" data-commission-view="total" type="button" onclick="setCommissionView('total',this)">Total Commission</button>
           <button data-commission-view="comparison" type="button" onclick="setCommissionView('comparison',this)">المقارنة الشهرية</button>
           <button data-commission-view="rtd" type="button" onclick="setCommissionView('rtd',this)">مكافأة الـ RTD</button>
           <button data-commission-view="development" type="button" onclick="setCommissionView('development',this)">مكافأة التطوير</button>
+          <button data-commission-view="annual" type="button" onclick="setCommissionView('annual',this)">المقارنة السنوية</button>
+          <button class="commission-export commission-nav-action" type="button" onclick="exportCommissionWorkbook()">Export Monthly Commission 🚩</button>
           <button id="commissionApproveBtn" class="commission-approve-btn hidden" type="button" onclick="openCommissionApprovalModal()">اعتماد العمولة 🔒</button>
         </div>
       </div>
@@ -1731,11 +1734,11 @@
   </div>
 </div>
 
-<!-- ===== OKB Stores Returned / Cancel Report ===== -->
+<!-- ===== OKB Abnormal — Returned / Cancel / Rescued returns ===== -->
 <section class="hidden" id="okbStoresReportPage">
   <div class="pending-shell stores-report-shell">
     <div class="pending-head">
-      <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Stores Report</h1><p>تقرير مختصر ومحترف لكل أوردرات Returned وCancel في فروع OKB</p></div></div>
+      <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Abnormal</h1><p>متابعة Returned وGroup Cancel والمرتجعات التي تم إنقاذها في فروع OKB</p></div></div>
       <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(false)">↻ تحديث</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
@@ -1747,10 +1750,15 @@
       <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="اسكندرية"><span>اسكندرية</span><strong id="storesReportAlexCount">0</strong></div>
       <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="طنطا"><span>طنطا</span><strong id="storesReportTantaCount">0</strong></div>
       <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="المنصورة"><span>المنصورة</span><strong id="storesReportMansouraCount">0</strong></div>
+      <div class="pending-summary-card stores-report-rescued-card">
+        <span class="stores-report-rescued-title">مرتجعات تم انقاذها</span>
+        <div class="stores-report-rescued-branches" id="storesReportRescuedCounts" aria-live="polite"></div>
+        <small id="storesReportRescuedMessage" class="hidden" role="status"></small>
+      </div>
     </div>
     <div class="pending-toolbar">
       <input id="storesReportSearch" type="text" placeholder="ابحث بالعميل، الدكتور، الهاتف، Ticket ID أو رقم الأوردر..." oninput="renderOKBStoresReport()">
-      <select id="storesReportStatus" onchange="renderOKBStoresReport()"><option value="all">كل الحالات</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option></select>
+      <select id="storesReportStatus" onchange="renderOKBStoresReport()"><option value="all">كل الحالات</option><option value="Returned" selected>Returned</option><option value="Cancel">Cancel</option><option value="RescuedReturned">مرتجعات تم انقاذها</option></select>
       <select id="storesReportBranch" onchange="renderOKBStoresReport()"><option value="all">كل الفروع</option></select>
     </div>
     <div id="storesReportOrdersList" class="pending-list"><div class="pending-loading">جاري تحميل المرتجعات...</div></div>
@@ -1761,7 +1769,7 @@
   <div class="pending-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>عملاء الفروع بحالة Delivering الذين مرّ عليهم 3 أيام أو أكثر بدون تحديث</p></div></div>
-      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">↻ تحديث</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
+      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">تحديث</button><button class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المتأخر</span><strong id="pendingTotalCount">0</strong></div>
@@ -2295,6 +2303,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="js/main.js?v=20260912-delivering-inline-edit-v145"></script>
+<script src="js/main.js?v=20260914-pending-operation-weeks-v151"></script>
 </body>
 </html>
