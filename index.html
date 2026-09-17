@@ -443,6 +443,7 @@
 }
 </style>
 
+  <link rel="stylesheet" href="css/page-navigation.css?v=20260917-users-role-toolbar-v161">
 </head>
 
 <body>
@@ -783,7 +784,7 @@
         <button class="stock-action-btn stock-save-btn" id="stockTopSaveBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
         <button class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
         <button class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
-        <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+        <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
 
@@ -870,7 +871,7 @@
   <div class="product-reports-shell">
     <div class="product-reports-head">
       <div class="product-reports-title"><div class="product-reports-title-badge">📦</div><div><h1>Product Reports</h1><p>تحليل مبيعات ومرتجعات وحركة المنتجات المضافة من Settings</p></div></div>
-      <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+      <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
     </div>
 
     <div class="product-report-filters">
@@ -925,8 +926,8 @@
     <div class="activity-log-head">
       <div class="activity-log-title"><div class="activity-log-title-badge">⚡</div><div><h1>Activity Log</h1><p>سجل مركزي لكل الحركات المهمة داخل السيستم — متاح للأدمن فقط</p></div></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button class="soft" type="button" onclick="refreshActivityLogPage(this)">↻ Refresh</button>
-        <button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button>
+        <button class="soft" type="button" onclick="refreshActivityLogPage(this)">Refresh</button>
+        <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
     <div class="activity-log-stats">
@@ -1012,7 +1013,7 @@
       </div>
       <button id="branchShippingBackBtn" class="soft hidden" onclick="closeBranchShippingRankToBranch()" style="background:#64748B;color:#fff;border:none;">← رجوع للفرع</button>
       <button class="success" onclick="exportShippingRank()">⬇ Export</button>
-      <button class="soft" id="refreshShippingRankBtn" onclick="refreshShippingRankData(event)">↻ Refresh</button>
+      <div class="app-refresh-back"><button class="soft" id="refreshShippingRankBtn" onclick="refreshShippingRankData(event)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
   <div id="globalShippingRankSections" style="margin-top:18px;">
@@ -1092,7 +1093,7 @@
   <div class="card doctor-rank-head">
     <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p><small class="doctor-rank-load-state" id="doctorRankLoadState" aria-live="polite"></small></div>
     <div class="doctor-rank-head-actions">
-      <button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button>
+      <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       <button class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
     </div>
   </div>
@@ -1164,7 +1165,7 @@
 <input id="reportToDate" type="date"/>
 <button class="btn-filter" onclick="applyReportFilter()">🔍 Filter</button>
 <button class="btn-reset-date" onclick="resetReportFilter()">✕ Reset</button>
-<button class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">Refresh</button>
+<div class="app-refresh-back"><button class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 <button class="success" onclick="exportCurrentReport()">⬇ Export</button>
 </div>
 </div>
@@ -1227,15 +1228,19 @@
 </section>
 <!-- ===== Users Page ===== -->
 <section class="hidden" id="usersPage">
-<div class="card" id="customRoleCreatorCard" style="display:none;">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-    <div><h2 style="margin:0 0 5px;">＋ Create New Role</h2><p style="margin:0;color:var(--text-muted);font-size:12px;">أنشئ Role جديدة ثم حدد صلاحياتها من صفحة Permission.</p></div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <input id="customRoleNameInput" type="text" placeholder="اسم الـ Role الجديدة" style="min-width:260px;"/>
-      <button class="success" type="button" onclick="createCustomRole()">＋ إضافة Role</button>
-      <button class="soft" id="usersRefreshBtn" type="button" onclick="refreshUsersPage(this)">Refresh</button>
-      <span id="usersRefreshStatus" role="status" style="font-size:12px;color:var(--text-muted);"></span>
+<div class="card app-users-heading">
+  <div id="customRoleCreatorCard" style="display:none;">
+    <div class="users-role-creator-layout" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div class="users-role-copy"><h2 style="margin:0 0 5px;">＋ Create New Role</h2><p style="margin:0;color:var(--text-muted);font-size:12px;">أنشئ Role جديدة ثم حدد صلاحياتها من صفحة Permission.</p></div>
+      <div class="users-role-create-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <input id="customRoleNameInput" type="text" placeholder="اسم الـ Role الجديدة" style="min-width:260px;"/>
+        <button class="success" type="button" onclick="createCustomRole()">＋ إضافة Role</button>
+      </div>
     </div>
+  </div>
+  <div class="app-page-actions users-role-nav-actions">
+    <span id="usersRefreshStatus" role="status" style="font-size:12px;color:var(--text-muted);"></span>
+    <div class="app-refresh-back users-role-nav-buttons"><button class="soft" id="usersRefreshBtn" type="button" onclick="refreshUsersPage(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
   </div>
 </div>
 <div class="card">
@@ -1321,7 +1326,7 @@
       <h1>💬 Chat</h1>
       <p>محادثات مباشرة بين مستخدمي النظام وإرسال صور إثبات الدفع.</p>
     </div>
-    <button class="soft" type="button" onclick="refreshChatPage(this)">↻ Refresh</button>
+    <div class="app-refresh-back"><button class="soft" type="button" onclick="refreshChatPage(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
   </div>
   <div class="chat-shell">
     <aside class="chat-users-panel">
@@ -1360,7 +1365,7 @@
 <div class="card">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
   <div><h1>⚙️ Settings</h1><p style="margin-bottom:0;">إعدادات النظام: المنتجات، الدكاترة، وشركات الشحن.</p></div>
-  <button class="soft" id="settingsRefreshBtn" type="button" onclick="refreshSettingsPage(this)">↻ Refresh</button>
+  <div class="app-refresh-back"><button class="soft" id="settingsRefreshBtn" type="button" onclick="refreshSettingsPage(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 </div>
 </div>
 <div class="card admin-only" id="okbItemsCard">
@@ -1498,7 +1503,7 @@
         <h1>🔐 Permission</h1>
         <p>حدد الأزرار والصفحات التي تظهر لكل Role. الأدمن يحتفظ دائمًا بكامل الصلاحيات.</p>
       </div>
-      <button class="soft" type="button" onclick="refreshRolePermissions(this)">↻ Refresh</button>
+      <div class="app-refresh-back"><button class="soft" type="button" onclick="refreshRolePermissions(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
   <div class="card">
@@ -1520,7 +1525,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1 id="branchPageTitle">📦 Dashboard — فرع</h1>
-<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button></div>
+<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
 </div>
 <form id="branchOrderForm">
 <div class="form-grid">
@@ -1692,7 +1697,7 @@
         </div>
         <button class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
         <button class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
-        <button class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button>
+        <div class="app-refresh-back"><button class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button><button class="commission-nav-action app-back-btn app-back-btn--gold" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
         <select id="commissionBranchFilter" onchange="renderCommissionDashboard()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
         <div class="commission-report-tabs" role="tablist" aria-label="تقارير العمولات">
           <button data-commission-view="dashboard" type="button" onclick="setCommissionView('dashboard',this)">Overview</button>
@@ -1744,7 +1749,7 @@
   <div class="pending-shell stores-report-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Abnormal</h1><p>متابعة Returned وGroup Cancel والأوردرات التي تم إنقاذها من الحالتين في فروع OKB</p></div></div>
-      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(false)">↻ تحديث</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button></div>
+      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(false)">↻ تحديث</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المرتجعات</span><strong id="storesReportTotalCount">0</strong></div>
@@ -1774,7 +1779,7 @@
   <div class="pending-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>أوردرات الشهر الحالي بحالة Delivering التي مرّ عليها 3 أيام أو أكثر بدون تحديث</p></div></div>
-      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">تحديث</button><button class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
+      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">Refresh</button><button class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المتأخر</span><strong id="pendingTotalCount">0</strong></div>
@@ -1800,7 +1805,7 @@
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <div><h1 style="margin:0;font-size:20px;">🏦 خزنة الفروع</h1><p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">مراجعة مالية موحدة ودقيقة للفروع الأربعة</p></div>
-      <div class="branches-treasury-header-actions"><button type="button" onclick="refreshBranchesTreasury(this)" class="btn-filter">↻ Refresh</button><button type="button" onclick="showInitialPermittedPage()" class="btn-reset-date">← رجوع</button></div>
+      <div class="branches-treasury-header-actions"><button type="button" onclick="refreshBranchesTreasury(this)" class="btn-filter">↻ Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
@@ -1939,7 +1944,7 @@
   <div class="secretary-audit-page-panel">
     <div class="financial-audit-head">
       <div><h2 id="financialAuditTitle">🛡️ Financial Audit — المراجعة المالية</h2><p id="financialAuditMeta"></p></div>
-      <div class="secretary-audit-head-actions"><input id="financialAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." oninput="renderFinancialAudit()"><button type="button" class="secretary-audit-head-reset" onclick="resetFinancialAuditFilters()">Reset ✕</button><button type="button" onclick="closeFinancialAudit()">← رجوع</button></div>
+      <div class="secretary-audit-head-actions"><input id="financialAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." oninput="renderFinancialAudit()"><button type="button" class="secretary-audit-head-reset" onclick="resetFinancialAuditFilters()">Reset ✕</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="financial-audit-tools secretary-audit-filters">
       <div class="date-filter-group"><label>من</label><input id="financialAuditFrom" type="date"></div><div class="date-filter-group"><label>إلى</label><input id="financialAuditTo" type="date"></div>
@@ -1964,7 +1969,7 @@
       <div class="secretary-audit-head-actions">
         <input id="secretaryAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." autocomplete="off" oninput="renderSecretaryAudit()">
         <button type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
-        <button type="button" onclick="closeSecretaryAudit()" aria-label="رجوع">← رجوع</button>
+        <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
     <div class="financial-audit-tools secretary-audit-filters">
@@ -2308,6 +2313,7 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="js/main.js?v=20260917-rescued-orders-true-rank-v158"></script>
+<script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
+<script src="js/main.js?v=20260917-audit-profile-treasury-v160"></script>
 </body>
 </html>

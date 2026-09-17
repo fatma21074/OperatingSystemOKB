@@ -705,7 +705,7 @@ async function refreshActivityLogPage(button){
     await loadActivityLogs();
     await markActivityLogsReadFromServer();
   }finally{
-    if(button){button.disabled=false;button.textContent=oldText||'↻ Refresh';}
+    if(button){button.disabled=false;button.textContent=oldText||'Refresh';}
   }
 }
 function renderActivityLogs(){
@@ -879,7 +879,7 @@ function ensureProductReportEnhancements(){
   const oldExtra=$('productExtraKpis'); if(oldExtra)oldExtra.remove();
   if(kpis && !$('prCancelOrders')){ const x=document.createElement('div'); x.className='product-kpi'; x.id='productCancelKpi'; x.innerHTML=`<div class="pk-label">Cancel Group</div><div class="pk-name">إجمالي أوردرات Cancel</div><div class="pk-value" id="prCancelOrders">0</div><div class="pk-sub">مرتبط بالفيلتر الحالي</div>`; kpis.appendChild(x); }
   const head=page.querySelector('.product-reports-head');
-  if(head && !$('productReportHeaderActions')){ const old=head.querySelector('button[onclick*="showOrdersPage"]'); if(old)old.remove(); const a=document.createElement('div'); a.id='productReportHeaderActions'; a.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-start;'; a.innerHTML=`<button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button><button class="soft" type="button" onclick="refreshProductReports(event)">↻ Refresh</button><button class="soft" type="button" onclick="printProductReports()">🖨 Print</button><button class="soft" type="button" onclick="exportProductReportExcel()">⬇ Export Excel</button>`; head.appendChild(a); }
+  if(head && !$('productReportHeaderActions')){ const old=head.querySelector('button[data-app-back]'); if(old)old.remove(); const a=document.createElement('div'); a.id='productReportHeaderActions'; a.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-start;'; a.innerHTML=`<button class="soft" type="button" onclick="printProductReports()">🖨 Print</button><button class="soft" type="button" onclick="exportProductReportExcel()">⬇ Export Excel</button><div class="app-refresh-back"><button class="soft" type="button" onclick="refreshProductReports(event)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>`; head.appendChild(a); }
   const chartCanvas=$('productReportsChart');
   const reportTable=$('productReportTable');
   let tableCard=null;
@@ -1000,7 +1000,7 @@ async function showProductReportsPage(){ if(!canViewProductReports()){alert('غ�
 function applyProductReportFilters(){ renderProductReports(); }
 function resetProductReportFilters(){ const range=getCurrentDashboardMonthRange(); $('productReportFrom').value=range.from; $('productReportTo').value=range.to; if($('productReportBranch'))$('productReportBranch').value='all'; if($('productReportDoctor'))$('productReportDoctor').value='all'; if($('productReportSearch'))$('productReportSearch').value=''; renderProductReports(); }
 function setProductReportTab(tab){ productReportTab=tab; ['top','returned','cancel','dead','total','signed'].forEach(x=>$('productTab'+(x==='top'?'Top':x==='returned'?'Returned':x==='cancel'?'Cancel':x==='total'?'Total':x==='signed'?'Signed':'Dead'))?.classList.toggle('active',x===tab)); renderProductReportTable(); renderProductReportsChart(); }
-async function refreshProductReports(ev){ const btn=ev?.currentTarget; const old=btn?.innerHTML; if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';} await loadOrders(); await loadOKBItems(); populateProductReportFilters(); renderProductReports(); if(btn){btn.disabled=false;btn.innerHTML=old||'↻ Refresh';} }
+async function refreshProductReports(ev){ const btn=ev?.currentTarget; const old=btn?.innerHTML; if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';} await loadOrders(); await loadOKBItems(); populateProductReportFilters(); renderProductReports(); if(btn){btn.disabled=false;btn.innerHTML=old||'Refresh';} }
 function exportProductReportExcel(){
   const rows=productReportRows[productReportTab]||[]; if(!rows.length){alert('لا توجد بيانات للتصدير');return;} if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة');return;}
   const wb=XLSX.utils.book_new();
@@ -2336,7 +2336,7 @@ async function refreshRolePermissions(button) {
     populatePermissionRoleSelect();
     renderRolePermissionMatrix();
   } finally {
-    if (button) { button.disabled = false; button.textContent = oldText || '↻ Refresh'; }
+    if (button) { button.disabled = false; button.textContent = oldText || 'Refresh'; }
   }
 }
 
@@ -3762,6 +3762,7 @@ function resetAppState() {
   activeBranchStickyNote = null;
   editId = null;
   currentUser = null;
+  resetAppPageHistory();
   selectedOrderIds = new Set();
 
   selectedShippingCompanies = [];
@@ -4034,6 +4035,7 @@ async function loadShippingSystems() {
 
 // ===== دوال العرض =====
 function setActiveMenu(pageId) {
+  rememberAppPage(pageId);
   document.querySelectorAll(".menu-item").forEach(el => {
     el.classList.toggle("active", el.dataset.page === pageId);
   });
@@ -4437,6 +4439,8 @@ function openOKBStoresReportOrder(id){
 function canUseReportOrderLink(source){
   if(!currentUser)return false;
   if(source==='financial_audit')return hasButtonPermission('btn_financial_audit');
+  if(source==='khazna')return canViewKhazna();
+  if(source==='customer_profile')return true;
   return ['stores_report','branches_treasury','pending','activity_log','secretary_audit','daily_report'].includes(source)&&hasRoleFeature(source);
 }
 function reportLinkedOrderBranch(order,source,activity){
@@ -4451,8 +4455,8 @@ function canOpenReportLinkedOrder(source,order,activity){
   if(source==='pending'&&!canSeePendingOrder(order))return false;
   const branch=reportLinkedOrderBranch(order,source,activity);
   if(branch)return canOpenPermissionBranch(branch)&&canAccessBranch(branch);
-  // Secretary Audit already supports non-branch orders through Dashboard.
-  return source==='secretary_audit'&&hasRoleFeature('dashboard');
+  // Secretary Audit and Customer Profile can also point to Dashboard orders.
+  return ['secretary_audit','customer_profile'].includes(source)&&hasRoleFeature('dashboard');
 }
 function openReportOrderTab(source,order,activityId=''){
   if(!canUseReportOrderLink(source)||(!order&&!(source==='activity_log'&&activityId))||(order&&!canOpenReportLinkedOrder(source,order))){alert('لا توجد صلاحية لفتح الأوردر من هذه الصفحة أو فرعه');return;}
@@ -4717,7 +4721,7 @@ async function refreshSettingsPage(button) {
   try {
     await Promise.all([loadOKBItems(), loadDoctors(), loadShippingSystems(), isAdmin() ? loadStickyNoteSetting() : Promise.resolve()]);
   } finally {
-    if (button) { button.disabled = false; button.textContent = oldText || '↻ Refresh'; }
+    if (button) { button.disabled = false; button.textContent = oldText || 'Refresh'; }
   }
 }
 
@@ -7357,7 +7361,7 @@ async function refreshShippingRankData(ev) {
       catch(error){console.warn('Branch Rank comparison refresh failed:',error);}
     }
   } finally {
-    if(btn){btn.disabled=false;btn.innerHTML=old||'↻ Refresh';}
+    if(btn){btn.disabled=false;btn.innerHTML=old||'Refresh';}
   }
 }
 
@@ -11206,6 +11210,7 @@ async function openBranchPage(branchName) {
 
   const bp = document.getElementById('branchPage');
   if (bp) bp.classList.remove('hidden');
+  rememberAppPage('branchPage');
 
   const title = document.getElementById('branchPageTitle');
   if (title) title.textContent = '📦 Dashboard — فرع ' + branchName;
@@ -11304,8 +11309,8 @@ function canChangeBranchOrderStatus() {
 
 function cleanVisibleOrderNotes(notes) {
   return String(notes || '')
-    .replace(ORDER_META_REGEX, '')
     .replace(COLLECT_META_REGEX, '')
+    .replace(ORDER_META_REGEX, '')
     .split(/\n+/)
     .map(line => line.trim().replace(/^تصنيف السيستم:\s*/, ''))
     .filter(line => line && line !== 'لا توجد ملاحظات')
@@ -11315,12 +11320,13 @@ function cleanVisibleOrderNotes(notes) {
 
 function appendVisibleOrderNote(notes, addition) {
   const original = String(notes || '');
-  const orderMetaMatch = original.match(ORDER_META_REGEX);
   const collectMetaMatch = original.match(COLLECT_META_REGEX);
+  const withoutCollect = original.replace(COLLECT_META_REGEX, '').trim();
+  const orderMetaMatch = withoutCollect.match(ORDER_META_REGEX);
   let clean = cleanVisibleOrderNotes(original);
   clean = clean ? `${clean}\n${addition}` : addition;
-  if (collectMetaMatch) clean += `\n${COLLECT_META_PREFIX}${collectMetaMatch[1]}]`;
   if (orderMetaMatch) clean += `\n${ORDER_META_PREFIX}${orderMetaMatch[1]}]`;
+  if (collectMetaMatch) clean += `\n${COLLECT_META_PREFIX}${collectMetaMatch[1]}]`;
   return clean;
 }
 
@@ -11418,6 +11424,7 @@ async function openBranchShippingRankFromBranch() {
   hideAllPages();
   const page = document.getElementById('shippingRankPage');
   if (page) page.classList.remove('hidden');
+  rememberAppPage('shippingRankPage');
   const backBtn = document.getElementById('branchShippingBackBtn');
   if (backBtn) backBtn.classList.remove('hidden');
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -11572,6 +11579,7 @@ function clearBranchOrderSelection(){
 }
 
 let dashboardNoteOrderId='';
+let customerProfileNoteOrderId='';
 
 function closeDashboardActions(){
   document.querySelectorAll('.dashboard-actions-dropdown').forEach(menu=>menu.classList.add('hidden'));
@@ -11624,6 +11632,7 @@ function ensureBranchBulkNoteModal(){
 
 function openSelectedBranchNoteModal(){
   dashboardNoteOrderId='';
+  customerProfileNoteOrderId='';
   if(!branchSelectedOrderIds.size){alert('اختر أوردر واحدًا على الأقل');return;}
   const modal=ensureBranchBulkNoteModal();
   const scope=document.getElementById('branchBulkNoteScope');
@@ -11638,6 +11647,7 @@ function openDashboardOrderNote(id){
   const order=orders.find(item=>String(item.id)===String(id));
   if(!order){alert('تعذر العثور على الأوردر');return;}
   dashboardNoteOrderId=String(id);
+  customerProfileNoteOrderId='';
   const modal=ensureBranchBulkNoteModal();
   const scope=document.getElementById('branchBulkNoteScope');
   const input=document.getElementById('branchBulkNoteInput');
@@ -11647,20 +11657,38 @@ function openDashboardOrderNote(id){
   setTimeout(()=>input?.focus(),30);
 }
 
+function openCustomerProfileOrderNote(){
+  const order=customerProfileOrders.find(item=>String(item.id)===String(customerProfileFocusOrderId))||customerProfileOrders[0];
+  if(!order){alert('تعذر العثور على أوردر متاح لإضافة الملاحظة');return;}
+  customerProfileNoteOrderId=String(order.id);
+  dashboardNoteOrderId='';
+  const modal=ensureBranchBulkNoteModal();
+  const scope=document.getElementById('branchBulkNoteScope');
+  const input=document.getElementById('branchBulkNoteInput');
+  if(scope)scope.textContent=`إضافة ملاحظة على أوردر العميل ${order.customer_name||'—'} — Ticket ${getTicketId(order)||'—'}، أسفل الملاحظات السابقة.`;
+  if(input)input.value='';
+  modal.classList.remove('hidden');
+  setTimeout(()=>input?.focus(),30);
+}
+
 function closeSelectedBranchNoteModal(){
   document.getElementById('branchBulkNoteModal')?.classList.add('hidden');
   dashboardNoteOrderId='';
+  customerProfileNoteOrderId='';
 }
 
 async function saveSelectedBranchNote(){
   const input=document.getElementById('branchBulkNoteInput');
   const note=String(input?.value||'').trim();
   if(!note){alert('برجاء كتابة الملاحظة');input?.focus();return;}
-  const isDashboardNote=Boolean(dashboardNoteOrderId);
-  const selected=isDashboardNote
-    ? orders.filter(order=>String(order.id)===String(dashboardNoteOrderId))
-    : branchOrders.filter(order=>branchSelectedOrderIds.has(String(order.id)));
-  if(!selected.length){alert('الأوردرات المحددة غير موجودة');closeSelectedBranchNoteModal();clearBranchOrderSelection();return;}
+  const isCustomerProfileNote=Boolean(customerProfileNoteOrderId);
+  const isDashboardNote=!isCustomerProfileNote&&Boolean(dashboardNoteOrderId);
+  const selected=isCustomerProfileNote
+    ? customerProfileOrders.filter(order=>String(order.id)===String(customerProfileNoteOrderId))
+    : isDashboardNote
+      ? orders.filter(order=>String(order.id)===String(dashboardNoteOrderId))
+      : branchOrders.filter(order=>branchSelectedOrderIds.has(String(order.id)));
+  if(!selected.length){alert('الأوردرات المحددة غير موجودة');closeSelectedBranchNoteModal();if(!isCustomerProfileNote&&!isDashboardNote)clearBranchOrderSelection();return;}
   const signedOrder=selected.find(order=>String(order?.status||'').trim()==='Signed');
   if(signedOrder&&!canMutateSignedOrder(signedOrder,'إضافة ملاحظة'))return;
   const userName=String(currentUser?.name||currentUser?.username||'User').trim();
@@ -11676,8 +11704,10 @@ async function saveSelectedBranchNote(){
     const {error}=await supabaseClient.from('orders').update({notes:updatedNotes}).eq('id',order.id);
     if(error){failed.push(order);continue;}
     order.notes=updatedNotes;
-    const dashboardOrder=orders.find(item=>String(item.id)===String(order.id));
-    if(dashboardOrder)dashboardOrder.notes=updatedNotes;
+    [orders,branchOrders,khaznaOrders,branchesTreasuryOrders,pendingOrders,customerProfileOrders].forEach(list=>{
+      const cached=list.find(item=>String(item.id)===String(order.id));
+      if(cached)cached.notes=updatedNotes;
+    });
     savedOrders.push(order);
     saved+=1;
   }
@@ -11692,7 +11722,9 @@ async function saveSelectedBranchNote(){
   }
   document.getElementById('branchBulkNoteModal')?.classList.add('hidden');
   dashboardNoteOrderId='';
-  if(isDashboardNote)renderOrders();
+  customerProfileNoteOrderId='';
+  if(isCustomerProfileNote){renderCustomerProfile();if(isLivePageVisible('ordersPage'))renderOrders();if(isLivePageVisible('branchPage'))renderBranchOrders();}
+  else if(isDashboardNote)renderOrders();
   else{
     clearBranchOrderSelection();
     renderBranchOrders();
@@ -12596,6 +12628,7 @@ function openKhaznaPage() {
   renderKhaznaShippingCostPermissionUI();
   hideAllPages();
   document.getElementById('khaznaPage').classList.remove('hidden');
+  rememberAppPage('khaznaPage');
   document.getElementById('khaznaTitle').textContent = currentBranchName;
   
   const today = new Date().toISOString().split('T')[0];
@@ -12623,6 +12656,7 @@ function openKhaznaPage() {
 function closeKhaznaPage() {
   hideAllPages();
   document.getElementById('branchPage').classList.remove('hidden');
+  rememberAppPage('branchPage');
   document.getElementById('khaznaTitle').textContent = currentBranchName;
 }
 
@@ -13239,8 +13273,21 @@ let secretaryAuditState = { rows:[], findings:[], from:'', to:'' };
 let secretaryAuditLiveRefreshTimer = null;
 const SECRETARY_AUDIT_ACTIONS=['secretary_audit_error','secretary_audit_warning'];
 const SECRETARY_AUDIT_EVENT_ACTIONS=[...SECRETARY_AUDIT_ACTIONS,'secretary_audit_resolved'];
+const SECRETARY_AUDIT_NOTIFICATION_ACTIONS=[...SECRETARY_AUDIT_EVENT_ACTIONS];
 let secretaryAuditWeeklyCount=0;
 function secretaryAuditSeenIdKey(){return `okb_secretary_audit_seen_${currentUser?.username||currentUser?.id||'user'}`;}
+function parseSecretaryAuditEventInfo(event){
+  try{return JSON.parse(event?.action_details||'{}')||{};}
+  catch(_){return {};}
+}
+function isFourBranchSecretaryAuditEvent(event){
+  if(!SECRETARY_AUDIT_NOTIFICATION_ACTIONS.includes(String(event?.action_type||'')))return false;
+  const info=parseSecretaryAuditEventInfo(event);
+  return Boolean(getAuditChatBranch({
+    shipping_company:info.shipping_company||info.shipping_system||'',
+    branch:info.branch||event?.branch_name||''
+  }));
+}
 function updateSecretaryAuditBadge(count=secretaryAuditUnreadCount){
   secretaryAuditUnreadCount=Math.max(0,Number(count)||0);
   const badge=document.getElementById('secretaryAuditNotification');
@@ -13251,12 +13298,12 @@ function updateSecretaryAuditBadge(count=secretaryAuditUnreadCount){
 async function refreshSecretaryAuditUnreadCount(){
   if(!currentUser||!hasRoleFeature('secretary_audit')){updateSecretaryAuditBadge(0);return;}
   const seenId=Number(localStorage.getItem(secretaryAuditSeenIdKey())||0);
-  const {count,error}=await supabaseClient.from('activity_logs').select('id',{count:'exact',head:true}).in('action_type',SECRETARY_AUDIT_ACTIONS).gt('id',seenId);
+  const {count,error}=await supabaseClient.from('activity_logs').select('id',{count:'exact',head:true}).in('action_type',SECRETARY_AUDIT_NOTIFICATION_ACTIONS).in('branch_name',PENDING_BRANCH_NAMES).gt('id',seenId);
   if(!error)updateSecretaryAuditBadge(count||0);
 }
 async function markSecretaryAuditRead(){
   if(!currentUser||!hasRoleFeature('secretary_audit'))return;
-  const {data,error}=await supabaseClient.from('activity_logs').select('id').in('action_type',SECRETARY_AUDIT_ACTIONS).order('id',{ascending:false}).limit(1);
+  const {data,error}=await supabaseClient.from('activity_logs').select('id').in('action_type',SECRETARY_AUDIT_NOTIFICATION_ACTIONS).in('branch_name',PENDING_BRANCH_NAMES).order('id',{ascending:false}).limit(1);
   if(!error){localStorage.setItem(secretaryAuditSeenIdKey(),String(Number(data?.[0]?.id||0)));updateSecretaryAuditBadge(0);}
 }
 function stopSecretaryAuditNotifications(){
@@ -13270,23 +13317,34 @@ function scheduleSecretaryAuditLiveRefresh(){
     if(!document.getElementById('secretaryAuditPage')?.classList.contains('hidden')){await refreshSecretaryAudit(false);await markSecretaryAuditRead();}
   },350);
 }
+async function handleSecretaryAuditOcrNotification(payload){
+  const status=String(payload?.new?.status||payload?.old?.status||'');
+  if(!status||status==='pending'||status==='verified')return;
+  const orderId=String(payload?.new?.order_id||payload?.old?.order_id||'').trim();
+  if(!orderId)return;
+  let order=getOrderByIdAny(orderId);
+  if(!order){
+    const result=await supabaseClient.from('orders').select('id,branch,shipping_company').eq('id',orderId).maybeSingle();
+    if(result.error)return;
+    order=result.data;
+  }
+  if(!getAuditChatBranch(order))return;
+  const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
+  if(open)scheduleSecretaryAuditLiveRefresh();
+  else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
+}
 function startSecretaryAuditNotifications(){
   stopSecretaryAuditNotifications();
   if(!currentUser||!hasRoleFeature('secretary_audit'))return;
   refreshSecretaryAuditUnreadCount();
   secretaryAuditRealtimeChannel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
     const action=String(payload?.new?.action_type||'');
-    if(!SECRETARY_AUDIT_EVENT_ACTIONS.includes(action))return;
-    const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
-    if(open)scheduleSecretaryAuditLiveRefresh();
-    else if(SECRETARY_AUDIT_ACTIONS.includes(action))updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
-    else void refreshSecretaryAuditUnreadCount();
-  }).on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
-    const status=String(payload?.new?.status||'');
-    if(!status||status==='pending'||status==='verified')return;
+    if(!SECRETARY_AUDIT_NOTIFICATION_ACTIONS.includes(action)||!isFourBranchSecretaryAuditEvent(payload?.new))return;
     const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
     if(open)scheduleSecretaryAuditLiveRefresh();
     else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
+  }).on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
+    void handleSecretaryAuditOcrNotification(payload);
   }).subscribe();
   secretaryAuditPollingTimer=setInterval(refreshSecretaryAuditUnreadCount,20000);
 }
@@ -13389,6 +13447,29 @@ function buildSecretaryAuditFindings(rows) {
   return findings;
 }
 
+function normalizeSecretaryAuditIdentity(value){
+  return String(value||'').trim().toLowerCase().replace(/[\s\-_]+/g,' ');
+}
+function findSecretaryAuditCorrectedOrder(info,event,rows){
+  const branch=getAuditChatBranch({shipping_company:info.shipping_company||'',branch:info.branch||event?.branch_name||''});
+  if(!branch)return null;
+  const eventTime=new Date(event?.created_at||0).getTime();
+  const phones=[normalizeCustomerPhoneClient(info.phone),normalizeCustomerPhoneClient(info.phone2)].filter(phone=>phone.length>=10);
+  const customer=normalizeSecretaryAuditIdentity(info.customer_name||event?.customer_name);
+  const actor=normalizeSecretaryAuditIdentity(info.actor||event?.user_name||event?.username);
+  return (rows||[]).map(order=>{
+    if(getSecretaryAuditOrderBranch(order)!==branch)return null;
+    const orderTime=new Date(order.created_at||order.updated_at||0).getTime();
+    if(Number.isFinite(eventTime)&&eventTime>0&&Number.isFinite(orderTime)&&orderTime+5000<eventTime)return null;
+    const orderPhones=[normalizeCustomerPhoneClient(order.phone),normalizeCustomerPhoneClient(order.phone2)].filter(phone=>phone.length>=10);
+    const phoneMatch=phones.some(phone=>orderPhones.includes(phone));
+    const customerMatch=Boolean(customer&&customer===normalizeSecretaryAuditIdentity(order.customer_name));
+    const actorMatch=Boolean(actor&&actor===normalizeSecretaryAuditIdentity(order.employee_name));
+    if(!phoneMatch&&!(customerMatch&&actorMatch))return null;
+    return {order,score:(phoneMatch?100:0)+(customerMatch?20:0)+(actorMatch?10:0),time:Number.isFinite(orderTime)?orderTime:Number.MAX_SAFE_INTEGER};
+  }).filter(Boolean).sort((a,b)=>b.score-a.score||a.time-b.time)[0]?.order||null;
+}
+
 async function loadSecretaryAuditRows() {
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom')?.value||today;
@@ -13423,14 +13504,15 @@ async function loadSecretaryAuditRows() {
       const eventOrderKey=savedOrderId||String(info.ticket_id||event.ticket_id||'').trim();
       if(eventOrderKey&&seenOrderEvents.has(eventOrderKey))return;
       if(eventOrderKey)seenOrderEvents.add(eventOrderKey);
-      const order=matched||{id:info.order_id||event.order_id||'',customer_name:info.customer_name||event.customer_name||'—',doctor_name:info.doctor_name||'',employee_name:info.actor||event.user_name||event.username||'—',branch:info.branch||event.branch_name||'—',phone:info.phone||'',price:Number(info.price||0),deposit:Number(info.deposit||0),status:info.status||'',created_at:event.created_at,order_number:info.order_number||'',ticket_id:info.ticket_id||event.ticket_id||''};
+      const order=matched||{id:info.order_id||event.order_id||'',customer_name:info.customer_name||event.customer_name||'—',doctor_name:info.doctor_name||'',employee_name:info.actor||event.user_name||event.username||'—',branch:info.branch||event.branch_name||'—',shipping_company:info.shipping_company||'',phone:info.phone||'',phone2:info.phone2||'',price:Number(info.price||0),deposit:Number(info.deposit||0),status:info.status||'',created_at:event.created_at,order_number:info.order_number||'',ticket_id:info.ticket_id||event.ticket_id||''};
       const auditBranch=getSecretaryAuditOrderBranch(order);
       if(!PENDING_BRANCH_NAMES.includes(auditBranch))return;
+      const correctedOrder=matched||findSecretaryAuditCorrectedOrder(info,event,rows);
       issues.forEach(issue=>{
         const severity=event.action_type==='secretary_audit_resolved'?'resolved':event.action_type==='secretary_audit_warning'?'warning':'error';
         const ticket=getTicketId(order)||info.ticket_id||event.ticket_id||'—';
         const duplicate=findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
-        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:order.employee_name||event.user_name||'—',event_id:event.id,created_at:event.created_at||order.updated_at||order.created_at||''});
+        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:order.employee_name||event.user_name||'—',event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||''});
       });
     });
   }
@@ -13497,8 +13579,7 @@ function populateSecretaryAuditEmployeeFilter(){
   searchableOrderSelects.get('secretaryAuditEmployeeFilter')?.syncFromSelect();
 }
 function getSecretaryAuditOrderBranch(order){
-  const direct=pendingOrderBranch(order);if(direct)return direct;
-  return getBranchNameFromShippingCompany(order?.branch)||getBranchNameFromShippingCompany(order?.shipping_company)||'';
+  return getAuditChatBranch(order);
 }
 function getSecretaryAuditBranchOrders(){return secretaryAuditState.rows.filter(order=>PENDING_BRANCH_NAMES.includes(getSecretaryAuditOrderBranch(order)));}
 function getSecretaryAuditTopEmployee(findings){
@@ -13512,7 +13593,7 @@ function renderSecretaryAudit(){
   const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['Total Orders',totalOrders,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده أخطاء',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   const verdict=document.getElementById('secretaryAuditVerdict');if(verdict){verdict.className=`financial-audit-verdict ${errors?'bad':'ok'}`;verdict.textContent=errors?`❌ يوجد ${errors} خطأ إدخال يجب تصحيحه قبل خروج الأوردرات للفروع.`:`✅ لا توجد أخطاء إدخال مانعة${warnings?` — يوجد ${warnings} تنبيه للمراجعة`:''}.`;}
   const body=document.getElementById('secretaryAuditBody');if(!body)return;
-  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const openAction=o?.id?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${o.id}')">فتح الأوردر</button>`:'<span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>';const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="11" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
+  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const linkedId=o?.id||item.corrected_order_id||'';const openButton=linkedId?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${linkedId}')">فتح الأوردر</button>`:'';const openAction=o?.id?openButton:`<div style="display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;"><span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>${openButton}</div>`;const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="11" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
 }
 async function toggleSecretaryAuditReport(){
   const panel=document.getElementById('secretaryAuditReportPanel');if(!panel)return;
@@ -13647,8 +13728,9 @@ async function getAuditRecipientUsers(kind,actor=currentUser){
 }
 async function recordSecretaryAuditEvent(order,issues,severity='error',actor=currentUser){
   if(!issues?.length)return false;
-  const info={order_id:order?.id||'',ticket_id:getTicketId(order)||order?.order_number||'',order_number:order?.order_number||'',customer_name:order?.customer_name||'',doctor_name:order?.doctor_name||'',phone:order?.phone||'',branch:pendingOrderBranch(order)||order?.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order?.deposit||0),status:order?.status||'',issues:[...new Set(issues.map(String))]};
-  return logActivity(severity==='warning'?'secretary_audit_warning':'secretary_audit_error',severity==='warning'?'Secretary Audit — تنبيه إدخال':'Secretary Audit — خطأ إدخال',JSON.stringify(info),{order_id:order?.id,ticket_id:info.ticket_id,customer_name:info.customer_name,branch_name:info.branch});
+  const branch=getAuditChatBranch(order);
+  const info={order_id:order?.id||'',ticket_id:getTicketId(order)||order?.order_number||'',order_number:order?.order_number||'',customer_name:order?.customer_name||'',doctor_name:order?.doctor_name||'',phone:order?.phone||'',phone2:order?.phone2||'',shipping_company:order?.shipping_company||order?.shipping_system||'',branch,actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order?.deposit||0),status:order?.status||'',issues:[...new Set(issues.map(String))]};
+  return logActivity(severity==='warning'?'secretary_audit_warning':'secretary_audit_error',severity==='warning'?'Secretary Audit — تنبيه إدخال':'Secretary Audit — خطأ إدخال',JSON.stringify(info),{order_id:order?.id,ticket_id:info.ticket_id,customer_name:info.customer_name,branch_name:branch||'External Shipping'});
 }
 function describeSecretaryAuditCorrections(order,previousIssues=[]){
   const corrections=[];
@@ -13694,26 +13776,43 @@ async function recordSecretaryAuditResolution(order,actor=currentUser){
   }).map(value=>String(value||'').trim()).filter(Boolean))];
   if(!previousIssues.length)return false;
   const corrections=describeSecretaryAuditCorrections(order,previousIssues);
-  const info={order_id:order.id,ticket_id:ticket,order_number:order.order_number||'',customer_name:order.customer_name||'',doctor_name:order.doctor_name||'',branch:pendingOrderBranch(order)||order.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order.deposit||0),status:order.status||'',issues:corrections};
-  const saved=await logActivity('secretary_audit_resolved','Secretary Audit — تم تعديل الخطأ',JSON.stringify(info),{order_id:order.id,ticket_id:ticket,customer_name:info.customer_name,branch_name:info.branch});
+  const branch=getAuditChatBranch(order);
+  const info={order_id:order.id,ticket_id:ticket,order_number:order.order_number||'',customer_name:order.customer_name||'',doctor_name:order.doctor_name||'',phone:order.phone||'',phone2:order.phone2||'',shipping_company:order.shipping_company||order.shipping_system||'',branch,actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order.deposit||0),status:order.status||'',issues:corrections};
+  const saved=await logActivity('secretary_audit_resolved','Secretary Audit — تم تعديل الخطأ',JSON.stringify(info),{order_id:order.id,ticket_id:ticket,customer_name:info.customer_name,branch_name:branch||'External Shipping'});
   if(saved){
     await sendAutomatedAuditNotice('secretary',order,corrections,{severity:'resolved',recordEvent:false,actor});
     if(!document.getElementById('secretaryAuditPage')?.classList.contains('hidden'))scheduleSecretaryAuditLiveRefresh();
   }
   return saved;
 }
+function getAuditChatBranch(order){
+  // A selected external carrier wins over a stale branch assignment after transfer.
+  const shipping=String(order?.shipping_company||order?.shipping_system||'').trim();
+  const key=normalizeProductReportBranch(shipping||order?.branch||order?.branch_name||'');
+  const branch={'nasr-city':'مدينة نصر',alexandria:'اسكندرية',tanta:'طنطا',mansoura:'المنصورة'}[key];
+  return typeof branch==='string'&&PENDING_BRANCH_NAMES.includes(branch)?branch:'';
+}
+
+function isBranchAuditChatMessage(row){
+  if(!Object.values(AUDIT_BOTS).some(bot=>bot.username===String(row?.sender_username||'')))return true;
+  const match=String(row?.message||'').match(/(?:^|\n)الفرع:[ \t]*([^\r\n]+)/);
+  return Boolean(match&&getAuditChatBranch({branch:match[1]}));
+}
+
 async function sendAutomatedAuditNotice(kind,order,issues,options={}){
   if(!order||!issues?.length)return false;
   const severity=String(options.severity||'error').toLowerCase();
-  const key=`${kind}:${severity}:${order.id||order.phone}:${issues.join('|')}`;
+  const branch=getAuditChatBranch(order);
+  const key=`${kind}:${severity}:${branch||'external'}:${order.id||order.phone}:${issues.join('|')}`;
   const last=auditNoticeThrottle.get(key)||0;if(Date.now()-last<120000)return true;auditNoticeThrottle.set(key,Date.now());
   try{
     if(kind==='secretary'&&options.recordEvent!==false&&severity!=='resolved')await recordSecretaryAuditEvent(order,issues,severity,options.actor||currentUser);
     // Warnings remain available inside Secretary Audit, but Chat is reserved
     // for blocking errors and confirmed corrections only.
     if(severity!=='error'&&severity!=='resolved')return true;
+    if(!branch)return true;
     const recipients=await getAuditRecipientUsers(kind,options.actor||currentUser),bot=AUDIT_BOTS[kind];
-    const ticket=getTicketId(order)||order.order_number||'—',branch=pendingOrderBranch(order)||order.branch||'—';
+    const ticket=getTicketId(order)||order.order_number||'—';
     const openMarker=order.id?`\n[OPEN_ORDER:${order.id}]`:'';
     const title=kind==='secretary'?(severity==='resolved'?'تم تعديل خطأ أوردر':'خطأ إدخال أوردر'):'خطأ في تحصيل أوردر';
     const detailsLabel=severity==='resolved'?'التعديلات':'المشكلة';
@@ -13877,12 +13976,8 @@ function renderKhaznaOrders() {
         <div style="display:flex;gap:5px;align-items:center;">
           ${getCollectButtonHtml(o, 'khazna')}
           ${lockedByDaily ? '<span class="chip" style="font-size:10px;background:#78350f;color:#fbbf24;">🔒 مقفول</span>' : ''}
-          <button onclick="printSingleOrder('${o.id}')" 
-            style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;
-            border:none;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;font-size:11px;
-            font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(13,148,136,.25);">
-            🖨️ طباعة
-          </button>
+          <button class="operation-manager-report-btn" type="button" onclick="openKhaznaOrderTab('${o.id}')" title="فتح الأوردر في علامة تبويب جديدة">Ticket ID</button>
+          <button class="operation-manager-report-btn" type="button" onclick="printSingleOrder('${o.id}')">🖨️ طباعة</button>
           ${hasFinancialIssue ? `<span style="display:inline-flex;color:#ef4444;font-size:10px;font-weight:900;max-width:190px;white-space:normal;line-height:1.35;">⚠️ ${escapeHTML(financialIssueText)}</span>` : ''}
         </div>
       </td>
@@ -13891,6 +13986,11 @@ function renderKhaznaOrders() {
   
   tbody.innerHTML = rows;
   syncKhaznaSelectionUI(visibleKhaznaOrders);
+}
+
+function openKhaznaOrderTab(orderId){
+  const order=khaznaOrders.find(item=>String(item.id)===String(orderId));
+  if(order)openReportOrderTab('khazna',order);
 }
 
 function toggleKhaznaOrder(checkbox, id) {
@@ -15178,6 +15278,8 @@ let customerProfileCustomer = null;
 let customerProfileOrders = [];
 let customerProfileActivities = [];
 let customerProfileSource = 'dashboard';
+let customerProfileFocusOrderId = '';
+let customerProfileEditSaving = false;
 
 function normalizeCustomerPhoneClient(value) {
   let digits = String(value || '').replace(/\D/g, '');
@@ -15391,6 +15493,7 @@ function customerProfileStatusClass(status) {
 
 async function openCustomerProfile(orderId, source = 'dashboard') {
   customerProfileSource = source;
+  customerProfileFocusOrderId = String(orderId||'');
   const modal = ensureCustomerProfileModal();
   const content = document.getElementById('customerProfileContent');
   modal.classList.add('open');
@@ -15459,6 +15562,7 @@ function renderCustomerProfile() {
   const countStatus = status => list.filter(order => String(order.status || '') === status).length;
   const latest = list[0] || null;
   const adminEdit = isAdmin() ? '<button class="customer-profile-soft-btn" type="button" onclick="toggleCustomerProfileEdit(true)"><span>✏️ تعديل بيانات العميل</span></button>' : '';
+  const addNote = '<button class="customer-profile-soft-btn" type="button" onclick="openCustomerProfileOrderNote()"><span>📝 إضافة ملاحظة</span></button>';
 
   content.innerHTML = `
     <header class="customer-profile-header">
@@ -15468,6 +15572,7 @@ function renderCustomerProfile() {
         <p>${escapeHTML(customer.phone || '')}${customer.phone2 ? ` • ${escapeHTML(customer.phone2)}` : ''}</p>
       </div>
       <div class="customer-profile-header-actions">
+        ${addNote}
         ${adminEdit}
         <button class="customer-profile-new-btn" type="button" onclick="startNewOrderForCustomer()"><span>＋ أوردر جديد لنفس العميل</span></button>
         <button class="customer-profile-close" type="button" onclick="closeCustomerProfile()">✕</button>
@@ -15500,7 +15605,7 @@ function renderCustomerProfile() {
       <div><label>المنطقة</label><input id="customerProfileEditArea" value="${escapeHTML(customer.area || '')}"></div>
       <div><label>الدكتور</label><input id="customerProfileEditDoctor" value="${escapeHTML(customer.doctor_name || '')}"></div>
       <div class="wide"><label>ملاحظات دائمة للعميل</label><textarea id="customerProfileEditNotes" rows="2">${escapeHTML(customer.notes || '')}</textarea></div>
-      <div class="wide customer-profile-edit-actions"><button type="button" onclick="saveCustomerProfileEdit()">حفظ بيانات العميل</button><button type="button" class="cancel" onclick="toggleCustomerProfileEdit(false)">إلغاء</button></div>
+      <div class="wide customer-profile-edit-actions"><button id="customerProfileEditSaveBtn" type="button" onclick="saveCustomerProfileEdit()">حفظ بيانات العميل</button><button type="button" class="cancel" onclick="toggleCustomerProfileEdit(false)">إلغاء</button></div>
     </section>
 
     <section class="customer-profile-history-section">
@@ -15554,7 +15659,7 @@ function toggleCustomerProfileEdit(show) {
 }
 
 async function saveCustomerProfileEdit() {
-  if (!isAdmin() || !customerProfileCustomer) return;
+  if (!isAdmin() || !customerProfileCustomer || customerProfileEditSaving) return;
   const payload = {
     customer_name: String(document.getElementById('customerProfileEditName')?.value || '').trim(),
     phone: String(document.getElementById('customerProfileEditPhone')?.value || '').trim(),
@@ -15564,30 +15669,41 @@ async function saveCustomerProfileEdit() {
     notes: String(document.getElementById('customerProfileEditNotes')?.value || '').trim() || null
   };
   if (!payload.customer_name || !normalizeCustomerPhoneClient(payload.phone)) { alert('اكتب اسم العميل ورقم موبايل صحيح'); return; }
-  const result = await supabaseClient.from('customers').update(payload).eq('id', customerProfileCustomer.id).select().single();
-  if (result.error) { alert('تعذر تعديل بيانات العميل: ' + result.error.message); return; }
-  customerProfileCustomer = result.data;
-  await logActivity('customer_updated', 'تم تعديل ملف العميل', `العميل: ${payload.customer_name} | الموبايل: ${payload.phone}`, { customer_name: payload.customer_name, branch_name: customerProfileCustomer.last_branch || null });
-  renderCustomerProfile();
-  alert('✅ تم تحديث بيانات العميل. الأوردرات القديمة احتفظت ببياناتها الأصلية.');
+  const original={...customerProfileCustomer};
+  const saveButton=document.getElementById('customerProfileEditSaveBtn');
+  customerProfileEditSaving=true;
+  if(saveButton){saveButton.disabled=true;saveButton.textContent='جاري الحفظ...';}
+  try{
+    const customerResult=await supabaseClient.from('customers').update(payload).eq('id',original.id).select().single();
+    if(customerResult.error)throw customerResult.error;
+    const orderPayload={customer_name:payload.customer_name,phone:payload.phone,phone2:payload.phone2,area:payload.area,doctor_name:payload.doctor_name};
+    const ordersResult=await supabaseClient.from('orders').update(orderPayload).eq('customer_id',original.id).select('*');
+    if(ordersResult.error){
+      const rollback={customer_name:original.customer_name,phone:original.phone,phone2:original.phone2||null,area:original.area||null,doctor_name:original.doctor_name||null,notes:original.notes||null,last_branch:original.last_branch||null};
+      await supabaseClient.from('customers').update(rollback).eq('id',original.id);
+      throw ordersResult.error;
+    }
+    const finalCustomer=await supabaseClient.from('customers').update({...payload,last_branch:original.last_branch||null}).eq('id',original.id).select().single();
+    customerProfileCustomer=finalCustomer.error?customerResult.data:finalCustomer.data;
+    const updatedOrders=ordersResult.data||[];
+    customerProfileOrders=updatedOrders.filter(canViewCustomerOrder).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    updatedOrders.forEach(order=>applyLiveOrderPayload({eventType:'UPDATE',new:order,old:{id:order.id}}));
+    await logActivity('customer_updated','تم تعديل ملف العميل والأوردرات المرتبطة',`العميل: ${payload.customer_name} | الموبايل: ${payload.phone} | الأوردرات: ${updatedOrders.length}`,{customer_name:payload.customer_name,branch_name:customerProfileCustomer.last_branch||null});
+    renderCustomerProfile();
+    alert(`✅ تم تحديث بيانات العميل وظهورها في ${updatedOrders.length} أوردر مرتبط.`);
+  }catch(error){
+    alert('تعذر تعديل بيانات العميل والأوردرات المرتبطة: '+(error?.message||error));
+  }finally{
+    customerProfileEditSaving=false;
+    const button=document.getElementById('customerProfileEditSaveBtn');
+    if(button){button.disabled=false;button.textContent='حفظ بيانات العميل';}
+  }
 }
 
-async function openCustomerOrderFromProfile(orderId) {
+function openCustomerOrderFromProfile(orderId) {
   const order = customerProfileOrders.find(item => String(item.id) === String(orderId));
   if (!order) return;
-  closeCustomerProfile();
-  const branch = String(order.branch || '').trim();
-  if (branch && canAccessBranch(branch)) {
-    await openBranchPage(branch);
-    setTimeout(() => {
-      const search = document.getElementById('bSearchInput');
-      if (search) { search.value = getTicketId(order); search.dispatchEvent(new Event('input', { bubbles: true })); search.focus(); }
-    }, 250);
-  } else {
-    showOrdersPage();
-    const search = document.getElementById('searchInput');
-    if (search) { search.value = getTicketId(order); search.dispatchEvent(new Event('input', { bubbles: true })); search.focus(); }
-  }
+  openReportOrderTab('customer_profile',order);
 }
 
 async function printCustomerProfileOrder(orderId) {
@@ -15673,7 +15789,7 @@ function toggleChatUnreadFilter(){
 
 function applyChatConversationMetadata(rows){
   const me=chatCurrentUsername(),byUser=new Map();
-  (rows||[]).forEach(row=>{
+  (rows||[]).filter(isBranchAuditChatMessage).forEach(row=>{
     const sender=String(row.sender_username||''),receiver=String(row.receiver_username||'');
     const other=sender===me?receiver:sender;
     if(!other)return;
@@ -15697,7 +15813,7 @@ async function loadChatConversationMetadata(){
   if(sent.error||received.error){handleChatSchemaError(sent.error||received.error);return;}
   const rows=[...(sent.data||[]),...(received.data||[])];
   applyChatConversationMetadata(rows);
-  const unreadRows=(received.data||[]).filter(row=>row.is_read===false);
+  const unreadRows=(received.data||[]).filter(row=>row.is_read===false&&isBranchAuditChatMessage(row));
   const counts={};
   unreadRows.forEach(row=>{const key=String(row.sender_username||'');counts[key]=(counts[key]||0)+1;});
   chatUsers.forEach(user=>{user._unread=counts[chatUserKey(user)]||0;});
@@ -15716,9 +15832,10 @@ async function refreshChatUnreadCount(){
   const me = chatCurrentUsername();
   const { data, error } = await supabaseClient.from('chat_messages').select('id,sender_username,receiver_username,message,attachment_url,created_at').eq('receiver_username', me).eq('is_read', false);
   if (error) { handleChatSchemaError(error); return; }
-  updateChatUnreadBadge((data || []).length);
+  const visibleRows=(data || []).filter(isBranchAuditChatMessage);
+  updateChatUnreadBadge(visibleRows.length);
   const counts = {};
-  (data || []).forEach(row => {
+  visibleRows.forEach(row => {
     const key=String(row.sender_username||'');counts[key]=(counts[key]||0)+1;
     const user=chatUsers.find(item=>chatUserKey(item)===key);
     if(user&&(!user._lastMessageAt||new Date(row.created_at||0)>new Date(user._lastMessageAt||0))){user._lastMessageAt=row.created_at||'';user._lastMessagePreview=row.message||((row.attachment_url)?'📎 مرفق':'');}
@@ -15744,6 +15861,7 @@ function startChatRealtime(){
   chatRealtimeChannel = supabaseClient.channel(`okb-chat-${me}-${Date.now()}`)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},async payload=>{
       const row=payload?.new||{};
+      if(!isBranchAuditChatMessage(row))return;
       const isForMe=String(row.receiver_username||'')===me;
       const isMine=String(row.sender_username||'')===me;
       if (!isForMe && !isMine) return;
@@ -15790,7 +15908,7 @@ async function refreshChatPage(button){
   const old=button?.textContent;
   if(button){button.disabled=true;button.textContent='جاري التحديث...';}
   try{ await loadChatUsers(); await refreshChatUnreadCount(); if(chatSelectedUser)await loadChatMessages(); }
-  finally{if(button){button.disabled=false;button.textContent=old||'↻ Refresh';}}
+  finally{if(button){button.disabled=false;button.textContent=old||'Refresh';}}
 }
 
 async function loadChatUsers(){
@@ -15843,7 +15961,7 @@ async function loadChatMessages(){
   const me=chatCurrentUsername(),other=chatUserKey(chatSelectedUser);
   const [a,b]=await Promise.all([fetchChatDirection(me,other),fetchChatDirection(other,me)]);
   if(a.error||b.error){handleChatSchemaError(a.error||b.error);return;}
-  chatMessages=[...(a.data||[]),...(b.data||[])].sort((x,y)=>new Date(x.created_at)-new Date(y.created_at));
+  chatMessages=[...(a.data||[]),...(b.data||[])].filter(isBranchAuditChatMessage).sort((x,y)=>new Date(x.created_at)-new Date(y.created_at));
   if(!chatMessages.length){box.innerHTML='<div class="chat-empty">ابدأ أول رسالة في المحادثة</div>';return;}
   box.innerHTML=chatMessages.map(row=>{
     const mine=String(row.sender_username||'')===me;

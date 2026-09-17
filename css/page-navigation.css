@@ -1,0 +1,45 @@
+/* Scoped navigation controls: existing page buttons keep their own styles. */
+.app-page-actions,.app-refresh-back{display:flex;align-items:center;gap:8px;direction:rtl}
+.app-page-actions{flex-wrap:wrap}
+.app-refresh-back{flex:0 0 auto;flex-wrap:nowrap}
+button.app-back-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;direction:ltr;white-space:nowrap;cursor:pointer;touch-action:manipulation}
+button.app-back-btn svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+button.app-back-btn:not(.app-back-btn--gold){
+  position:relative;isolation:isolate;overflow:hidden;flex:0 0 auto;min-width:96px;height:38px;min-height:38px;
+  padding:0 15px;border:2px solid #76ab15;border-radius:48% 45% 44% 46% / 48% 49% 47% 48%;
+  color:#101606;background:linear-gradient(155deg,#dbff79 0%,#c2ff4d 42%,#a8ed24 100%);
+  box-shadow:inset 0 0 0 2px #b1eb40,inset 0 3px 2px #edffa6,0 2px 5px #0004;
+  font:700 18px/1 'Comic Sans MS','Segoe Print','Chalkboard SE',cursive;
+  transition:filter .15s ease,transform .15s ease;
+}
+button.app-back-btn:not(.app-back-btn--gold)::before{content:'';position:absolute;z-index:-1;top:3px;left:17%;width:62%;height:5px;border-radius:50%;background:#f3ffc688;pointer-events:none}
+button.app-back-btn:not(.app-back-btn--gold)>span{text-transform:uppercase}
+button.app-back-btn:not(.app-back-btn--gold):hover{color:#080d02;background:linear-gradient(155deg,#e5ff98,#c2ff4d 45%,#b1f331);filter:brightness(1.03)}
+button.app-back-btn:not(.app-back-btn--gold):active{transform:translateY(1px)}
+button.app-back-btn:focus-visible{outline:2px solid #f8fafc;outline-offset:3px}
+button.app-back-btn:disabled{cursor:not-allowed;opacity:.6;transform:none}
+.app-users-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;row-gap:12px}
+.app-users-heading #customRoleCreatorCard{grid-column:1;min-width:0}
+.app-users-heading .users-role-creator-layout{display:grid!important;grid-template-columns:minmax(220px,1fr) auto;align-items:center!important;gap:16px!important;flex-wrap:nowrap!important}
+.app-users-heading .users-role-create-controls{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:nowrap!important}
+.app-users-heading #customRoleNameInput{width:260px;min-width:260px!important;height:44px;min-height:44px}
+.app-users-heading .users-role-create-controls>button{height:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.app-users-heading .users-role-nav-actions{grid-column:2;position:relative;justify-self:end;align-self:center;display:flex;align-items:center;gap:0;flex-wrap:nowrap}
+.app-users-heading .users-role-nav-buttons{gap:8px}
+.app-users-heading .users-role-nav-buttons>button{width:108px;min-width:108px;height:44px;min-height:44px;padding-block:0;display:inline-flex;align-items:center;justify-content:center}
+.app-users-heading #usersRefreshStatus{position:absolute;inset-block-start:calc(100% + 5px);inset-inline-end:0;z-index:1;white-space:nowrap;pointer-events:none}
+@media(max-width:900px){
+  .app-users-heading{grid-template-columns:minmax(0,1fr)}
+  .app-users-heading #customRoleCreatorCard,.app-users-heading .users-role-nav-actions{grid-column:1}
+  .app-users-heading .users-role-nav-actions{justify-self:end}
+}
+@media(max-width:620px){
+  button.app-back-btn:not(.app-back-btn--gold){min-width:86px;padding:0 12px;font-size:16px}
+  .app-users-heading .users-role-creator-layout{grid-template-columns:1fr}
+  .app-users-heading .users-role-create-controls{width:100%;flex-wrap:wrap!important}
+  .app-users-heading #customRoleNameInput{min-width:0!important;width:100%}
+  .app-users-heading .users-role-create-controls>button{width:100%}
+  .app-users-heading .users-role-nav-actions,.app-users-heading .users-role-nav-buttons{width:100%}
+  .app-users-heading .users-role-nav-buttons>button{flex:1 1 0;width:auto;min-width:0}
+}
+@media print{[data-app-back]{display:none!important}}
