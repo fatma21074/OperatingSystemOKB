@@ -145,15 +145,58 @@ let orders = [];
 let shippingRankOrders = [];
 let shippingRankOrdersScope = '';
 let shippingRankLoadToken = 0;
+let shippingRankLoadPromise = null;
+let shippingRankLoadPromiseScope = '';
+let shippingRankDataReady = false;
+let shippingRankLoading = false;
+let shippingRankLoadedAt = '';
+let shippingRankLoadError = '';
+let shippingRankRevision = 0;
+let shippingRankLoadedRange = { from:'', to:'' };
+let shippingRankLoadedMode = 'branch';
+let shippingRankDerivedCache = { key:'', orders:[], summary:null, branchRows:[], daily:[] };
+let shippingRankRenderedChartKey = '';
+let shippingRankTrueRanks = new Map();
+let shippingRankTrueRanksScope = '';
+let shippingRankTrueRankError = '';
 let branchRankingPreviousOrders = [];
 let branchRankingPreviousRange = null;
+let branchRankingPreviousScope = '';
+let branchRankingPreviousLoadToken = 0;
+let branchRankingPreviousLoadPromise = null;
+let branchRankingPreviousLoadPromiseScope = '';
+let branchRankingPreviousDataReady = false;
+let branchRankingPreviousLoading = false;
+let branchRankingPreviousLoadError = '';
+let branchRankingPreviousRevision = 0;
+let branchRankingPreviousDerivedCache = { key:'', orders:[], summary:null, branchRows:[], daily:[] };
 let branchPerformanceRankingMode = 'details';
 let doctorRankOrders = [];
 let doctorRankOrdersScope = '';
 let doctorRankLoadToken = 0;
+let doctorRankLoadPromise = null;
+let doctorRankLoadPromiseScope = '';
+let doctorRankDataReady = false;
+let doctorRankLoading = false;
+let doctorRankLoadedAt = '';
+let doctorRankLoadError = '';
+let doctorRankRevision = 0;
+let doctorRankDerivedCache = { key:'', rows:[], orders:[], summary:null };
+let doctorRankSearchTimer = null;
 let dailyReportOrders = [];
 let dailyReportOrdersScope = '';
 let dailyReportLoadToken = 0;
+let dailyReportLoadPromise = null;
+let dailyReportLoadPromiseScope = '';
+let dailyReportDataReady = false;
+let dailyReportLoading = false;
+let dailyReportLoadedAt = '';
+let dailyReportLoadError = '';
+let dailyReportBranchFilter = 'all';
+let dailyReportCategoryFilter = 'all';
+let dailyReportPage = 1;
+let dailyReportRevision = 0;
+let dailyReportAnalysisCache = new WeakMap();
 let users = [];
 let editId = null;
 let currentUser = null;
@@ -1897,10 +1940,32 @@ function isLiveOrderInsideBranchScope(order) {
 }
 
 function isLiveOrderInsideShippingRankScope(order) {
-  if (!order || !shippingRankOrdersScope) return false;
-  const [from, to] = String(shippingRankOrdersScope).split(':');
-  const date = getLocalDateISO(order.created_at);
-  return Boolean(date && (!from || date >= from) && (!to || date <= to));
+  if (!order || !shippingRankDataReady || !shippingRankOrdersScope) return false;
+  const { from, to } = shippingRankLoadedRange;
+  if (shippingRankLoadedMode === 'company') {
+    const day = getLocalDateISO(order.created_at);
+    return Boolean(day && from && to && day >= from && day <= to);
+  }
+  return Boolean(from && to && isShippingRankOrderAllowed(order, from, to, { mode:shippingRankLoadedMode }));
+}
+
+function isLiveOrderInsideBranchRankComparisonScope(order) {
+  if (!order || !branchRankingPreviousDataReady || !branchRankingPreviousRange) return false;
+  return isShippingRankOrderAllowed(order, branchRankingPreviousRange.from, branchRankingPreviousRange.to, { mode:'branch' });
+}
+
+function isLiveOrderInsideDailyReportScope(order) {
+  if (!order || !dailyReportDataReady || !hasRoleFeature('daily_report')) return false;
+  const { from, to } = getDailyReportInputRange();
+  if (!from || !to || dailyReportOrdersScope !== getDailyReportScopeKey(from, to)) return false;
+  return isDailyReportOrderAllowed(order, from, to);
+}
+
+function isLiveOrderInsideDoctorRankScope(order) {
+  if (!order || !doctorRankDataReady || !hasRoleFeature('doctor_rank_stores')) return false;
+  const { from, to } = getDoctorRankInputRange();
+  if (!from || !to || doctorRankOrdersScope !== getDoctorRankScopeKey(from, to)) return false;
+  return isDoctorRankOrderAllowed(order, from, to);
 }
 
 function applyLiveOrderPayload(payload) {
@@ -1911,10 +1976,41 @@ function applyLiveOrderPayload(payload) {
 
   orders = replaceLiveOrderInList(orders, id, row, Boolean(row && isLiveOrderInsideDashboardScope(row)));
   branchOrders = replaceLiveOrderInList(branchOrders, id, row, Boolean(row && isLiveOrderInsideBranchScope(row)));
-  shippingRankOrders = replaceLiveOrderInList(shippingRankOrders, id, row, Boolean(row && isLiveOrderInsideShippingRankScope(row)));
+  const touchesShippingRank = shippingRankDataReady && (
+    shippingRankOrders.some(order => String(order.id) === id) || Boolean(row && isLiveOrderInsideShippingRankScope(row))
+  );
+  if (touchesShippingRank) {
+    shippingRankOrders = replaceLiveOrderInList(shippingRankOrders, id, row, Boolean(row && isLiveOrderInsideShippingRankScope(row)));
+    shippingRankRevision += 1;
+    invalidateShippingRankDerivedCache();
+  }
+  const touchesBranchComparison = branchRankingPreviousDataReady && (
+    branchRankingPreviousOrders.some(order => String(order.id) === id) || Boolean(row && isLiveOrderInsideBranchRankComparisonScope(row))
+  );
+  if (touchesBranchComparison) {
+    branchRankingPreviousOrders = replaceLiveOrderInList(branchRankingPreviousOrders, id, row, Boolean(row && isLiveOrderInsideBranchRankComparisonScope(row)));
+    branchRankingPreviousRevision += 1;
+    invalidateBranchRankingPreviousDerivedCache();
+  }
+  const touchesDoctorRank = doctorRankDataReady && (
+    doctorRankOrders.some(order => String(order.id) === id) || Boolean(row && isLiveOrderInsideDoctorRankScope(row))
+  );
+  if (touchesDoctorRank) {
+    doctorRankOrders = replaceLiveOrderInList(doctorRankOrders, id, row, Boolean(row && isLiveOrderInsideDoctorRankScope(row)));
+    doctorRankRevision += 1;
+    invalidateDoctorRankDerivedCache();
+  }
   khaznaOrders = replaceLiveOrderInList(khaznaOrders, id, row, Boolean(row && khaznaOrders.some(order => String(order.id) === id)));
   branchesTreasuryOrders = replaceLiveOrderInList(branchesTreasuryOrders, id, row, Boolean(row && branchesTreasuryOrders.some(order => String(order.id) === id)));
   pendingOrders = replaceLiveOrderInList(pendingOrders, id, row, Boolean(row && pendingOrders.some(order => String(order.id) === id)));
+  const touchesDailyReport = dailyReportDataReady && (
+    dailyReportOrders.some(order => String(order.id) === id) || Boolean(row && isLiveOrderInsideDailyReportScope(row))
+  );
+  if (touchesDailyReport) {
+    dailyReportOrders = replaceLiveOrderInList(dailyReportOrders, id, row, Boolean(row && isLiveOrderInsideDailyReportScope(row)));
+    dailyReportRevision += 1;
+    dailyReportAnalysisCache = new WeakMap();
+  }
 
   scheduleLiveBusinessRender();
 }
@@ -1933,6 +2029,8 @@ function scheduleLiveBusinessRender() {
       renderShippingRank();
       renderShippingCharts();
     }
+    if (isLivePageVisible('doctorRankPage')) renderDoctorRank();
+    if (isLivePageVisible('branchRankPage')) renderReport();
 
     const financialRefreshes = [];
     if (isLivePageVisible('khaznaPage')) financialRefreshes.push(loadKhaznaData());
@@ -1961,6 +2059,45 @@ async function applyLiveUserPayload(payload) {
       managed_branches: row.managed_branches ?? currentUser.managed_branches,
       system_permissions: row.system_permissions ?? currentUser.system_permissions
     };
+    shippingRankLoadToken += 1;
+    shippingRankOrders = [];
+    shippingRankOrdersScope = '';
+    shippingRankLoadPromise = null;
+    shippingRankLoadPromiseScope = '';
+    shippingRankDataReady = false;
+    shippingRankLoading = false;
+    shippingRankLoadedAt = '';
+    shippingRankLoadError = '';
+    shippingRankRevision += 1;
+    shippingRankLoadedRange = { from:'', to:'' };
+    invalidateShippingRankDerivedCache();
+    shippingRankRenderedChartKey = '';
+    shippingRankTrueRanks = new Map();
+    shippingRankTrueRanksScope = '';
+    shippingRankTrueRankError = '';
+    branchRankingPreviousLoadToken += 1;
+    branchRankingPreviousOrders = [];
+    branchRankingPreviousRange = null;
+    branchRankingPreviousScope = '';
+    branchRankingPreviousLoadPromise = null;
+    branchRankingPreviousLoadPromiseScope = '';
+    branchRankingPreviousDataReady = false;
+    branchRankingPreviousLoading = false;
+    branchRankingPreviousLoadError = '';
+    branchRankingPreviousRevision += 1;
+    invalidateBranchRankingPreviousDerivedCache();
+    doctorRankLoadToken += 1;
+    doctorRankOrders = [];
+    doctorRankOrdersScope = '';
+    doctorRankLoadPromise = null;
+    doctorRankLoadPromiseScope = '';
+    doctorRankDataReady = false;
+    doctorRankLoading = false;
+    doctorRankLoadedAt = '';
+    doctorRankLoadError = '';
+    doctorRankRevision += 1;
+    invalidateDoctorRankDerivedCache();
+    setDoctorRankActionsBusy(false);
     sessionStorage.setItem('okb_current_user', JSON.stringify(currentUser));
     await loadRolePermissions();
     setupUserView();
@@ -1985,7 +2122,13 @@ async function resyncLiveBusinessData() {
     if (isLivePageVisible('branchesTreasuryPage')) tasks.push(loadBranchesTreasury());
     if (isLivePageVisible('pendingPage')) tasks.push(loadPendingOrders(false));
     if (isLivePageVisible('shippingRankPage')) tasks.push(
-      loadShippingRankRange({ force:true }).then(() => { renderShippingRank(); renderShippingCharts(); })
+      loadShippingRankRange({ force:true, forceComparison:true }).then(() => { renderShippingRank(); renderShippingCharts(); })
+    );
+    if (isLivePageVisible('doctorRankPage')) tasks.push(
+      loadDoctorRankRange({ force:true }).then(renderDoctorRank)
+    );
+    if (isLivePageVisible('branchRankPage')) tasks.push(
+      loadDailyReportRange({ force:true }).then(renderReport)
     );
     tasks.push(refreshPendingHeaderCount());
     if (isAdmin() || isExecutiveAssistant()) tasks.push(loadUsers());
@@ -3632,14 +3775,63 @@ function resetAppState() {
   shippingAutoMonthKey = '';
   shippingRankOrders = [];
   shippingRankOrdersScope = '';
+  shippingRankLoadToken += 1;
+  shippingRankLoadPromise = null;
+  shippingRankLoadPromiseScope = '';
+  shippingRankDataReady = false;
+  shippingRankLoading = false;
+  shippingRankLoadedAt = '';
+  shippingRankLoadError = '';
+  shippingRankRevision = 0;
+  shippingRankLoadedRange = { from:'', to:'' };
+  shippingRankLoadedMode = 'branch';
+  invalidateShippingRankDerivedCache();
+  shippingRankRenderedChartKey = '';
+  shippingRankTrueRanks = new Map();
+  shippingRankTrueRanksScope = '';
+  shippingRankTrueRankError = '';
   branchRankingPreviousOrders = [];
   branchRankingPreviousRange = null;
+  branchRankingPreviousScope = '';
+  branchRankingPreviousLoadToken += 1;
+  branchRankingPreviousLoadPromise = null;
+  branchRankingPreviousLoadPromiseScope = '';
+  branchRankingPreviousDataReady = false;
+  branchRankingPreviousLoading = false;
+  branchRankingPreviousLoadError = '';
+  branchRankingPreviousRevision = 0;
+  invalidateBranchRankingPreviousDerivedCache();
   branchPerformanceRankingMode = 'details';
   doctorRankOrders = [];
   doctorRankOrdersScope = '';
+  doctorRankLoadToken += 1;
+  doctorRankLoadPromise = null;
+  doctorRankLoadPromiseScope = '';
+  doctorRankDataReady = false;
+  doctorRankLoading = false;
+  doctorRankLoadedAt = '';
+  doctorRankLoadError = '';
+  doctorRankRevision = 0;
+  invalidateDoctorRankDerivedCache();
+  setDoctorRankActionsBusy(false);
+  if (doctorRankSearchTimer) clearTimeout(doctorRankSearchTimer);
+  doctorRankSearchTimer = null;
+  doctorWeeklyLoadToken += 1;
   doctorWeeklyOrdersSource = [];
   dailyReportOrders = [];
   dailyReportOrdersScope = '';
+  dailyReportLoadToken += 1;
+  dailyReportLoadPromise = null;
+  dailyReportLoadPromiseScope = '';
+  dailyReportDataReady = false;
+  dailyReportLoading = false;
+  dailyReportLoadedAt = '';
+  dailyReportLoadError = '';
+  dailyReportBranchFilter = 'all';
+  dailyReportCategoryFilter = 'all';
+  dailyReportPage = 1;
+  dailyReportRevision = 0;
+  dailyReportAnalysisCache = new WeakMap();
 
   Object.keys(pageState).forEach(k => pageState[k] = 1);
 
@@ -3819,11 +4011,13 @@ async function loadDoctors() {
         if (Array.isArray(cachedDoctors)) doctorsList = cachedDoctors;
       } catch (cacheError) { console.warn('Doctors cache read failed:', cacheError); }
     }
+    invalidateDoctorRankDerivedCache();
     renderDoctorsSettings(); renderDoctorOptions(); if ($('productReportDoctor')) populateProductReportFilters();
     if (!doctorsList.length && /jwt\s*expired|token.*expired/i.test(String(error.message || ''))) handleOkbSessionExpiry(error);
     return;
   }
   doctorsList = data || [];
+  invalidateDoctorRankDerivedCache();
   try { localStorage.setItem('okb_doctors_cache', JSON.stringify(doctorsList)); } catch (cacheError) {}
   renderDoctorsSettings();
   renderDoctorOptions();
@@ -3850,8 +4044,19 @@ function setActiveMenu(pageId) {
 let pendingOrders = [];
 let pendingLoadSequence = 0;
 let pendingDataReady = false;
+let pendingDataMonthKey = '';
+let pendingHeaderLoadSequence = 0;
 let pendingExportInProgress = false;
 const PENDING_BRANCH_NAMES = ['مدينة نصر','اسكندرية','طنطا','المنصورة'];
+function getPendingMonthRange(){
+  const month=getCurrentDashboardMonthRange();
+  return {...month,...getCairoDateRangeUTC(month.from,month.to)};
+}
+function isPendingOrderInMonth(order,month){
+  const date=parsePreciseServerDate(order?.created_at);
+  const timestamp=date?.toISOString();
+  return Boolean(timestamp&&timestamp>=month.start&&timestamp<month.endExclusive);
+}
 function pendingReferenceDate(order) {
   const now = Date.now();
   const candidates = [order?.status_updated_at, order?.updated_at, order?.modified_at, order?.created_at]
@@ -3882,19 +4087,33 @@ function updatePendingHeaderBadge(count){
   badge.setAttribute('aria-label',`${value} pending orders`);
 }
 async function refreshPendingHeaderCount(){
+  const request=++pendingHeaderLoadSequence;
+  const actorId=String(currentUser?.id||'');
   if(!canViewPendingHeaderCount()){updatePendingHeaderBadge(0);return;}
-  const {data,error}=await supabaseClient
-    .from('orders')
-    .select('*')
-    .eq('status','Delivering')
-    .limit(2000);
-  if(error){console.warn('Pending header count error:',error.message);return;}
-  const count=(data||[]).filter(order=>
-    pendingOrderBranch(order)&&pendingDays(order)>=3&&canSeePendingOrder(order)
-  ).length;
-  updatePendingHeaderBadge(count);
+  const month=getPendingMonthRange();
+  if(isLivePageVisible('pendingPage')&&pendingDataMonthKey!==month.key){
+    renderPendingOrders();
+    await loadPendingOrders(false);
+    return;
+  }
+  try{
+    let count=0;
+    for(let offset=0;;offset+=1000){
+      const {data,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
+        .gte('created_at',month.start).lt('created_at',month.endExclusive)
+        .order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
+      if(error)throw error;
+      if(request!==pendingHeaderLoadSequence||String(currentUser?.id||'')!==actorId)return;
+      if(!canViewPendingHeaderCount()){updatePendingHeaderBadge(0);return;}
+      if(month.key!==getCurrentDashboardMonthRange().key)return refreshPendingHeaderCount();
+      count+=(data||[]).filter(order=>isPendingOrderInMonth(order,month)&&pendingDays(order)>=3&&canSeePendingOrder(order)).length;
+      if(!data||data.length<1000)break;
+    }
+    updatePendingHeaderBadge(count);
+  }catch(error){console.warn('Pending header count error:',error.message);}
 }
 function stopPendingHeaderNotifications(){
+  pendingHeaderLoadSequence++;
   if(pendingHeaderPollingTimer){
     clearInterval(pendingHeaderPollingTimer);
     pendingHeaderPollingTimer=null;
@@ -3922,6 +4141,7 @@ async function showPendingPage(){
 async function loadPendingOrders(showMessage){
   const actorId=String(currentUser?.id||'');
   const request=++pendingLoadSequence;
+  const month=getPendingMonthRange();
   pendingDataReady=false;
   const exportButton=$('pendingExportBtn');if(exportButton)exportButton.disabled=true;
   if(!hasRoleFeature('pending')){pendingOrders=[];renderPendingOrders();return false;}
@@ -3930,14 +4150,17 @@ async function loadPendingOrders(showMessage){
     const data=[];
     for(let offset=0;;offset+=1000){
       const {data:page,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
+        .gte('created_at',month.start).lt('created_at',month.endExclusive)
         .order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
       if(error)throw error;
       if(request!==pendingLoadSequence||String(currentUser?.id||'')!==actorId)return false;
       if(!hasRoleFeature('pending')){pendingOrders=[];renderPendingOrders();return false;}
+      if(month.key!==getCurrentDashboardMonthRange().key)return loadPendingOrders(showMessage);
       data.push(...(page||[]));
       if(!page||page.length<1000)break;
     }
-    pendingOrders=data.filter(o=>pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingReferenceTime(a)-pendingReferenceTime(b));
+    pendingOrders=data.filter(o=>isPendingOrderInMonth(o,month)&&pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingReferenceTime(a)-pendingReferenceTime(b));
+    pendingDataMonthKey=month.key;
     pendingDataReady=true;
     updatePendingHeaderBadge(pendingOrders.length);
     setupPendingBranchFilter(); renderPendingOrders();
@@ -3952,10 +4175,11 @@ async function loadPendingOrders(showMessage){
 }
 function getFilteredPendingOrders(){
   if(!hasRoleFeature('pending'))return [];
+  const month=getPendingMonthRange();
   const query=String($('pendingSearch')?.value||'').trim().toLowerCase();
   const branchFilter=(isAdmin()||isOperationManager())?($('pendingBranchFilter')?.value||'all'):'all';
   return pendingOrders.filter(order=>{
-    if(order.status!=='Delivering'||pendingDays(order)<3||!canSeePendingOrder(order))return false;
+    if(!isPendingOrderInMonth(order,month)||order.status!=='Delivering'||pendingDays(order)<3||!canSeePendingOrder(order))return false;
     return (branchFilter==='all'||pendingOrderBranch(order)===branchFilter)&&(!query||[order.customer_name,order.phone,order.phone2,order.order_number,order.ticket_id,order.employee_name,order.doctor_name,order.area,pendingOrderBranch(order)].some(value=>String(value||'').toLowerCase().includes(query)));
   });
 }
@@ -3978,7 +4202,7 @@ async function exportPendingOrders(button){
     const summary=workbook.addWorksheet('Overview');
     summary.columns=[{width:36},{width:44}];
     summary.addRows([
-      ['Pending Orders','كل المتأخرات طبقًا للفلاتر المختارة'],
+      ['Pending Orders','متأخرات الشهر الحالي طبقًا للفلاتر المختارة'],
       ['الفرع',branchLabel],
       ['البحث',search||'—'],['إجمالي المتأخر',rows.length],
       ['7 أيام أو أكثر',rows.filter(order=>pendingDays(order)>=7).length],
@@ -4049,12 +4273,12 @@ function renderPendingOrders(){
   document.getElementById('pendingTotalCount').textContent=num(rows.length);
   document.getElementById('pendingCriticalCount').textContent=num(rows.filter(o=>pendingDays(o)>=7).length);
   document.getElementById('pendingOldestDays').textContent=num(rows.reduce((max,order)=>Math.max(max,pendingDays(order)),0))+' يوم';
-  if(!rows.length){list.innerHTML='<div class="pending-empty">لا توجد أوردرات فروع بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
+  if(!rows.length){list.innerHTML='<div class="pending-empty">لا توجد أوردرات من الشهر الحالي بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
   list.innerHTML=rows.map(o=>`<div class="pending-row"><div class="pending-days">${num(pendingDays(o))}<small>يوم</small></div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="pending-status">Delivering</span><span class="pending-meta">Last update: ${formatEnglishDateTime(pendingReferenceDate(o))}</span></div><div><span class="pending-meta">رقم الأوردر: ${escapeHTML(o.order_number||'—')}</span><span class="pending-meta">Ticket: ${escapeHTML(getTicketId(o))}</span></div><div><span class="pending-meta">${escapeHTML(o.employee_name||'—')}</span><span class="pending-meta">${escapeHTML(o.doctor_name||'')}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(o.area||'')}</span></div><button class="pending-open-btn" type="button" onclick="openPendingOrder('${o.id}')">فتح الأوردر</button></div>`).join('');
 }
 function openPendingOrder(orderId){const order=pendingOrders.find(item=>String(item.id)===String(orderId));if(order)openReportOrderTab('pending',order);}
 
-// ===== OKB Abnormal — Returned + Cancel + verified rescued returns =====
+// ===== OKB Abnormal — Returned + Cancel + verified rescued orders =====
 let okbStoresReportOrders=[];
 let storesReportDateFrom='';
 let storesReportDateTo='';
@@ -4066,7 +4290,8 @@ let storesReportRescueLoading=false;
 let storesReportLoadError='';
 let storesReportRescueError='';
 const STORES_REPORT_RESCUED_STATUS='RescuedReturned';
-const STORES_REPORT_RETURN_ACTIONS=['order_cancelled','order_updated','order_created'];
+const STORES_REPORT_RESCUE_ACTIONS=['order_cancelled','order_updated','order_created'];
+const STORES_REPORT_RESCUE_SOURCE_STATUSES=new Set(['Returned','Cancel']);
 function canSeeStoresReportOrder(order){
   const branch=pendingOrderBranch(order);if(!branch)return false;
   if(isAdmin()||isOperationManager()||isDoctorRole()||getRoleKey(currentUser?.role)==='account_manager')return true;
@@ -4088,11 +4313,11 @@ function setupOKBStoresReportBranchFilter(){
 }
 function getOKBStoresReportBranches(){return PENDING_BRANCH_NAMES.filter(branch=>canSeeStoresReportOrder({branch}));}
 function isOKBStoresRescuedOrder(order){return order?.status==='Signed'&&storesReportRescuedIds.has(String(order.id));}
-function isOKBStoresReturnedEvent(event){
-  if(!STORES_REPORT_RETURN_ACTIONS.includes(event?.action_type))return false;
-  // Read the explicit status field, never a mention of Returned in free-text notes.
+function isOKBStoresRescueSourceEvent(event){
+  if(!STORES_REPORT_RESCUE_ACTIONS.includes(event?.action_type))return false;
+  // Read one explicit status field only; free-text mentions never qualify.
   const matches=[...String(event.action_details||'').matchAll(/(?:^|\|)\s*الحالة:\s*([^|]+)(?=\||$)/g)];
-  return matches.length===1&&matches[0][1].trim()==='Returned';
+  return matches.length===1&&STORES_REPORT_RESCUE_SOURCE_STATUSES.has(matches[0][1].trim());
 }
 function storesReportTicketKey(value){const text=String(value??'').trim();return /^\d+$/.test(text)?text.replace(/^0+(?=\d)/,''):'';}
 async function loadOKBStoresRescuedIds(signedOrders,isCurrent=()=>true){
@@ -4116,12 +4341,12 @@ async function loadOKBStoresRescuedIds(signedOrders,isCurrent=()=>true){
       if(!isCurrent())return rescuedIds;
       const {data,error}=await supabaseClient.from('activity_logs')
         .select('id,action_type,action_details,order_id,ticket_id,branch_name')
-        .in('action_type',STORES_REPORT_RETURN_ACTIONS)
-        .ilike('action_details','%الحالة: Returned%').or(clauses.join(','))
+        .in('action_type',STORES_REPORT_RESCUE_ACTIONS)
+        .ilike('action_details','%الحالة:%').or(clauses.join(','))
         .order('id',{ascending:true}).range(offset,offset+999);
       if(error)throw error;
       for(const event of data||[]){
-        if(!isOKBStoresReturnedEvent(event))continue;
+        if(!isOKBStoresRescueSourceEvent(event))continue;
         let order;
         if(event.order_id!==null&&event.order_id!==undefined&&event.order_id!==''){
           // A populated order ID is authoritative; never fall back to a different ticket.
@@ -4176,8 +4401,8 @@ async function loadOKBStoresReport(showMessage=false){
       okbStoresReportOrders=candidates.filter(order=>order.status==='Returned'||order.status==='Cancel'||isOKBStoresRescuedOrder(order));
     }catch(error){
       if(!isCurrent())return;
-      console.warn('OKB Abnormal return history could not be loaded:',error.message||error);
-      storesReportRescueError='تعذر التحقق من المرتجعات التي تم إنقاذها. اضغط تحديث لإعادة المحاولة.';
+      console.warn('OKB Abnormal rescue history could not be loaded:',error.message||error);
+      storesReportRescueError='تعذر التحقق من الأوردرات التي تم إنقاذها. اضغط تحديث لإعادة المحاولة.';
     }
   }catch(error){if(isCurrent())storesReportLoadError=error.message||String(error);}
   finally{if(isCurrent()){storesReportLoading=false;storesReportRescueLoading=false;renderOKBStoresReport();}}
@@ -4203,7 +4428,7 @@ function renderOKBStoresReport(){
   if(storesReportLoading||awaitingHistory){list.innerHTML='<div class="pending-loading">جاري تحميل بيانات OKB Abnormal...</div>';return;}
   const warning=storesReportRescueError&&(status==='all'||status===STORES_REPORT_RESCUED_STATUS)?`<div class="stores-report-history-warning" role="alert">${escapeHTML(storesReportRescueError)}</div>`:'';
   if(!rows.length){list.innerHTML=warning||'<div class="pending-empty">لا توجد أوردرات مطابقة للفلاتر</div>';return;}
-  list.innerHTML=warning+rows.map(o=>{const isRescued=isOKBStoresRescuedOrder(o),paid=Math.max(0,Number(o.deposit||0)+Number(getLatestCollectEntry(o)?.sales||0)),total=getEffectiveOrderPrice(o),remaining=Math.max(0,total-paid);return `<div class="pending-row${isRescued?' stores-report-rescued-row':''}"><div class="pending-days"><small>Ticket</small>${escapeHTML(getTicketId(o)||'—')}</div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="stores-report-status ${isRescued?'rescued':o.status==='Cancel'?'cancel':'returned'}">${isRescued?'مرتجعات تم انقاذها · Signed':escapeHTML(o.status)}</span><span class="pending-meta">${formatEnglishDateTime(o.created_at)}</span></div><div><span class="pending-meta">دكتور: ${escapeHTML(o.doctor_name||'—')}</span><span class="pending-meta">Order: ${escapeHTML(o.order_number||'—')}</span></div><div><span class="pending-meta">السعر: ${money(total)} | المدفوع: ${money(paid)}</span><span class="pending-meta">المتبقي: ${money(remaining)}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(cleanVisibleOrderNotes(o.notes||'—'))}</span></div><button class="pending-open-btn" type="button" data-order-id="${escapeHTML(String(o.id))}" onclick="openOKBStoresReportOrder(this.dataset.orderId)" title="فتح الأوردر في علامة تبويب جديدة">فتح الأوردر ↗</button></div>`;}).join('');
+  list.innerHTML=warning+rows.map(o=>{const isRescued=isOKBStoresRescuedOrder(o),paid=Math.max(0,Number(o.deposit||0)+Number(getLatestCollectEntry(o)?.sales||0)),total=getEffectiveOrderPrice(o),remaining=Math.max(0,total-paid);return `<div class="pending-row${isRescued?' stores-report-rescued-row':''}"><div class="pending-days"><small>Ticket</small>${escapeHTML(getTicketId(o)||'—')}</div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="stores-report-status ${isRescued?'rescued':o.status==='Cancel'?'cancel':'returned'}">${isRescued?'أوردر تم إنقاذه · Signed':escapeHTML(o.status)}</span><span class="pending-meta">${formatEnglishDateTime(o.created_at)}</span></div><div><span class="pending-meta">دكتور: ${escapeHTML(o.doctor_name||'—')}</span><span class="pending-meta">Order: ${escapeHTML(o.order_number||'—')}</span></div><div><span class="pending-meta">السعر: ${money(total)} | المدفوع: ${money(paid)}</span><span class="pending-meta">المتبقي: ${money(remaining)}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(cleanVisibleOrderNotes(o.notes||'—'))}</span></div><button class="pending-open-btn" type="button" data-order-id="${escapeHTML(String(o.id))}" onclick="openOKBStoresReportOrder(this.dataset.orderId)" title="فتح الأوردر في علامة تبويب جديدة">فتح الأوردر ↗</button></div>`;}).join('');
 }
 function openOKBStoresReportOrder(id){
   const order=okbStoresReportOrders.find(item=>String(item.id)===String(id));
@@ -4212,7 +4437,7 @@ function openOKBStoresReportOrder(id){
 function canUseReportOrderLink(source){
   if(!currentUser)return false;
   if(source==='financial_audit')return hasButtonPermission('btn_financial_audit');
-  return ['stores_report','branches_treasury','pending','activity_log','secretary_audit'].includes(source)&&hasRoleFeature(source);
+  return ['stores_report','branches_treasury','pending','activity_log','secretary_audit','daily_report'].includes(source)&&hasRoleFeature(source);
 }
 function reportLinkedOrderBranch(order,source,activity){
   const direct=pendingOrderBranch(order);if(direct||source!=='activity_log')return direct;
@@ -4302,15 +4527,15 @@ async function exportOKBStoresReportExcel(){
   if(storesReportLoading||storesReportLoadError||((status==='all'||status===STORES_REPORT_RESCUED_STATUS)&&(storesReportRescueLoading||storesReportRescueError))){alert('انتظر اكتمال تحميل التقرير، أو اضغط تحديث إذا تعذر التحميل، ثم أعد التصدير.');return;}
   const rows=getFilteredOKBStoresReportOrders();if(!rows.length){alert('لا توجد بيانات للتصدير');return;}if(typeof XLSX==='undefined'&&typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة');return;}
   const details=rows.map(o=>{const total=getEffectiveOrderPrice(o),paid=Math.max(0,Number(o.deposit||0)+Number(getLatestCollectEntry(o)?.sales||0));return {'Ticket ID':getTicketId(o),'Order Number':o.order_number||'','Customer':o.customer_name||'','Doctor':o.doctor_name||'','Branch':pendingOrderBranch(o),'Status':o.status,'Mobile':o.phone||'','Mobile 2':o.phone2||'','Price':total,'Paid':paid,'Remaining':Math.max(0,total-paid),'Notes':cleanVisibleOrderNotes(o.notes||''),'Date':formatEnglishDateTime(o.created_at)};});
-  const byDoctor={};rows.forEach(o=>{const d=o.doctor_name||'بدون دكتور';byDoctor[d]??={Doctor:d,'Total Orders':0,Returned:0,Cancel:0,'Rescued Returns':0,'Total Value':0};byDoctor[d]['Total Orders']++;const key=isOKBStoresRescuedOrder(o)?'Rescued Returns':o.status;byDoctor[d][key]=(byDoctor[d][key]||0)+1;byDoctor[d]['Total Value']+=getEffectiveOrderPrice(o);});
-  const overview=[{Metric:'Total Orders',Value:rows.length},{Metric:'Returned',Value:rows.filter(o=>o.status==='Returned').length},{Metric:'Cancel',Value:rows.filter(o=>o.status==='Cancel').length},{Metric:'مرتجعات تم انقاذها',Value:rows.filter(isOKBStoresRescuedOrder).length},{Metric:'Total Value',Value:rows.reduce((s,o)=>s+getEffectiveOrderPrice(o),0)},...getOKBStoresReportBranches().map(b=>({Metric:b,Value:rows.filter(o=>pendingOrderBranch(o)===b).length}))];
-  const sheets=[['Overview',overview],['All Details',details],['Returned',details.filter(r=>r.Status==='Returned')],['من علي الجروب Cancel',details.filter(r=>r.Status==='Cancel')],['مرتجعات تم انقاذها',details.filter((_,index)=>isOKBStoresRescuedOrder(rows[index]))],['Doctor Performance',Object.values(byDoctor).sort((a,b)=>b['Total Orders']-a['Total Orders'])]];
+  const byDoctor={};rows.forEach(o=>{const d=o.doctor_name||'بدون دكتور';byDoctor[d]??={Doctor:d,'Total Orders':0,Returned:0,Cancel:0,'Rescued Orders':0,'Total Value':0};byDoctor[d]['Total Orders']++;const key=isOKBStoresRescuedOrder(o)?'Rescued Orders':o.status;byDoctor[d][key]=(byDoctor[d][key]||0)+1;byDoctor[d]['Total Value']+=getEffectiveOrderPrice(o);});
+  const overview=[{Metric:'Total Orders',Value:rows.length},{Metric:'Returned',Value:rows.filter(o=>o.status==='Returned').length},{Metric:'Cancel',Value:rows.filter(o=>o.status==='Cancel').length},{Metric:'أوردرات تم إنقاذها',Value:rows.filter(isOKBStoresRescuedOrder).length},{Metric:'Total Value',Value:rows.reduce((s,o)=>s+getEffectiveOrderPrice(o),0)},...getOKBStoresReportBranches().map(b=>({Metric:b,Value:rows.filter(o=>pendingOrderBranch(o)===b).length}))];
+  const sheets=[['Overview',overview],['All Details',details],['Returned',details.filter(r=>r.Status==='Returned')],['من علي الجروب Cancel',details.filter(r=>r.Status==='Cancel')],['أوردرات تم إنقاذها',details.filter((_,index)=>isOKBStoresRescuedOrder(rows[index]))],['Doctor Performance',Object.values(byDoctor).sort((a,b)=>b['Total Orders']-a['Total Orders'])]];
   const filename=`OKB-Abnormal-${getCairoDateISO()}.xlsx`;
   if(typeof ExcelJS!=='undefined'){
     const wb=new ExcelJS.Workbook();
     const thinBorder={top:{style:'thin',color:{argb:'FF202020'}},left:{style:'thin',color:{argb:'FF202020'}},bottom:{style:'thin',color:{argb:'FF202020'}},right:{style:'thin',color:{argb:'FF202020'}}};
     const detailWidths=[13,16,24,22,16,14,16,16,12,12,14,50,22];
-    const isDetailSheet=name=>['All Details','Returned','من علي الجروب Cancel','مرتجعات تم انقاذها'].includes(name);
+    const isDetailSheet=name=>['All Details','Returned','من علي الجروب Cancel','أوردرات تم إنقاذها'].includes(name);
     sheets.forEach(([name,data])=>{
       const ws=wb.addWorksheet(name,{views:[{state:'frozen',ySplit:1,rightToLeft:false}]});
       const keys=Object.keys(data[0]||{});
@@ -4372,18 +4597,36 @@ async function showShippingRankPage(mode = 'branch') {
   window.scrollTo({ top:0, left:0, behavior:'auto' });
   document.querySelector('.app-content')?.scrollTo({ top:0, left:0, behavior:'auto' });
 
-  // Show the last same-period snapshot immediately, then replace it with a
-  // fresh server copy before the management figures are considered final.
-  const requestedScope = `${document.getElementById('shippingFromDate')?.value || shippingDateFrom || ''}:${document.getElementById('shippingToDate')?.value || shippingDateTo || ''}`;
-  if (shippingRankOrdersScope === requestedScope && shippingRankOrders.length) renderShippingRank();
-
   // Charts are visual only. A slow CDN must never delay status figures.
   const chartReady = ensureChartLibrary().catch(error => {
     console.warn('Shipping Rank charts unavailable:', error);
     return null;
   });
+  const { from, to } = getShippingRankInputRange();
+  const requestedScope = from && to ? getShippingRankScopeKey(from, to, shippingRankMode) : '';
+  const hasCachedSnapshot = shippingRankDataReady && shippingRankOrdersScope === requestedScope;
+  if (hasCachedSnapshot) {
+    renderShippingRank();
+    chartReady.then(ready => { if (ready) renderShippingCharts(); });
+    if (shippingRankMode === 'branch') {
+      loadBranchRankingComparisonRange().catch(error => {
+        console.warn('Branch Rank comparison preload failed:', error);
+      });
+    }
+    if (shippingRankLoadError || !isShippingRankCacheFresh()) {
+      loadShippingRankRange({ force:true, forceComparison:true }).then(() => {
+        renderShippingRank();
+        renderShippingCharts();
+      }).catch(error => {
+        console.warn('Shipping Rank background refresh failed:', error);
+      });
+    }
+    return;
+  }
+
+  renderShippingRank();
   try {
-    await loadShippingRankRange({ force:true });
+    await loadShippingRankRange();
     renderShippingRank();
   } catch (error) {
     console.warn('Shipping Rank load failed:', error);
@@ -4399,8 +4642,21 @@ async function showDoctorRankPage() {
   $("doctorRankPage").classList.remove("hidden");
   setActiveMenu("doctorRankPage");
   initializeDoctorRankFilters();
+  const { from, to } = getDoctorRankInputRange();
+  const scope = from && to ? getDoctorRankScopeKey(from, to) : '';
+  const hasCachedSnapshot = doctorRankDataReady && doctorRankOrdersScope === scope;
+  if (hasCachedSnapshot) {
+    renderDoctorRank();
+    if (!isDoctorRankCacheFresh()) {
+      loadDoctorRankRange({ force:true }).then(renderDoctorRank).catch(error => {
+        console.warn('Doctor Rank background refresh failed:', error);
+      });
+    }
+    return;
+  }
+  renderDoctorRank();
   try { await loadDoctorRankRange(); }
-  catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); }
+  catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); return; }
   renderDoctorRank();
 }
 async function showBranchRankPage() {
@@ -4410,7 +4666,11 @@ async function showBranchRankPage() {
   setActiveMenu("branchRankPage");
   applyDailyReportBranchCardVisibility();
   if (!$("reportFromDate").value || !$("reportToDate").value) await setReportMode("daily");
-  else { updateReportTabs(); try { await loadDailyReportRange(); } catch(error) { alert('تعذر تحميل بيانات Daily Report: '+(error?.message||error)); } renderReport(); }
+  else {
+    updateReportTabs();
+    try { await loadDailyReportRange(); renderReport(); }
+    catch(error) { alert('تعذر تحميل بيانات Daily Report: '+(error?.message||error)); }
+  }
 }
 function showUsersPage() {
   if (!hasRoleFeature('users')) return;
@@ -6166,84 +6426,274 @@ function normalizeDoctorRankName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
+const DOCTOR_RANK_CACHE_TTL_MS = 60000;
+const DOCTOR_RANK_COLUMNS = 'id,ticket_id,order_number,customer_name,phone,employee_name,doctor_name,doctor_code,branch,shipping_company,status,price,deposit,notes,created_at';
+const DOCTOR_RANK_BRANCHES = [
+  { key:'nasr-city', name:'مدينة نصر', label:'مدينة نصر' },
+  { key:'alexandria', name:'اسكندرية', label:'اسكندرية' },
+  { key:'tanta', name:'طنطا', label:'طنطا' },
+  { key:'mansoura', name:'المنصورة', label:'المنصورة' }
+];
+
+function invalidateDoctorRankDerivedCache() {
+  doctorRankDerivedCache = { key:'', rows:[], orders:[], summary:null };
+}
+
+function isDoctorRankBranchScopedUser() {
+  return !isAdmin() && (isStoreManager() || isCashier() || isAccountSupervisor() || getCurrentUserManagedBranches().length > 0);
+}
+
+function getDoctorRankAllowedBranchKeys() {
+  const all = DOCTOR_RANK_BRANCHES.map(item => item.key);
+  if (isAdmin() || !isDoctorRankBranchScopedUser()) return all;
+  const managed = getCurrentUserManagedBranches();
+  if (!managed.length) return [];
+  return [...new Set(managed
+    .map(branch => normalizeProductReportBranch(getBranchShippingCompanyName(branch) || branch))
+    .filter(branch => all.includes(branch)))];
+}
+
+function applyDoctorRankBranchScope() {
+  const select = document.getElementById('doctorRankBranchFilter');
+  if (!select) return;
+  const current = normalizeProductReportBranch(select.value || 'all');
+  const scoped = isDoctorRankBranchScopedUser();
+  const allowed = getDoctorRankAllowedBranchKeys();
+  const options = DOCTOR_RANK_BRANCHES.filter(item => allowed.includes(item.key));
+  const allLabel = scoped ? 'كل فروع حسابي' : 'كل الفروع';
+  select.innerHTML = `<option value="all">${allLabel}</option>` + options
+    .map(item => `<option value="${item.key}">${item.label}</option>`).join('');
+  select.value = current === 'all' || allowed.includes(current) ? current : 'all';
+  select.disabled = scoped && allowed.length < 2;
+}
+
 function initializeDoctorRankFilters(force = false) {
   const from = document.getElementById('doctorRankFromDate');
   const to = document.getElementById('doctorRankToDate');
-  if (!from || !to || (!force && from.value && to.value)) return;
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  from.value = getLocalDateISO(first);
-  to.value = getLocalDateISO(last);
+  if (!from || !to) return;
+  if (force || !from.value || !to.value) {
+    const today = getCairoDateISO();
+    const year = Number(today.slice(0, 4));
+    const month = Number(today.slice(5, 7));
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    from.value = `${today.slice(0, 7)}-01`;
+    to.value = `${today.slice(0, 7)}-${String(lastDay).padStart(2, '0')}`;
+  }
   const branch = document.getElementById('doctorRankBranchFilter');
   if (branch && force) branch.value = 'all';
+  applyDoctorRankBranchScope();
+}
+
+function getDoctorRankInputRange() {
+  return {
+    from: document.getElementById('doctorRankFromDate')?.value || '',
+    to: document.getElementById('doctorRankToDate')?.value || ''
+  };
+}
+
+function getDoctorRankScopeKey(from, to) {
+  const actor = String(currentUser?.id || currentUser?.username || '');
+  const branchScope = isDoctorRankBranchScopedUser()
+    ? getDoctorRankAllowedBranchKeys().slice().sort().join(',')
+    : 'all-four-branches';
+  return `${actor}|${getRoleKey(currentUser?.role)}|${branchScope}|${from}:${to}`;
+}
+
+function setDoctorRankLoadState(message = '', type = '') {
+  const state = document.getElementById('doctorRankLoadState');
+  if (!state) return;
+  state.textContent = message;
+  state.classList.toggle('loading', type === 'loading');
+  state.classList.toggle('error', type === 'error');
+}
+
+function setDoctorRankActionsBusy(busy) {
+  document.querySelectorAll('#doctorRankPage .doctor-weekly-btn,#doctorRankPage .doctor-rank-smart-export-btn')
+    .forEach(button => { button.disabled = Boolean(busy); });
+}
+
+function getDoctorRankOrderDay(order) {
+  const date = parsePreciseServerDate(order?.created_at);
+  return date ? getCairoDateISO(date) : '';
+}
+
+function isDoctorRankOrderAllowed(order, from, to) {
+  if (!order || !hasRoleFeature('doctor_rank_stores')) return false;
+  const branch = getProductReportOrderBranch(order);
+  if (!DOCTOR_RANK_BRANCHES.some(item => item.key === branch)) return false;
+  if (isDoctorRankBranchScopedUser() && !getDoctorRankAllowedBranchKeys().includes(branch)) return false;
+  const day = getDoctorRankOrderDay(order);
+  return Boolean(day && day >= from && day <= to);
+}
+
+async function fetchDoctorRankOrdersForRange(from, to, requestIsCurrent = () => true) {
+  const range = getCairoDateRangeUTC(from, to);
+  if (!range) throw new Error('اختار فترة تاريخ صحيحة');
+  const actor = currentUser;
+  if (!actor || !hasRoleFeature('doctor_rank_stores')) throw new Error('لا توجد صلاحية لعرض Doctor Rank');
+  const scoped = isDoctorRankBranchScopedUser();
+  const allowedKeys = getDoctorRankAllowedBranchKeys();
+  if (scoped && !allowedKeys.length) return [];
+  const allowedNames = [...new Set(DOCTOR_RANK_BRANCHES
+    .filter(item => allowedKeys.includes(item.key))
+    .flatMap(item => [item.name, getBranchShippingCompanyName(item.name)])
+    .filter(Boolean))];
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    if (!requestIsCurrent()) return null;
+    let query = supabaseClient.from('orders')
+      .select(DOCTOR_RANK_COLUMNS)
+      .gte('created_at', range.start)
+      .lt('created_at', range.endExclusive)
+      .order('created_at', { ascending:false })
+      .order('id', { ascending:false });
+    // Doctor Rank is a four-branch report. Restricting the database request
+    // prevents unrelated courier/company orders from entering the payload at all.
+    if (allowedNames.length) query = query.in('branch', allowedNames);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (!requestIsCurrent()) return null;
+    if (error) throw new Error('تعذر تحميل Doctor Rank: ' + (error.message || error));
+    if (currentUser !== actor || !hasRoleFeature('doctor_rank_stores')) throw new Error('تم تغيير صلاحية Doctor Rank أثناء التحميل');
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  const unique = new Map();
+  rows.forEach(order => {
+    if (isDoctorRankOrderAllowed(order, from, to)) unique.set(String(order.id), order);
+  });
+  return [...unique.values()];
+}
+
+function isDoctorRankCacheFresh() {
+  const loaded = Date.parse(doctorRankLoadedAt || '');
+  return Number.isFinite(loaded) && Date.now() - loaded < DOCTOR_RANK_CACHE_TTL_MS;
 }
 
 async function loadDoctorRankRange(options = {}) {
-  const from = document.getElementById('doctorRankFromDate')?.value || '';
-  const to = document.getElementById('doctorRankToDate')?.value || '';
-  const scope = `${from}:${to}`;
-  if (!options.force && doctorRankOrdersScope === scope) return doctorRankOrders;
+  const { from, to } = getDoctorRankInputRange();
+  if (!from || !to) throw new Error('اختار تاريخ من وإلى');
+  if (from > to) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+  const scope = getDoctorRankScopeKey(from, to);
+  if (!options.force && !doctorRankLoadError && doctorRankDataReady && doctorRankOrdersScope === scope) return doctorRankOrders;
+  if (doctorRankLoading && doctorRankLoadPromise && doctorRankLoadPromiseScope === scope) return doctorRankLoadPromise;
+
   const token = ++doctorRankLoadToken;
-  const actionButtons = document.querySelectorAll('.doctor-weekly-btn,.doctor-rank-smart-export-btn');
-  actionButtons.forEach(button => button.disabled = true);
-  try {
-    const data = await fetchOrdersForReportRange(from, to);
-    if (token !== doctorRankLoadToken) return doctorRankOrders;
-    doctorRankOrders = data;
-    doctorRankOrdersScope = scope;
-    return data;
-  } finally {
-    if (token === doctorRankLoadToken) actionButtons.forEach(button => button.disabled = false);
+  const actor = currentUser;
+  const replacingScope = doctorRankOrdersScope !== scope;
+  if (replacingScope) {
+    doctorRankOrders = [];
+    doctorRankOrdersScope = '';
+    doctorRankDataReady = false;
+    invalidateDoctorRankDerivedCache();
   }
+  doctorRankLoading = true;
+  doctorRankLoadError = '';
+  doctorRankLoadPromiseScope = scope;
+  setDoctorRankLoadState('جاري تحميل الفترة المطلوبة...', 'loading');
+  setDoctorRankActionsBusy(true);
+  if (replacingScope) renderDoctorRank();
+  const task = (async () => {
+    try {
+      const data = await fetchDoctorRankOrdersForRange(from, to, () => token === doctorRankLoadToken && currentUser === actor);
+      if (!data || token !== doctorRankLoadToken || currentUser !== actor) return doctorRankOrders;
+      doctorRankOrders = data;
+      doctorRankOrdersScope = scope;
+      doctorRankDataReady = true;
+      doctorRankLoadedAt = new Date().toISOString();
+      doctorRankLoadError = '';
+      doctorRankRevision += 1;
+      invalidateDoctorRankDerivedCache();
+      setDoctorRankLoadState(`تم تحميل ${num(data.length)} أوردر · آخر تحديث ${formatEnglishDateTime(doctorRankLoadedAt)}`);
+      return data;
+    } catch (error) {
+      if (token === doctorRankLoadToken) {
+        doctorRankLoadError = error?.message || 'تعذر تحميل Doctor Rank';
+        if (replacingScope) doctorRankDataReady = false;
+        setDoctorRankLoadState(doctorRankLoadError, 'error');
+      }
+      throw error;
+    } finally {
+      if (token === doctorRankLoadToken) {
+        doctorRankLoading = false;
+        doctorRankLoadPromise = null;
+        doctorRankLoadPromiseScope = '';
+        setDoctorRankActionsBusy(false);
+      }
+    }
+  })();
+  doctorRankLoadPromise = task;
+  return task;
 }
 
 function getDoctorRankFilteredOrders() {
-  const from = document.getElementById('doctorRankFromDate')?.value || '';
-  const to = document.getElementById('doctorRankToDate')?.value || '';
-  const branch = document.getElementById('doctorRankBranchFilter')?.value || 'all';
-  return doctorRankOrders.filter(order => {
-    const day = getLocalDateISO(order.created_at);
-    const orderBranch = getProductReportOrderBranch(order);
-    if (from && day < from) return false;
-    if (to && day > to) return false;
-    if (!['nasr-city','alexandria','tanta','mansoura'].includes(orderBranch)) return false;
-    if (branch !== 'all' && orderBranch !== branch) return false;
-    return true;
-  });
+  return getDoctorRankSnapshot().orders;
 }
 
 function getDoctorRankRows() {
-  const source = getDoctorRankFilteredOrders();
+  return getDoctorRankSnapshot().rows;
+}
+
+function getDoctorRankSnapshot() {
+  const { from, to } = getDoctorRankInputRange();
+  const branch = normalizeProductReportBranch(document.getElementById('doctorRankBranchFilter')?.value || 'all');
+  const scope = from && to ? getDoctorRankScopeKey(from, to) : '';
+  const key = `${doctorRankRevision}|${scope}|${branch}|${doctorsList.length}`;
+  if (doctorRankDerivedCache.key === key) return doctorRankDerivedCache;
+
+  const source = !from || !to || !doctorRankDataReady || doctorRankOrdersScope !== scope
+    ? []
+    : doctorRankOrders.filter(order => {
+        if (!isDoctorRankOrderAllowed(order, from, to)) return false;
+        return branch === 'all' || getProductReportOrderBranch(order) === branch;
+      });
   const doctors = new Map();
   (doctorsList || []).forEach(doctor => {
     const name = String(doctor?.name || '').trim();
-    if (name) doctors.set(normalizeDoctorRankName(name), { doctor:name, code:String(doctor?.code || '').trim() });
+    if (name) doctors.set(normalizeDoctorRankName(name), {
+      doctor:name, code:String(doctor?.code || '').trim(), tickets:[], total:0, signed:0,
+      delivering:0, returned:0, salesReturned:0, cancelGroup:0, fakeDoctor:0, revenue:0
+    });
   });
   source.forEach(order => {
     const name = String(order?.doctor_name || '').trim();
     const key = normalizeDoctorRankName(name);
-    if (name && !doctors.has(key)) doctors.set(key, { doctor:name, code:String(order?.doctor_code || getDoctorCodeByName(name) || '').trim() });
+    if (!name) return;
+    if (!doctors.has(key)) doctors.set(key, {
+      doctor:name, code:String(order?.doctor_code || getDoctorCodeByName(name) || '').trim(), tickets:[], total:0,
+      signed:0, delivering:0, returned:0, salesReturned:0, cancelGroup:0, fakeDoctor:0, revenue:0
+    });
+    const row = doctors.get(key);
+    const status = getOrderDisplayStatus(order) || String(order?.status || '').trim();
+    const effectivePrice = getEffectiveOrderPrice(order);
+    row.tickets.push(order);
+    row.total += 1;
+    if (status === 'Signed') row.signed += 1;
+    if (status === 'Delivering') row.delivering += 1;
+    if (status === 'Returned') { row.returned += 1; row.salesReturned += effectivePrice; }
+    if (status === 'Cancel') row.cancelGroup += 1;
+    if (isFakeDoctorOrder(order)) row.fakeDoctor += 1;
+    row.revenue += effectivePrice;
   });
-  return [...doctors.values()].map(meta => {
-    const key = normalizeDoctorRankName(meta.doctor);
-    const tickets = source.filter(order => normalizeDoctorRankName(order.doctor_name) === key);
-    const total = tickets.length;
-    const signed = countStatus(tickets, 'Signed');
-    const delivering = countStatus(tickets, 'Delivering');
-    const returnedTickets = tickets.filter(order => (getOrderDisplayStatus(order) || order.status) === 'Returned');
-    const returned = returnedTickets.length;
-    const salesReturned = returnedTickets.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-    const cancelGroup = countStatus(tickets, 'Cancel');
-    const fakeDoctor = getFakeDoctorCount(tickets);
-    const revenue = tickets.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-    return {
-      ...meta, tickets, total, signed, delivering, returned, salesReturned, cancelGroup, fakeDoctor, revenue,
-      conversionRate: percent(signed, total), conversionRateNum: percentNum(signed, total),
-      returnRate: percent(returned, total), returnRateNum: percentNum(returned, total),
-      cancelGroupRate: percent(cancelGroup, total), cancelGroupRateNum: percentNum(cancelGroup, total)
-    };
-  }).sort((a, b) => b.total - a.total || b.signed - a.signed || a.doctor.localeCompare(b.doctor, 'ar'));
+  const rows = [...doctors.values()].map(row => ({
+    ...row,
+    conversionRate: percent(row.signed, row.total), conversionRateNum: percentNum(row.signed, row.total),
+    returnRate: percent(row.returned, row.total), returnRateNum: percentNum(row.returned, row.total),
+    cancelGroupRate: percent(row.cancelGroup, row.total), cancelGroupRateNum: percentNum(row.cancelGroup, row.total)
+  })).sort((a, b) => b.total - a.total || b.signed - a.signed || a.doctor.localeCompare(b.doctor, 'ar'));
+  const summary = rows.reduce((result, row) => {
+    result.total += row.total;
+    result.signed += row.signed;
+    result.delivering += row.delivering;
+    result.returned += row.returned;
+    result.cancel += row.cancelGroup;
+    result.revenue += row.revenue;
+    result.salesReturned += row.salesReturned;
+    if (row.total > 0) result.activeDoctors += 1;
+    return result;
+  }, { total:0, signed:0, delivering:0, returned:0, cancel:0, revenue:0, salesReturned:0, activeDoctors:0 });
+  doctorRankDerivedCache = { key, rows, orders:source, summary };
+  return doctorRankDerivedCache;
 }
 
 function renderShippingCompanyFilter() {
@@ -6320,13 +6770,20 @@ function isShippingRankExternalCompanyOrder(order){
   return Boolean(company) && !isShippingRankBranchCompanyName(company);
 }
 
-function setShippingRankMode(mode){
-  shippingRankMode=mode==='company'?'company':'branch';
-  if(branchShippingRankOverride)shippingRankMode='branch';
+async function setShippingRankMode(mode){
+  const nextMode=branchShippingRankOverride?'branch':(mode==='company'?'company':'branch');
+  if(nextMode==='company'&&!hasRoleFeature('company_rank'))return;
+  const changed=shippingRankMode!==nextMode;
+  shippingRankMode=nextMode;
   selectedShippingCompanies=[];
   pageState.shippingRank=1;
   document.getElementById('shippingRankBranchModeBtn')?.classList.toggle('active',shippingRankMode==='branch');
   document.getElementById('shippingRankCompanyModeBtn')?.classList.toggle('active',shippingRankMode==='company');
+  if(changed){
+    shippingRankRenderedChartKey='';
+    try{await loadShippingRankRange();}
+    catch(error){alert('تعذر تحميل بيانات Shipping Rank: '+(error?.message||error));return;}
+  }
   renderShippingRank();
   renderShippingCharts();
 }
@@ -6341,10 +6798,10 @@ function getFilteredDoctorRankRows() {
 function updateShippingMiniDashboard() {
   const DELIVERY_TARGET = 90;
   const RETURN_TARGET = 10;
-  const src = getShippingFilteredOrders();
-  const branchMetrics = calculateBranchMiniDashboardStats(src, {
-    excludeGroupCancelFromTotal: shippingRankMode === 'branch'
-  });
+  const src = shippingRankMode === 'branch' ? null : getShippingFilteredOrders();
+  const branchMetrics = shippingRankMode === 'branch'
+    ? getShippingRankBranchSnapshot().summary
+    : calculateBranchMiniDashboardStats(src, { excludeGroupCancelFromTotal:false });
   const total = branchMetrics.total;
   const signed = branchMetrics.signed;
   const delivering = branchMetrics.delivering;
@@ -6445,6 +6902,209 @@ const BRANCH_PERFORMANCE_MAP = [
   { branch: 'المنصورة', key: 'mansoura' }
 ];
 
+const SHIPPING_RANK_CACHE_TTL_MS = 60000;
+const SHIPPING_RANK_COLUMNS = 'id,created_at,status,branch,shipping_company,price,deposit,notes';
+
+function invalidateShippingRankDerivedCache() {
+  shippingRankDerivedCache = { key:'', orders:[], summary:null, branchRows:[], daily:[] };
+  shippingRankRenderedChartKey = '';
+}
+
+function invalidateBranchRankingPreviousDerivedCache() {
+  branchRankingPreviousDerivedCache = { key:'', orders:[], summary:null, branchRows:[], daily:[] };
+}
+
+function getShippingRankInputRange() {
+  return {
+    from:document.getElementById('shippingFromDate')?.value || shippingDateFrom || '',
+    to:document.getElementById('shippingToDate')?.value || shippingDateTo || ''
+  };
+}
+
+function shouldLoadShippingRankTrueRanks(mode = shippingRankMode) {
+  return mode === 'branch' && Boolean(branchShippingRankOverride || isShippingRankBranchScopedUser());
+}
+
+async function fetchShippingRankTrueRanksForRange(fromDate, toDate, requestIsCurrent = () => true, options = {}) {
+  const requestedFrom = String(fromDate || '').trim();
+  const requestedTo = String(toDate || '').trim();
+  const actor = options.actor || currentUser;
+  if (!requestedFrom || !requestedTo || requestedFrom > requestedTo) throw new Error('فترة ترتيب الفروع غير صحيحة');
+  if (!actor || !hasRoleFeature('shipping_rank')) throw new Error('لا توجد صلاحية لعرض Branch Rank');
+  const { data, error } = await supabaseClient.rpc('okb_get_branch_performance_ranks', {
+    p_from:requestedFrom,
+    p_to:requestedTo
+  });
+  if (!requestIsCurrent()) return null;
+  if (error) throw new Error('تعذر تحميل الترتيب الحقيقي للفروع: ' + (error.message || error));
+  if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Branch Rank أثناء التحميل');
+  const allowed = new Set(options.allowedBranchKeys || getShippingRankAllowedBranchKeys());
+  const ranks = new Map();
+  (data || []).forEach(row => {
+    const key = normalizeProductReportBranch(row?.branch_key || row?.branch_name);
+    const rank = Number(row?.rank_position || 0);
+    if (allowed.has(key) && Number.isInteger(rank) && rank > 0) ranks.set(key, rank);
+  });
+  return ranks;
+}
+
+function getBranchPerformanceDisplayRank(row, fallbackRank) {
+  if (!shouldLoadShippingRankTrueRanks('branch')) return fallbackRank;
+  const { from, to } = getShippingRankInputRange();
+  const scope = from && to ? getShippingRankScopeKey(from, to, 'branch') : '';
+  if (!scope || shippingRankTrueRanksScope !== scope || shippingRankTrueRankError) return null;
+  const rank = Number(shippingRankTrueRanks.get(row?.key) || 0);
+  return Number.isInteger(rank) && rank > 0 ? rank : null;
+}
+
+function isShippingRankBranchScopedUser() {
+  return !isAdmin() && (isStoreManager() || isAccountSupervisor());
+}
+
+function getShippingRankAllowedBranchKeys() {
+  const all = BRANCH_PERFORMANCE_MAP.map(item => item.key);
+  if (branchShippingRankOverride) {
+    const override = normalizeProductReportBranch(branchShippingRankOverride);
+    return all.includes(override) ? [override] : [];
+  }
+  if (!isShippingRankBranchScopedUser()) return all;
+  const managed = getCurrentUserManagedBranches()
+    .map(branch => normalizeProductReportBranch(getBranchShippingCompanyName(branch) || branch))
+    .filter(branch => all.includes(branch));
+  return [...new Set(managed)];
+}
+
+function getShippingRankScopeKey(from, to, mode = shippingRankMode) {
+  const actor = String(currentUser?.id || currentUser?.username || '');
+  const branches = getShippingRankAllowedBranchKeys().slice().sort().join(',') || 'none';
+  const override = normalizeProductReportBranch(branchShippingRankOverride || '') || 'none';
+  return `${actor}|${getRoleKey(currentUser?.role)}|${mode}|${override}|${branches}|${from}:${to}`;
+}
+
+function getShippingRankOrderDay(order) {
+  const date = parsePreciseServerDate(order?.created_at);
+  return date ? getCairoDateISO(date) : '';
+}
+
+function isShippingRankOrderAllowed(order, from, to, options = {}) {
+  if (!order || !hasRoleFeature('shipping_rank')) return false;
+  const day = getShippingRankOrderDay(order);
+  if (!day || day < from || day > to) return false;
+  const mode = options.mode || shippingRankMode;
+  const allowedKeys = options.allowedBranchKeys || getShippingRankAllowedBranchKeys();
+  const branch = getProductReportOrderBranch(order);
+  if (mode === 'branch') return allowedKeys.includes(branch);
+  if (branchShippingRankOverride || isShippingRankBranchScopedUser()) return allowedKeys.includes(branch);
+  return true;
+}
+
+function createBranchRankAccumulator() {
+  return { rawTotal:0, signed:0, delivering:0, returned:0, cancelled:0 };
+}
+
+function addBranchRankOrder(accumulator, status) {
+  accumulator.rawTotal += 1;
+  if (status === 'Signed') accumulator.signed += 1;
+  if (status === 'Delivering') accumulator.delivering += 1;
+  if (status === 'Returned') accumulator.returned += 1;
+  if (status === 'Cancel') accumulator.cancelled += 1;
+}
+
+function finalizeBranchRankAccumulator(accumulator) {
+  const rawTotal = Number(accumulator?.rawTotal || 0);
+  const signed = Number(accumulator?.signed || 0);
+  const delivering = Number(accumulator?.delivering || 0);
+  const returned = Number(accumulator?.returned || 0);
+  const cancelled = Number(accumulator?.cancelled || 0);
+  const operationalTotal = Math.max(0, rawTotal - cancelled);
+  const conversionNum = percentNum(signed, operationalTotal);
+  const returnNum = percentNum(returned, operationalTotal);
+  return {
+    total:operationalTotal,
+    rawTotal,
+    conversionBase:operationalTotal,
+    signed,
+    delivering,
+    returned,
+    cancelled,
+    conversionRate:conversionNum.toFixed(1) + '%',
+    returnRate:returnNum.toFixed(1) + '%',
+    conversionValue:conversionNum,
+    returnValue:returnNum,
+    score:conversionNum - (returnNum * 1.5)
+  };
+}
+
+function buildBranchRankSnapshot(source, from, to) {
+  const allowedKeys = getShippingRankAllowedBranchKeys();
+  const allowed = new Set(allowedKeys);
+  const summaryAccumulator = createBranchRankAccumulator();
+  const branchAccumulators = new Map(BRANCH_PERFORMANCE_MAP.map(item => [item.key, createBranchRankAccumulator()]));
+  const daily = new Map();
+  const eligibleOrders = [];
+
+  (Array.isArray(source) ? source : []).forEach(order => {
+    if (!isShippingRankOrderAllowed(order, from, to, { mode:'branch', allowedBranchKeys:allowedKeys })) return;
+    const effectivePrice = normalizeOrderPriceForStorage(getEffectiveOrderPrice(order));
+    if (!(effectivePrice > 0)) return;
+    const branch = getProductReportOrderBranch(order);
+    if (!allowed.has(branch)) return;
+    const status = getOrderDisplayStatus(order) || String(order?.status || '').trim();
+    const day = getShippingRankOrderDay(order);
+    eligibleOrders.push(order);
+    addBranchRankOrder(summaryAccumulator, status);
+    addBranchRankOrder(branchAccumulators.get(branch), status);
+    if (!daily.has(day)) daily.set(day, { day, total:0, signed:0, delivering:0, returned:0, cancelled:0 });
+    const dailyRow = daily.get(day);
+    if (status !== 'Cancel') dailyRow.total += 1;
+    if (status === 'Signed') dailyRow.signed += 1;
+    if (status === 'Delivering') dailyRow.delivering += 1;
+    if (status === 'Returned') dailyRow.returned += 1;
+    if (status === 'Cancel') dailyRow.cancelled += 1;
+  });
+
+  const branchRows = BRANCH_PERFORMANCE_MAP.map(item => ({
+    name:item.branch,
+    key:item.key,
+    ...finalizeBranchRankAccumulator(branchAccumulators.get(item.key))
+  }));
+  return {
+    orders:eligibleOrders,
+    summary:finalizeBranchRankAccumulator(summaryAccumulator),
+    branchRows,
+    daily:[...daily.values()].sort((a, b) => a.day.localeCompare(b.day))
+  };
+}
+
+function getShippingRankBranchSnapshot() {
+  const { from, to } = getShippingRankInputRange();
+  const scope = from && to ? getShippingRankScopeKey(from, to, 'branch') : '';
+  const key = `${shippingRankRevision}|${scope}`;
+  if (shippingRankDerivedCache.key === key) return shippingRankDerivedCache;
+  const source = from && to && shippingRankDataReady && shippingRankLoadedMode === 'branch' && shippingRankOrdersScope === scope
+    ? shippingRankOrders
+    : [];
+  shippingRankDerivedCache = { key, ...buildBranchRankSnapshot(source, from, to) };
+  return shippingRankDerivedCache;
+}
+
+function getBranchRankingPreviousSnapshot() {
+  const range = branchRankingPreviousRange;
+  const key = `${branchRankingPreviousRevision}|${branchRankingPreviousScope}`;
+  if (branchRankingPreviousDerivedCache.key === key) return branchRankingPreviousDerivedCache;
+  const source = range && branchRankingPreviousDataReady ? branchRankingPreviousOrders : [];
+  branchRankingPreviousDerivedCache = {
+    key,
+    ...buildBranchRankSnapshot(source, range?.from || '', range?.to || '')
+  };
+  return branchRankingPreviousDerivedCache;
+}
+
+function isShippingRankCacheFresh() {
+  const loaded = Date.parse(shippingRankLoadedAt || '');
+  return Number.isFinite(loaded) && Date.now() - loaded < SHIPPING_RANK_CACHE_TTL_MS;
+}
+
 function getPreviousMonthComparisonRange(fromDate, toDate) {
   const parse = value => {
     const [year, month, day] = String(value || '').split('-').map(Number);
@@ -6498,6 +7158,12 @@ function getBranchRankingRows(source) {
 function setBranchPerformanceRanking(mode) {
   branchPerformanceRankingMode = mode === 'delivery' || mode === 'returns' ? mode : 'details';
   renderBranchPerformanceRanking();
+  if (branchPerformanceRankingMode !== 'details' && shippingRankMode === 'branch') {
+    loadBranchRankingComparisonRange().then(renderBranchPerformanceRanking).catch(error => {
+      console.warn('Branch Rank comparison unavailable:', error);
+      renderBranchPerformanceRanking();
+    });
+  }
 }
 
 function renderBranchPerformanceRanking() {
@@ -6510,13 +7176,13 @@ function renderBranchPerformanceRanking() {
   document.getElementById('branchRankingView')?.classList.toggle('hidden', branchPerformanceRankingMode === 'details');
   const subtitle = document.getElementById('branchPerformanceRankingSubtitle');
   if (subtitle) subtitle.textContent = branchPerformanceRankingMode === 'details'
-    ? 'بيانات الأداء القياسية للفترة المحددة'
+    ? `بيانات الأداء القياسية للفترة المحددة${shippingRankTrueRankError && shouldLoadShippingRankTrueRanks('branch') ? ' • تعذر تحميل رقم الترتيب الحقيقي' : ''}`
     : branchPerformanceRankingMode === 'returns'
       ? 'ترتيب الفروع حسب أكبر انخفاض في نسبة المرتجعات'
       : 'ترتيب الفروع حسب أعلى نسبة تسليم';
   if (branchPerformanceRankingMode === 'details') return;
-  const currentRows = getBranchRankingRows(getShippingFilteredOrders());
-  const previousRows = getBranchRankingRows(branchRankingPreviousOrders);
+  const currentRows = getShippingRankBranchSnapshot().branchRows;
+  const previousRows = getBranchRankingPreviousSnapshot().branchRows;
   const previousByKey = new Map(previousRows.map(row => [row.key, row]));
   const rows = currentRows.filter(row => row.rawTotal > 0).map(row => {
     const previous = previousByKey.get(row.key);
@@ -6536,9 +7202,17 @@ function renderBranchPerformanceRanking() {
   const period = document.getElementById('branchRankingPeriod');
   const currentFrom = document.getElementById('shippingFromDate')?.value || shippingDateFrom || '—';
   const currentTo = document.getElementById('shippingToDate')?.value || shippingDateTo || '—';
-  if (period) period.textContent = branchRankingPreviousRange
-    ? `الفترة الحالية ${currentFrom} ← ${currentTo} • المقارنة ${branchRankingPreviousRange.from} ← ${branchRankingPreviousRange.to}`
-    : `الفترة الحالية ${currentFrom} ← ${currentTo}`;
+  if (period) {
+    const comparisonText = branchRankingPreviousRange
+      ? ` • المقارنة ${branchRankingPreviousRange.from} ← ${branchRankingPreviousRange.to}`
+      : '';
+    const stateText = branchRankingPreviousLoading
+      ? ' • جاري تحميل المقارنة...'
+      : branchRankingPreviousLoadError
+        ? ' • تعذر تحديث المقارنة'
+        : '';
+    period.textContent = `الفترة الحالية ${currentFrom} ← ${currentTo}${comparisonText}${stateText}`;
+  }
   if (!rows.length) {
     board.innerHTML = '<div class="empty">لا توجد بيانات فروع في الفترة المحددة</div>';
     return;
@@ -6571,14 +7245,14 @@ function renderBranchPerformanceRanking() {
 }
 
 function getBranchPerformanceRows() {
+  if (shippingRankMode === 'branch') {
+    return [...getShippingRankBranchSnapshot().branchRows].sort((a, b) => b.score - a.score);
+  }
   const src = getShippingFilteredOrders();
   return BRANCH_PERFORMANCE_MAP.map(item => {
     const list = src.filter(order => getProductReportOrderBranch(order) === item.key);
     const stats = calculateBranchMiniDashboardStats(list, { excludeGroupCancelFromTotal: true });
-    return {
-      name: item.branch,
-      ...stats
-    };
+    return { name:item.branch, ...stats };
   }).sort((a, b) => b.score - a.score);
 }
 
@@ -6624,8 +7298,10 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
     const conversionValue = Number(String(r.conversionRate || "0").replace("%", "")) || 0;
     const returnColor = returnValue > 10 ? "#EF4444" : "#57D85A";
     const conversionColor = conversionValue >= 90 ? "#57D85A" : "#F59E0B";
+    const displayRank = isBranchPerformance ? getBranchPerformanceDisplayRank(r, i + 1) : i + 1;
+    const displayRankText = displayRank === null ? '—' : num(displayRank);
     return `<tr>
-      <td>${isBranchPerformance ? `<span class="branch-performance-rank-number">${num(i + 1)}</span>` : num(i + 1)}</td>
+      <td>${isBranchPerformance ? `<span class="branch-performance-rank-number">${displayRankText}</span>` : displayRankText}</td>
       <td>${r.name}</td>
       <td>${num(r.total)}</td>
       <td>${num(r.signed)}</td>
@@ -6640,9 +7316,7 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
 
 function renderGlobalShippingSections() {
   const box = document.getElementById("globalShippingRankSections");
-  if (box) box.classList.toggle("hidden", isStoreManager());
-
-  if (isStoreManager()) return;
+  if (box) box.classList.remove("hidden");
 
   const branchCard=document.getElementById('shippingBranchPerformanceCard');
   const companyCard=document.getElementById('shippingCompanyPerformanceCard');
@@ -6675,9 +7349,13 @@ async function refreshShippingRankData(ev) {
   const old=btn?.innerHTML;
   if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';}
   try {
-    await loadShippingRankRange({ force:true });
+    await loadShippingRankRange({ force:true, forceComparison:true });
     renderShippingRank();
     renderShippingCharts();
+    if(shippingRankMode==='branch'){
+      try{await loadBranchRankingComparisonRange({force:true});renderBranchPerformanceRanking();}
+      catch(error){console.warn('Branch Rank comparison refresh failed:',error);}
+    }
   } finally {
     if(btn){btn.disabled=false;btn.innerHTML=old||'↻ Refresh';}
   }
@@ -6686,7 +7364,10 @@ async function refreshShippingRankData(ev) {
 const selectedDoctorRankNames = new Set();
 
 function renderDoctorRank() {
-  const allRows = getDoctorRankRows();
+  const pageElement = document.getElementById('doctorRankPage');
+  if (!pageElement || pageElement.classList.contains('hidden')) return;
+  const snapshot = getDoctorRankSnapshot();
+  const allRows = snapshot.rows;
   const rows = getFilteredDoctorRankRows();
   const page = getPaginatedRows(rows, "doctorRank");
 
@@ -6705,25 +7386,19 @@ function renderDoctorRank() {
         <td>${r.returnRate}</td>
         <td class="doctor-cancel-rate">${r.cancelGroupRate}</td>
       </tr>`}).join("")
-    : `<tr><td colspan="12" class="empty">No doctors data</td></tr>`;
+    : `<tr><td colspan="12" class="empty">${doctorRankLoading ? 'جاري تحميل بيانات الدكاترة...' : 'No doctors data'}</td></tr>`;
 
   renderPagination("doctorRankPagination", rows.length, "doctorRank");
-  const filteredOrders = getDoctorRankFilteredOrders();
-  const total = filteredOrders.length;
-  const signed = countStatus(filteredOrders, 'Signed');
-  const returnedOrders = filteredOrders.filter(order => (getOrderDisplayStatus(order) || order.status) === 'Returned');
-  const returned = returnedOrders.length;
-  const salesReturned = returnedOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-  const cancel = countStatus(filteredOrders, 'Cancel');
+  const summary = snapshot.summary || { total:0, signed:0, delivering:0, returned:0, cancel:0, activeDoctors:0 };
   const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
   setText('doctorRankDoctorsCount', num(allRows.length));
-  setText('doctorRankActiveDoctors', num(allRows.filter(row => row.total > 0).length));
-  setText('doctorRankTotalOrders', num(total));
-  setText('doctorRankSignedCount', num(signed));
-  setText('doctorRankReturnedCount', num(returned));
-  setText('doctorRankDeliveringCount', num(countStatus(filteredOrders, 'Delivering')));
-  setText('doctorRankConversionRate', percent(signed, total));
-  setText('doctorRankCancelRate', percent(cancel, total));
+  setText('doctorRankActiveDoctors', num(summary.activeDoctors));
+  setText('doctorRankTotalOrders', num(summary.total));
+  setText('doctorRankSignedCount', num(summary.signed));
+  setText('doctorRankReturnedCount', num(summary.returned));
+  setText('doctorRankDeliveringCount', num(summary.delivering));
+  setText('doctorRankConversionRate', percent(summary.signed, summary.total));
+  setText('doctorRankCancelRate', percent(summary.cancel, summary.total));
   const branch = document.getElementById('doctorRankBranchFilter');
   const branchLabel = branch?.selectedOptions?.[0]?.textContent || 'كل الفروع';
   setText('doctorRankScopeLabel', branchLabel);
@@ -6758,9 +7433,14 @@ async function applyDoctorRankFilters() {
   const from = document.getElementById('doctorRankFromDate')?.value || '';
   const to = document.getElementById('doctorRankToDate')?.value || '';
   if (from && to && from > to) { alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية'); return; }
+  applyDoctorRankBranchScope();
   pageState.doctorRank = 1;
-  try { await loadDoctorRankRange({ force:true }); }
+  const button = document.getElementById('doctorRankFilterBtn');
+  const old = button?.innerHTML;
+  if (button) { button.disabled = true; button.innerHTML = 'جاري التطبيق...'; }
+  try { await loadDoctorRankRange(); }
   catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); return; }
+  finally { if (button) { button.disabled = false; button.innerHTML = old || 'Filter 🔍'; } }
   renderDoctorRank();
 }
 
@@ -6769,8 +7449,12 @@ async function resetDoctorRankFilters() {
   const search = document.getElementById('doctorRankSearch');
   if (search) search.value = '';
   pageState.doctorRank = 1;
-  try { await loadDoctorRankRange({ force:true }); }
+  const button = document.getElementById('doctorRankResetBtn');
+  const old = button?.innerHTML;
+  if (button) { button.disabled = true; button.innerHTML = 'جاري الرجوع...'; }
+  try { await loadDoctorRankRange(); }
   catch (error) { alert('تعذر تحميل بيانات Doctor Rank: ' + (error?.message || error)); return; }
+  finally { if (button) { button.disabled = false; button.innerHTML = old || 'Reset ✕'; } }
   renderDoctorRank();
 }
 
@@ -6782,6 +7466,8 @@ async function refreshDoctorRankData(button) {
     pageState.doctorRank = 1;
     renderDoctorRank();
     if (!document.getElementById('doctorWeeklyPanel')?.classList.contains('hidden')) populateDoctorWeeklyOptions();
+  } catch (error) {
+    alert('تعذر تحديث Doctor Rank: ' + (error?.message || error));
   } finally {
     if (button) { button.disabled = false; button.innerHTML = old || '↻ Refresh'; }
   }
@@ -6824,6 +7510,7 @@ function doctorRankStatusBadge(order) {
 
 let doctorWeeklyComparisonData = null;
 let doctorWeeklyOrdersSource = [];
+let doctorWeeklyLoadToken = 0;
 
 function doctorWeeklyDate(value) {
   const parts = String(value || '').split('-').map(Number);
@@ -6887,7 +7574,7 @@ function getDoctorWeeklyOrders(doctor, from, to) {
   const branch = document.getElementById('doctorRankBranchFilter')?.value || 'all';
   return doctorWeeklyOrdersSource.filter(order => {
     if (normalizeDoctorRankName(order.doctor_name) !== normalizeDoctorRankName(doctor)) return false;
-    const day = getLocalDateISO(order.created_at);
+    const day = getDoctorRankOrderDay(order);
     const orderBranch = getProductReportOrderBranch(order);
     if (day < from || day > to) return false;
     if (!['nasr-city','alexandria','tanta','mansoura'].includes(orderBranch)) return false;
@@ -6970,6 +7657,28 @@ function doctorWeeklyMetricDefinitions(){return[
 function evaluateDoctorWeekly(first,second){const conversion=second.conversion-first.conversion,cancel=second.cancelRate-first.cancelRate,returned=second.returnRate-first.returnRate;if(conversion>0&&cancel<=0&&returned<=0)return{label:'تحسن',tone:'good'};if(conversion<0||cancel>0||returned>0)return{label:'يحتاج مراجعة',tone:'bad'};return{label:'مستقر',tone:'neutral'};}
 function formatDoctorWeeklyMetric(value,metric){return metric.money?money(value):metric.rate?`${Number(value).toFixed(1)}%`:num(value);}
 
+function getCachedDoctorRankOrdersForRange(from, to) {
+  const loadedRange = getDoctorRankInputRange();
+  if (!doctorRankDataReady || !loadedRange.from || !loadedRange.to) return null;
+  if (doctorRankOrdersScope !== getDoctorRankScopeKey(loadedRange.from, loadedRange.to)) return null;
+  if (from < loadedRange.from || to > loadedRange.to) return null;
+  return doctorRankOrders.filter(order => {
+    const day = getDoctorRankOrderDay(order);
+    return day >= from && day <= to && isDoctorRankOrderAllowed(order, loadedRange.from, loadedRange.to);
+  });
+}
+
+async function loadDoctorWeeklyOrdersRange(from, to) {
+  const cached = getCachedDoctorRankOrdersForRange(from, to);
+  if (cached) return cached;
+  const actor = currentUser;
+  const token = ++doctorWeeklyLoadToken;
+  const data = await fetchDoctorRankOrdersForRange(from, to, () =>
+    token === doctorWeeklyLoadToken && currentUser === actor && hasRoleFeature('doctor_rank_stores')
+  );
+  return data || [];
+}
+
 async function compareDoctorWeeks(){
   const selected=getSelectedDoctorRankRows();
   const w1f=document.getElementById('doctorWeek1From')?.value||'',w1t=document.getElementById('doctorWeek1To')?.value||'',w2f=document.getElementById('doctorWeek2From')?.value||'',w2t=document.getElementById('doctorWeek2To')?.value||'';
@@ -6980,7 +7689,7 @@ async function compareDoctorWeeks(){
   const oldButtonText=compareButton?.innerHTML;
   if(compareButton){compareButton.disabled=true;compareButton.innerHTML='جاري تحميل المقارنة...';}
   try {
-    doctorWeeklyOrdersSource=await fetchOrdersForReportRange(
+    doctorWeeklyOrdersSource=await loadDoctorWeeklyOrdersRange(
       [w1f,w2f].sort()[0],
       [w1t,w2t].sort().reverse()[0]
     );
@@ -7079,63 +7788,234 @@ function setShippingCurrentMonthRange(force=false){
 }
 
 async function loadShippingRankRange(options = {}) {
-  const from = document.getElementById('shippingFromDate')?.value || shippingDateFrom || '';
-  const to = document.getElementById('shippingToDate')?.value || shippingDateTo || '';
-  const scope = `${from}:${to}`;
-  if (!options.force && shippingRankOrdersScope === scope) return shippingRankOrders;
+  const { from, to } = getShippingRankInputRange();
+  if (!from || !to) throw new Error('اختار تاريخ من وإلى');
+  if (from > to) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+  if (!hasRoleFeature('shipping_rank')) throw new Error('لا توجد صلاحية لعرض Shipping Rank');
+  const requestedMode = shippingRankMode;
+  const scope = getShippingRankScopeKey(from, to, requestedMode);
+  if (!options.force && !shippingRankLoadError && shippingRankDataReady && shippingRankOrdersScope === scope) {
+    if (requestedMode === 'branch') {
+      loadBranchRankingComparisonRange().catch(error => console.warn('Branch Rank comparison preload failed:', error));
+    }
+    return shippingRankOrders;
+  }
+  if (shippingRankLoading && shippingRankLoadPromise && shippingRankLoadPromiseScope === scope) return shippingRankLoadPromise;
+
   const token = ++shippingRankLoadToken;
-  const comparisonRange = shippingRankMode === 'branch' && !isStoreManager()
-    ? getPreviousMonthComparisonRange(from, to)
-    : null;
-  const previousRequest = comparisonRange
-    ? fetchShippingRankOrdersForRange(comparisonRange.from, comparisonRange.to)
-        .then(rows => ({ rows, range: comparisonRange }))
-        .catch(error => {
+  const actor = currentUser;
+  const replacingScope = shippingRankOrdersScope !== scope;
+  if (replacingScope) {
+    shippingRankOrders = [];
+    shippingRankOrdersScope = '';
+    shippingRankDataReady = false;
+    shippingRankLoadedRange = { from:'', to:'' };
+    shippingRankRevision += 1;
+    invalidateShippingRankDerivedCache();
+    shippingRankTrueRanks = new Map();
+    shippingRankTrueRanksScope = '';
+    shippingRankTrueRankError = '';
+    branchRankingPreviousLoadToken += 1;
+    branchRankingPreviousOrders = [];
+    branchRankingPreviousRange = null;
+    branchRankingPreviousScope = '';
+    branchRankingPreviousLoadPromise = null;
+    branchRankingPreviousLoadPromiseScope = '';
+    branchRankingPreviousDataReady = false;
+    branchRankingPreviousLoading = false;
+    branchRankingPreviousLoadError = '';
+    branchRankingPreviousRevision += 1;
+    invalidateBranchRankingPreviousDerivedCache();
+  }
+  shippingRankLoading = true;
+  shippingRankLoadError = '';
+  shippingRankLoadPromiseScope = scope;
+  const allowedBranchKeys = getShippingRankAllowedBranchKeys();
+  const task = (async () => {
+    try {
+      const requestIsCurrent = () => (
+        token === shippingRankLoadToken && currentUser === actor && shippingRankMode === requestedMode &&
+        getShippingRankScopeKey(from, to, requestedMode) === scope
+      );
+      const trueRankRequired = requestedMode === 'branch' && shouldLoadShippingRankTrueRanks(requestedMode);
+      const trueRankTask = trueRankRequired
+        ? fetchShippingRankTrueRanksForRange(from, to, requestIsCurrent, { allowedBranchKeys, actor })
+          .then(ranks => ({ ranks, error:'' }))
+          .catch(error => ({ ranks:new Map(), error:error?.message || 'تعذر تحميل الترتيب الحقيقي للفروع' }))
+        : Promise.resolve({ ranks:new Map(), error:'' });
+      const [data, trueRankResult] = await Promise.all([
+        fetchShippingRankOrdersForRange(from, to, requestIsCurrent, { mode:requestedMode, allowedBranchKeys, actor }),
+        trueRankTask
+      ]);
+      if (!data || token !== shippingRankLoadToken || currentUser !== actor || shippingRankMode !== requestedMode || getShippingRankScopeKey(from, to, requestedMode) !== scope) return shippingRankOrders;
+      shippingRankOrders = data;
+      shippingRankOrdersScope = scope;
+      shippingRankDataReady = true;
+      shippingRankLoadedAt = new Date().toISOString();
+      shippingRankLoadError = '';
+      shippingRankLoadedRange = { from, to };
+      shippingRankLoadedMode = requestedMode;
+      shippingRankRevision += 1;
+      invalidateShippingRankDerivedCache();
+      shippingRankTrueRanks = trueRankResult.ranks || new Map();
+      shippingRankTrueRanksScope = trueRankRequired ? scope : '';
+      shippingRankTrueRankError = trueRankResult.error || '';
+      if (requestedMode === 'branch') {
+        loadBranchRankingComparisonRange({ force:Boolean(options.forceComparison) }).catch(error => {
           console.warn('Branch Rank previous-period comparison unavailable:', error);
-          return { rows: [], range: comparisonRange };
-        })
-    : Promise.resolve({ rows: [], range: null });
-  const [data, previous] = await Promise.all([
-    fetchShippingRankOrdersForRange(from, to),
-    previousRequest
-  ]);
-  if (token !== shippingRankLoadToken) return shippingRankOrders;
-  shippingRankOrders = data;
-  shippingRankOrdersScope = scope;
-  branchRankingPreviousOrders = previous.rows;
-  branchRankingPreviousRange = previous.range;
-  return data;
+        });
+      }
+      return data;
+    } catch (error) {
+      if (token === shippingRankLoadToken) {
+        shippingRankLoadError = error?.message || 'تعذر تحميل Shipping Rank';
+        if (replacingScope) shippingRankDataReady = false;
+      }
+      throw error;
+    } finally {
+      if (token === shippingRankLoadToken) {
+        shippingRankLoading = false;
+        shippingRankLoadPromise = null;
+        shippingRankLoadPromiseScope = '';
+      }
+    }
+  })();
+  shippingRankLoadPromise = task;
+  return task;
 }
 
-async function fetchShippingRankOrdersForRange(fromDate, toDate) {
+async function loadBranchRankingComparisonRange(options = {}) {
+  if (shippingRankMode !== 'branch') {
+    branchRankingPreviousOrders = [];
+    branchRankingPreviousRange = null;
+    branchRankingPreviousScope = '';
+    branchRankingPreviousDataReady = false;
+    branchRankingPreviousLoading = false;
+    branchRankingPreviousLoadError = '';
+    branchRankingPreviousRevision += 1;
+    invalidateBranchRankingPreviousDerivedCache();
+    return [];
+  }
+  const { from, to } = getShippingRankInputRange();
+  if (!from || !to || !shippingRankDataReady || shippingRankOrdersScope !== getShippingRankScopeKey(from, to, 'branch')) return [];
+  const comparisonRange = getPreviousMonthComparisonRange(from, to);
+  if (!comparisonRange) return [];
+  const scope = `${shippingRankOrdersScope}|previous:${comparisonRange.from}:${comparisonRange.to}`;
+  if (!options.force && !branchRankingPreviousLoadError && branchRankingPreviousDataReady && branchRankingPreviousScope === scope) {
+    return branchRankingPreviousOrders;
+  }
+  if (branchRankingPreviousLoading && branchRankingPreviousLoadPromise && branchRankingPreviousLoadPromiseScope === scope) {
+    return branchRankingPreviousLoadPromise;
+  }
+
+  const token = ++branchRankingPreviousLoadToken;
+  const actor = currentUser;
+  const currentScope = shippingRankOrdersScope;
+  const replacingScope = branchRankingPreviousScope !== scope;
+  if (replacingScope) {
+    branchRankingPreviousOrders = [];
+    branchRankingPreviousRange = comparisonRange;
+    branchRankingPreviousScope = '';
+    branchRankingPreviousDataReady = false;
+    branchRankingPreviousRevision += 1;
+    invalidateBranchRankingPreviousDerivedCache();
+  }
+  branchRankingPreviousLoading = true;
+  branchRankingPreviousLoadError = '';
+  branchRankingPreviousLoadPromiseScope = scope;
+  if (branchPerformanceRankingMode !== 'details') renderBranchPerformanceRanking();
+  const allowedBranchKeys = getShippingRankAllowedBranchKeys();
+  const task = (async () => {
+    try {
+      const data = await fetchShippingRankOrdersForRange(
+        comparisonRange.from,
+        comparisonRange.to,
+        () => token === branchRankingPreviousLoadToken && currentUser === actor && shippingRankOrdersScope === currentScope &&
+          getShippingRankScopeKey(from, to, 'branch') === currentScope,
+        { mode:'branch', allowedBranchKeys, actor }
+      );
+      if (!data || token !== branchRankingPreviousLoadToken || currentUser !== actor || shippingRankOrdersScope !== currentScope || getShippingRankScopeKey(from, to, 'branch') !== currentScope) {
+        return branchRankingPreviousOrders;
+      }
+      branchRankingPreviousOrders = data;
+      branchRankingPreviousRange = comparisonRange;
+      branchRankingPreviousScope = scope;
+      branchRankingPreviousDataReady = true;
+      branchRankingPreviousLoadError = '';
+      branchRankingPreviousRevision += 1;
+      invalidateBranchRankingPreviousDerivedCache();
+      return data;
+    } catch (error) {
+      if (token === branchRankingPreviousLoadToken) {
+        branchRankingPreviousLoadError = error?.message || 'تعذر تحميل مقارنة Branch Rank';
+        if (replacingScope) branchRankingPreviousDataReady = false;
+      }
+      throw error;
+    } finally {
+      if (token === branchRankingPreviousLoadToken) {
+        branchRankingPreviousLoading = false;
+        branchRankingPreviousLoadPromise = null;
+        branchRankingPreviousLoadPromiseScope = '';
+        if (branchPerformanceRankingMode !== 'details' && isLivePageVisible('shippingRankPage')) renderBranchPerformanceRanking();
+      }
+    }
+  })();
+  branchRankingPreviousLoadPromise = task;
+  return task;
+}
+
+async function fetchShippingRankOrdersForRange(fromDate, toDate, requestIsCurrent = () => true, options = {}) {
   const requestedFrom = String(fromDate || '').trim();
   const requestedTo = String(toDate || '').trim();
   if (!requestedFrom || !requestedTo) throw new Error('اختار تاريخ من وإلى');
   if (requestedFrom > requestedTo) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+  const actor = options.actor || currentUser;
+  if (!actor || !hasRoleFeature('shipping_rank')) throw new Error('لا توجد صلاحية لعرض Shipping Rank');
+  const mode = options.mode || shippingRankMode;
+  const range = mode === 'branch' ? getCairoDateRangeUTC(requestedFrom, requestedTo) : null;
+  if (mode === 'branch' && !range) throw new Error('اختار فترة تاريخ صحيحة');
+  const allowedBranchKeys = options.allowedBranchKeys || getShippingRankAllowedBranchKeys();
+  if (mode === 'branch' && !allowedBranchKeys.length) return [];
+  const allowedBranchNames = [...new Set(BRANCH_PERFORMANCE_MAP
+    .filter(item => allowedBranchKeys.includes(item.key))
+    .flatMap(item => [item.branch, getBranchShippingCompanyName(item.branch)])
+    .filter(Boolean))];
 
   const rows = [];
   const pageSize = 1000;
-  let offset = 0;
-  while (true) {
+  for (let offset = 0; ; offset += pageSize) {
+    if (!requestIsCurrent()) return null;
     // Branch/Company Rank and the Operation Manager report need only these
     // fields. Excluding products and proof-related columns cuts the payload
     // substantially while preserving every status and financial KPI used here.
-    const { data, error } = await supabaseClient
+    let query = supabaseClient
       .from('orders')
-      .select('id,created_at,status,branch,shipping_company,price,deposit,notes')
+      .select(SHIPPING_RANK_COLUMNS)
+      .gte('created_at', mode === 'branch' ? range.start : `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
+      .lt('created_at', mode === 'branch' ? range.endExclusive : `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`)
       .order('created_at', { ascending:false })
-      .gte('created_at', `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
-      .lt('created_at', `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`)
-      .range(offset, offset + pageSize - 1);
-    if (error) throw error;
+      .order('id', { ascending:false });
+    if (mode === 'branch' && allowedBranchNames.length) query = query.in('branch', allowedBranchNames);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (!requestIsCurrent()) return null;
+    if (error) throw new Error('تعذر تحميل Shipping Rank: ' + (error.message || error));
+    if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Shipping Rank أثناء التحميل');
     rows.push(...(data || []));
     if (!data || data.length < pageSize) break;
-    offset += pageSize;
   }
-  return rows.filter(order => {
-    const localDate = getLocalDateISO(order.created_at);
-    return localDate >= requestedFrom && localDate <= requestedTo;
+  const unique = new Map();
+  rows.forEach(order => {
+    const allowed = mode === 'branch'
+      ? isShippingRankOrderAllowed(order, requestedFrom, requestedTo, { mode, allowedBranchKeys })
+      : (() => {
+          const localDate = getLocalDateISO(order.created_at);
+          return localDate >= requestedFrom && localDate <= requestedTo;
+        })();
+    if (allowed) {
+      unique.set(String(order.id), order);
+    }
   });
+  return [...unique.values()];
 }
 
 async function onShippingFilterChange() {
@@ -7154,7 +8034,7 @@ async function onShippingFilterChange() {
   } else {
     badge.classList.remove("visible");
   }
-  try { await loadShippingRankRange({ force:true }); }
+  try { await loadShippingRankRange({ force:true, forceComparison:true }); }
   catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   renderShippingRank(); renderShippingCharts();
 }
@@ -7162,12 +8042,13 @@ async function onShippingFilterChange() {
 async function resetShippingDateFilter() {
   setShippingCurrentMonthRange(true);
   if (shippingRankMode === 'branch') branchPerformanceRankingMode = 'details';
-  try { await loadShippingRankRange({ force:true }); }
+  try { await loadShippingRankRange({ force:true, forceComparison:true }); }
   catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   renderShippingRank(); renderShippingCharts();
 }
 
 function getShippingFilteredOrders() {
+  if (shippingRankMode === 'branch') return getShippingRankBranchSnapshot().orders;
   if (!shippingRankOrders || !shippingRankOrders.length) return [];
 
   // Zero-value orders are operational notes (replacement, error or gift), not
@@ -7209,13 +8090,19 @@ function getShippingFilteredOrders() {
 
 function renderShippingCharts() {
   if (typeof Chart === 'undefined') return;
-  const src = getShippingFilteredOrders();
+  const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+  const branchSnapshot = shippingRankMode === 'branch' ? getShippingRankBranchSnapshot() : null;
+  const chartKey = branchSnapshot
+    ? `branch|${branchSnapshot.key}|${isDark ? 'dark' : 'light'}`
+    : `company|${shippingRankRevision}|${shippingRankOrdersScope}|${isDark ? 'dark' : 'light'}`;
+  const requiredCharts = ['shippingConversionLineChart','shippingStatusDoughnutChart','shippingReturnLineChart'];
+  if (shippingRankRenderedChartKey === chartKey && requiredCharts.every(id => charts[id])) return;
+
   destroyChart("shippingBarChart");
   destroyChart("shippingConversionLineChart");
   destroyChart("shippingStatusDoughnutChart");
   destroyChart("shippingReturnLineChart");
 
-  const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
   const gridColor = isDark ? 'rgba(148,163,184,0.13)' : 'rgba(15,23,42,0.08)';
   const textColor = isDark ? '#CBD5E1' : '#334155';
   const toDay = (iso) => {
@@ -7224,34 +8111,49 @@ function renderShippingCharts() {
     const parts = raw.split('-');
     return parts.length === 3 ? `${parts[2]}/${parts[1]}` : raw;
   };
-  const byDate = {};
-  src.forEach(o => {
-    const d = toDay(o.created_at) || '—';
-    if (!byDate[d]) byDate[d] = { total: 0, signed: 0, returned: 0, delivering: 0, cancelled: 0 };
-    const status = getOrderDisplayStatus(o) || String(o?.status || '').trim();
-    const isGroupCancel = shippingRankMode === 'branch' && status === 'Cancel';
-    if (!isGroupCancel) byDate[d].total += 1;
-    if (status === 'Signed') byDate[d].signed += 1;
-    if (status === 'Returned') byDate[d].returned += 1;
-    if (status === 'Delivering') byDate[d].delivering += 1;
-    if (status === 'Cancel') byDate[d].cancelled += 1;
-  });
-  const labels = Object.keys(byDate).sort((a,b) => {
-    const [da,ma] = a.split('/').map(Number);
-    const [db,mb] = b.split('/').map(Number);
-    return (ma*100+da) - (mb*100+db);
-  });
-  const conversionData = labels.map(d => {
-    const denominator = byDate[d].total;
-    return Number(percentNum(byDate[d].signed, denominator).toFixed(1));
-  });
-  const returnData = labels.map(d => Number(percentNum(byDate[d].returned, byDate[d].total).toFixed(1)));
-  const statusOf = order => getOrderDisplayStatus(order) || String(order?.status || '').trim();
-  const chartSource = shippingRankMode === 'branch' ? src.filter(o => statusOf(o) !== 'Cancel') : src;
-  const chartTotal = chartSource.length;
-  const signed = chartSource.filter(o => statusOf(o) === 'Signed').length;
-  const delivering = chartSource.filter(o => statusOf(o) === 'Delivering').length;
-  const returned = chartSource.filter(o => statusOf(o) === 'Returned').length;
+  let labels = [];
+  let conversionData = [];
+  let returnData = [];
+  let chartTotal = 0;
+  let signed = 0;
+  let delivering = 0;
+  let returned = 0;
+  if (branchSnapshot) {
+    labels = branchSnapshot.daily.map(row => toDay(row.day));
+    conversionData = branchSnapshot.daily.map(row => Number(percentNum(row.signed, row.total).toFixed(1)));
+    returnData = branchSnapshot.daily.map(row => Number(percentNum(row.returned, row.total).toFixed(1)));
+    chartTotal = branchSnapshot.summary.total;
+    signed = branchSnapshot.summary.signed;
+    delivering = branchSnapshot.summary.delivering;
+    returned = branchSnapshot.summary.returned;
+  } else {
+    const src = getShippingFilteredOrders();
+    const byDate = {};
+    src.forEach(o => {
+      const d = toDay(o.created_at) || '—';
+      if (!byDate[d]) byDate[d] = { total:0, signed:0, returned:0, delivering:0, cancelled:0 };
+      const status = getOrderDisplayStatus(o) || String(o?.status || '').trim();
+      const isGroupCancel = shippingRankMode === 'branch' && status === 'Cancel';
+      if (!isGroupCancel) byDate[d].total += 1;
+      if (status === 'Signed') byDate[d].signed += 1;
+      if (status === 'Returned') byDate[d].returned += 1;
+      if (status === 'Delivering') byDate[d].delivering += 1;
+      if (status === 'Cancel') byDate[d].cancelled += 1;
+    });
+    labels = Object.keys(byDate).sort((a,b) => {
+      const [da,ma] = a.split('/').map(Number);
+      const [db,mb] = b.split('/').map(Number);
+      return (ma*100+da) - (mb*100+db);
+    });
+    conversionData = labels.map(day => Number(percentNum(byDate[day].signed, byDate[day].total).toFixed(1)));
+    returnData = labels.map(day => Number(percentNum(byDate[day].returned, byDate[day].total).toFixed(1)));
+    const statusOf = order => getOrderDisplayStatus(order) || String(order?.status || '').trim();
+    const chartSource = shippingRankMode === 'branch' ? src.filter(o => statusOf(o) !== 'Cancel') : src;
+    chartTotal = chartSource.length;
+    signed = chartSource.filter(o => statusOf(o) === 'Signed').length;
+    delivering = chartSource.filter(o => statusOf(o) === 'Delivering').length;
+    returned = chartSource.filter(o => statusOf(o) === 'Returned').length;
+  }
   const others = Math.max(0, chartTotal - signed - delivering - returned);
   const baseLineOptions = (maxY = 100) => ({
     responsive: true,
@@ -7266,6 +8168,7 @@ function renderShippingCharts() {
   if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, chartTotal)})` } } } } });
   const returnCtx = document.getElementById('shippingReturnLineChart');
   if (returnCtx) charts['shippingReturnLineChart'] = new Chart(returnCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل المرتجعات', data: returnData, borderColor: '#FF5555', backgroundColor: 'rgba(239,68,68,.12)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 10%', data: labels.map(() => 10), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(25) });
+  shippingRankRenderedChartKey = chartKey;
 }
 
 function renderDoctorCharts() {
@@ -8096,14 +8999,15 @@ async function exportDoctorRank() {
   const branch = branchSelect?.selectedOptions?.[0]?.textContent || 'كل الفروع';
   const workbook = new ExcelJS.Workbook();
   const usedNames = new Set();
-  const filteredOrders = getDoctorRankFilteredOrders();
-  const total = filteredOrders.length;
-  const signed = countStatus(filteredOrders, 'Signed');
-  const returnedOrders = filteredOrders.filter(order => (getOrderDisplayStatus(order) || order.status) === 'Returned');
-  const returned = returnedOrders.length;
-  const salesReturned = returnedOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
-  const cancel = countStatus(filteredOrders, 'Cancel');
-  const totalRevenue = filteredOrders.reduce((sum, order) => sum + getEffectiveOrderPrice(order), 0);
+  const snapshot = getDoctorRankSnapshot();
+  const filteredOrders = snapshot.orders;
+  const summary = snapshot.summary || { total:0, signed:0, returned:0, cancel:0, revenue:0, salesReturned:0 };
+  const total = summary.total;
+  const signed = summary.signed;
+  const returned = summary.returned;
+  const salesReturned = summary.salesReturned;
+  const cancel = summary.cancel;
+  const totalRevenue = summary.revenue;
   const overviewData = [
     ['Doctor Rank Smart Report', `${from} → ${to}`],
     ['Branch', branch],
@@ -9076,36 +9980,155 @@ document.getElementById('stickyNoteText')?.addEventListener('input', event => {
 
 // ===== دوال التقارير =====
 let reportMode = "daily";
+const DAILY_REPORT_BRANCHES = [
+  { key:'nasr-city', name:'مدينة نصر', label:'مدينة نصر' },
+  { key:'alexandria', name:'اسكندرية', label:'اسكندرية' },
+  { key:'tanta', name:'طنطا', label:'طنطا' },
+  { key:'mansoura', name:'المنصورة', label:'المنصورة' }
+];
+const DAILY_REPORT_CORE_STATUSES = ['Signed','Delivering','Returned','Cancel'];
+const DAILY_REPORT_PAGE_SIZE = 40;
+const DAILY_REPORT_COLUMNS = 'id,ticket_id,order_barcode,order_number,customer_name,employee_name,branch,shipping_company,status,price,deposit,notes,created_at';
 
-function dateToStr(d) { return getLocalDateISO(d); }
+function dateToStr(d) { return getCairoDateISO(d); }
 
-async function loadDailyReportRange(options = {}) {
+function getDailyReportInputRange() {
   const from = document.getElementById('reportFromDate')?.value || '';
   const to = document.getElementById('reportToDate')?.value || '';
-  const scope = `${from}:${to}`;
-  if (!options.force && dailyReportOrdersScope === scope) return dailyReportOrders;
+  return { from, to };
+}
+
+function getDailyReportScopeKey(from, to) {
+  const actor = String(currentUser?.id || currentUser?.username || '');
+  const branchScope = isDailyReportBranchScopedUser()
+    ? getDailyReportAllowedBranchKeys().slice().sort().join(',')
+    : 'all-four-branches';
+  return `${actor}|${getRoleKey(currentUser?.role)}|${branchScope}|${from}:${to}`;
+}
+
+function setDailyReportLoadState(message = '', type = '') {
+  const state = document.getElementById('dailyReportLoadState');
+  if (!state) return;
+  state.textContent = message;
+  state.classList.toggle('loading', type === 'loading');
+  state.classList.toggle('error', type === 'error');
+}
+
+function getDailyReportOrderDay(order) {
+  const date = parsePreciseServerDate(order?.created_at);
+  return date ? getCairoDateISO(date) : '';
+}
+
+function isDailyReportOrderAllowed(order, from, to) {
+  const branch = getProductReportOrderBranch(order);
+  if (!DAILY_REPORT_BRANCHES.some(item => item.key === branch)) return false;
+  if (isDailyReportBranchScopedUser() && !getDailyReportAllowedBranchKeys().includes(branch)) return false;
+  const day = getDailyReportOrderDay(order);
+  return Boolean(day && day >= from && day <= to);
+}
+
+async function fetchDailyReportOrders(from, to, requestIsCurrent = () => true) {
+  const range = getCairoDateRangeUTC(from, to);
+  if (!range) throw new Error('اختار فترة تاريخ صحيحة');
+  const actor = currentUser;
+  if (!actor || !hasRoleFeature('daily_report')) throw new Error('لا توجد صلاحية لعرض Daily Report');
+  const scoped = isDailyReportBranchScopedUser();
+  const allowedKeys = getDailyReportAllowedBranchKeys();
+  if (scoped && !allowedKeys.length) return [];
+  const allowedNames = DAILY_REPORT_BRANCHES.filter(item => allowedKeys.includes(item.key)).map(item => item.name);
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    if (!requestIsCurrent()) return null;
+    let query = supabaseClient.from('orders')
+      .select(DAILY_REPORT_COLUMNS)
+      .gte('created_at', range.start)
+      .lt('created_at', range.endExclusive)
+      .order('created_at', { ascending:false })
+      .order('id', { ascending:false });
+    // Branch-scoped roles read only their branches from the server as well as
+    // being checked again below. Global report roles still resolve the four
+    // known branches locally so old rows remain compatible.
+    if (scoped) query = query.in('branch', allowedNames);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (!requestIsCurrent()) return null;
+    if (error) throw new Error('تعذر تحميل Daily Report: ' + (error.message || error));
+    if (currentUser !== actor || !hasRoleFeature('daily_report')) throw new Error('تم تغيير صلاحية Daily Report أثناء التحميل');
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  const unique = new Map();
+  rows.forEach(order => {
+    if (isDailyReportOrderAllowed(order, from, to)) unique.set(String(order.id), order);
+  });
+  return [...unique.values()];
+}
+
+async function loadDailyReportRange(options = {}) {
+  const { from, to } = getDailyReportInputRange();
+  if (!from || !to) throw new Error('اختار تاريخ من وإلى');
+  if (from > to) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
+  const scope = getDailyReportScopeKey(from, to);
+  if (!options.force && !dailyReportLoadError && dailyReportDataReady && dailyReportOrdersScope === scope) return dailyReportOrders;
+  if (dailyReportLoading && dailyReportLoadPromise && dailyReportLoadPromiseScope === scope) return dailyReportLoadPromise;
+
   const token = ++dailyReportLoadToken;
-  const data = await fetchOrdersForReportRange(from, to);
-  if (token !== dailyReportLoadToken) return dailyReportOrders;
-  dailyReportOrders = data;
-  dailyReportOrdersScope = scope;
-  return data;
+  const actor = currentUser;
+  const replacingScope = dailyReportOrdersScope !== scope;
+  if (replacingScope) {
+    dailyReportOrders = [];
+    dailyReportOrdersScope = '';
+    dailyReportDataReady = false;
+    dailyReportAnalysisCache = new WeakMap();
+  }
+  dailyReportLoading = true;
+  dailyReportLoadError = '';
+  dailyReportLoadPromiseScope = scope;
+  setDailyReportLoadState('جاري تحميل الفترة المطلوبة...', 'loading');
+  if (replacingScope) renderReport();
+  const task = (async () => {
+    try {
+      const data = await fetchDailyReportOrders(from, to, () => token === dailyReportLoadToken && currentUser === actor);
+      if (!data || token !== dailyReportLoadToken || currentUser !== actor) return dailyReportOrders;
+      dailyReportOrders = data;
+      dailyReportOrdersScope = scope;
+      dailyReportDataReady = true;
+      dailyReportLoadedAt = new Date().toISOString();
+      dailyReportLoadError = '';
+      dailyReportRevision += 1;
+      dailyReportAnalysisCache = new WeakMap();
+      setDailyReportLoadState(`تم تحميل ${num(data.length)} أوردر · آخر تحديث ${formatEnglishDateTime(dailyReportLoadedAt)}`);
+      return data;
+    } catch (error) {
+      if (token === dailyReportLoadToken) {
+        dailyReportLoadError = error?.message || 'تعذر تحميل التقرير';
+        if (replacingScope) dailyReportDataReady = false;
+        setDailyReportLoadState(dailyReportLoadError, 'error');
+      }
+      throw error;
+    } finally {
+      if (token === dailyReportLoadToken) {
+        dailyReportLoading = false;
+        dailyReportLoadPromise = null;
+        dailyReportLoadPromiseScope = '';
+      }
+    }
+  })();
+  dailyReportLoadPromise = task;
+  return task;
 }
 
 async function setReportMode(mode) {
   reportMode = mode;
-  const today = new Date();
-  let from = new Date(today);
-  let to = new Date(today);
-
-  if (mode === "daily") { from = new Date(today); to = new Date(today); }
-  if (mode === "weekly") { from = new Date(today); from.setDate(today.getDate() - 6); to = new Date(today); }
-  if (mode === "monthly") { from = new Date(today.getFullYear(), today.getMonth(), 1); to = new Date(today); }
-
-  $("reportFromDate").value = dateToStr(from);
-  $("reportToDate").value = dateToStr(to);
+  const today = getCairoDateISO();
+  let from = today;
+  if (mode === 'weekly') from = shiftISODate(today, -6);
+  if (mode === 'monthly') from = `${today.slice(0, 7)}-01`;
+  $("reportFromDate").value = from;
+  $("reportToDate").value = today;
+  resetDailyReportViewFilters(false);
   updateReportTabs();
-  try { await loadDailyReportRange({ force:true }); }
+  try { await loadDailyReportRange(); }
   catch (error) { alert('تعذر تحميل بيانات Daily Report: ' + (error?.message || error)); return; }
   renderReport();
 }
@@ -9122,12 +10145,15 @@ async function applyReportFilter() {
   const to = $("reportToDate").value;
   if (!from || !to) { alert("اختار تاريخ من وإلى"); return; }
   if (from > to) { alert("تاريخ من لازم يكون قبل أو يساوي تاريخ إلى"); return; }
-  try { await loadDailyReportRange({ force:true }); }
+  reportMode = 'custom';
+  resetDailyReportViewFilters(false);
+  updateReportTabs();
+  try { await loadDailyReportRange(); }
   catch (error) { alert('تعذر تحميل بيانات Daily Report: ' + (error?.message || error)); return; }
   renderReport();
 }
 
-async function resetReportFilter() { await setReportMode(reportMode); }
+async function resetReportFilter() { await setReportMode('daily'); }
 async function refreshCurrentReport(ev) {
   const btn=ev?.currentTarget||document.getElementById('refreshCurrentReportBtn');
   const old=btn?.innerHTML;
@@ -9135,13 +10161,16 @@ async function refreshCurrentReport(ev) {
   try {
     await loadDailyReportRange({ force:true });
     renderReport();
+  } catch (error) {
+    alert('تعذر تحديث Daily Report: ' + (error?.message || error));
   } finally {
-    if(btn){btn.disabled=false;btn.innerHTML=old||'↻ Refresh';}
+    if(btn){btn.disabled=false;btn.innerHTML=old||'Refresh';}
   }
 }
 
 function getDailyReportAllowedBranchKeys() {
-  if (isAdmin()) return ['nasr-city', 'alexandria', 'mansoura', 'tanta'];
+  const all = DAILY_REPORT_BRANCHES.map(item => item.key);
+  if (isAdmin() || !isDailyReportBranchScopedUser()) return all;
   const managed = getCurrentUserManagedBranches();
   if (!managed.length) return [];
   return [...new Set(managed.map(branch => normalizeProductReportBranch(getBranchShippingCompanyName(branch))).filter(Boolean))];
@@ -9161,17 +10190,9 @@ function applyDailyReportBranchCardVisibility() {
 }
 
 function getReportOrders() {
-  const from = $("reportFromDate").value;
-  const to = $("reportToDate").value;
-  if (!from || !to) return [];
-  const scoped = isDailyReportBranchScopedUser();
-  const allowedBranches = getDailyReportAllowedBranchKeys();
-  return dailyReportOrders.filter(o => {
-    if (scoped && !allowedBranches.includes(getProductReportOrderBranch(o))) return false;
-    if (!o.created_at) return false;
-    const d = getLocalDateISO(o.created_at);
-    return d >= from && d <= to;
-  });
+  const { from, to } = getDailyReportInputRange();
+  if (!from || !to || !dailyReportDataReady || dailyReportOrdersScope !== getDailyReportScopeKey(from, to)) return [];
+  return dailyReportOrders.filter(order => isDailyReportOrderAllowed(order, from, to));
 }
 
 function countByDoctor(list, statusType) {
@@ -9327,7 +10348,163 @@ function renderDailyPerformance(list) {
   renderDailyRateRows('dailyCancelRates', rows, 'cancelRate', 'cancel');
 }
 
-function renderReport() {
+function normalizeDailyReportStatus(order) {
+  const raw = String(getOrderDisplayStatus(order) || order?.status || '').trim();
+  const known = DAILY_REPORT_CORE_STATUSES.find(status => status.toLowerCase() === raw.toLowerCase());
+  return known || raw || 'غير محدد';
+}
+
+function matchesDailyReportCategory(order, category = dailyReportCategoryFilter) {
+  if (!category || category === 'all') return true;
+  if (category === 'ZeroOrders' || category === 'ErrorOrder') return matchesOrderStatusFilter(order, category);
+  const status = normalizeDailyReportStatus(order);
+  if (category === 'Other') return !DAILY_REPORT_CORE_STATUSES.includes(status);
+  return status === category;
+}
+
+function getDailyReportSearchText(order) {
+  const branch = DAILY_REPORT_BRANCHES.find(item => item.key === getProductReportOrderBranch(order))?.label || '';
+  return [getTicketId(order), order?.order_number, order?.customer_name, order?.employee_name, branch, order?.branch, order?.shipping_company, normalizeDailyReportStatus(order)]
+    .map(value => String(value || '').trim().toLowerCase()).join(' ');
+}
+
+function getDailyReportFilteredOrders() {
+  const search = String(document.getElementById('dailyReportSearch')?.value || '').trim().toLowerCase();
+  return getReportOrders().filter(order => {
+    if (dailyReportBranchFilter !== 'all' && getProductReportOrderBranch(order) !== dailyReportBranchFilter) return false;
+    if (!matchesDailyReportCategory(order)) return false;
+    return !search || getDailyReportSearchText(order).includes(search);
+  });
+}
+
+function getDailyReportAnalysis(order) {
+  if (dailyReportAnalysisCache.has(order)) return dailyReportAnalysisCache.get(order);
+  const analysis = analyzeOrderFinancials(order);
+  const result = { ...analysis, remaining:Math.max(0, getOrderOutstandingBalance(order)) };
+  dailyReportAnalysisCache.set(order, result);
+  return result;
+}
+
+function getDailyReportClassifications(order) {
+  const labels = [];
+  if (matchesOrderStatusFilter(order, 'ZeroOrders')) labels.push({ label:'أوردر صفر', className:'zero' });
+  const flags = getOrderFlagMeta(order);
+  if (flags.errorOrder) labels.push({ label:'أخطاء❌', className:'error' });
+  if (flags.urgent) labels.push({ label:'استعجال', className:'' });
+  if (flags.replacement) labels.push({ label:'استبدال', className:'' });
+  return labels.length ? labels : [{ label:'عادي', className:'' }];
+}
+
+function resetDailyReportViewFilters(render = true) {
+  dailyReportBranchFilter = 'all';
+  dailyReportCategoryFilter = 'all';
+  dailyReportPage = 1;
+  const search = document.getElementById('dailyReportSearch');
+  if (search) search.value = '';
+  if (render) renderReport();
+}
+
+function clearDailyReportFilters() { resetDailyReportViewFilters(true); }
+
+function setDailyReportCategoryFilter(category) {
+  dailyReportCategoryFilter = dailyReportCategoryFilter === category ? 'all' : category;
+  dailyReportPage = 1;
+  renderReport();
+}
+
+function setDailyReportBranchFilter(branch) {
+  if (!getDailyReportAllowedBranchKeys().includes(branch)) return;
+  dailyReportBranchFilter = dailyReportBranchFilter === branch ? 'all' : branch;
+  dailyReportPage = 1;
+  renderReport();
+}
+
+function onDailyReportSearch() {
+  dailyReportPage = 1;
+  renderReport();
+}
+
+function setDailyReportPage(page) {
+  const pages = Math.max(1, Math.ceil(getDailyReportFilteredOrders().length / DAILY_REPORT_PAGE_SIZE));
+  dailyReportPage = Math.max(1, Math.min(pages, Number(page) || 1));
+  renderReport();
+}
+
+function dailyReportCategoryLabel(category) {
+  return { all:'كل الحالات', ZeroOrders:'أوردرات صفر', ErrorOrder:'أخطاء❌', Signed:'Signed', Delivering:'Delivering', Returned:'Returned', Cancel:'Cancel', Other:'حالات أخرى' }[category] || 'كل الحالات';
+}
+
+function renderDailyReportFilterState(filtered) {
+  const branchLabel = dailyReportBranchFilter === 'all'
+    ? 'كل الفروع'
+    : (DAILY_REPORT_BRANCHES.find(item => item.key === dailyReportBranchFilter)?.label || 'كل الفروع');
+  const search = String(document.getElementById('dailyReportSearch')?.value || '').trim();
+  const labels = [branchLabel, dailyReportCategoryLabel(dailyReportCategoryFilter)];
+  if (search) labels.push(`بحث: ${search}`);
+  const resultCount = document.getElementById('dailyReportResultCount');
+  const activeFilters = document.getElementById('dailyReportActiveFilters');
+  if (resultCount) resultCount.textContent = `${num(filtered.length)} أوردر`;
+  if (activeFilters) activeFilters.textContent = labels.join(' · ');
+  document.querySelectorAll('[data-report-category]').forEach(card => {
+    const totalSelected = card.dataset.reportCategory === 'all' && dailyReportCategoryFilter === 'all' && dailyReportBranchFilter === 'all' && !search;
+    card.classList.toggle('active', totalSelected || card.dataset.reportCategory === dailyReportCategoryFilter);
+  });
+  document.querySelectorAll('[data-report-branch]').forEach(card => card.classList.toggle('active', card.dataset.reportBranch === dailyReportBranchFilter));
+}
+
+function renderDailyReportPagination(totalRows) {
+  const container = document.getElementById('dailyReportPagination');
+  if (!container) return;
+  const pages = Math.max(1, Math.ceil(totalRows / DAILY_REPORT_PAGE_SIZE));
+  dailyReportPage = Math.max(1, Math.min(dailyReportPage, pages));
+  if (totalRows <= DAILY_REPORT_PAGE_SIZE) { container.innerHTML = ''; return; }
+  container.innerHTML = `<button class="daily-report-page-button" type="button" onclick="setDailyReportPage(${dailyReportPage - 1})" ${dailyReportPage === 1 ? 'disabled' : ''}>السابق</button>
+    <span class="pagination-info">صفحة ${dailyReportPage} من ${pages}</span>
+    <button class="daily-report-page-button" type="button" onclick="setDailyReportPage(${dailyReportPage + 1})" ${dailyReportPage === pages ? 'disabled' : ''}>التالي</button>`;
+}
+
+function renderDailyReportTable(filtered) {
+  const body = document.getElementById('dailyReportTableBody');
+  if (!body) return;
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="12" class="empty">لا توجد أوردرات مطابقة للفلاتر في الفترة المحددة</td></tr>';
+    renderDailyReportPagination(0);
+    return;
+  }
+  const pages = Math.max(1, Math.ceil(filtered.length / DAILY_REPORT_PAGE_SIZE));
+  dailyReportPage = Math.max(1, Math.min(dailyReportPage, pages));
+  const start = (dailyReportPage - 1) * DAILY_REPORT_PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + DAILY_REPORT_PAGE_SIZE);
+  body.innerHTML = pageRows.map(order => {
+    const analysis = getDailyReportAnalysis(order);
+    const branch = DAILY_REPORT_BRANCHES.find(item => item.key === getProductReportOrderBranch(order))?.label || '—';
+    const status = normalizeDailyReportStatus(order);
+    const statusClass = DAILY_REPORT_CORE_STATUSES.includes(status) ? status.toLowerCase() : 'other';
+    const tags = getDailyReportClassifications(order).map(item => `<span class="daily-report-tag ${item.className}">${escapeHTML(item.label)}</span>`).join('');
+    return `<tr>
+      <td><strong>${escapeHTML(getTicketId(order))}</strong></td>
+      <td>${escapeHTML(order.customer_name || '—')}</td>
+      <td>${escapeHTML(order.employee_name || '—')}</td>
+      <td>${escapeHTML(branch)}</td>
+      <td><span class="daily-report-status ${statusClass}">${escapeHTML(status)}</span></td>
+      <td><div class="daily-report-classifications">${tags}</div></td>
+      <td>${enMoney(analysis.price)}</td>
+      <td>${enMoney(analysis.deposit)}</td>
+      <td>${enMoney(analysis.collected)}</td>
+      <td>${enMoney(analysis.remaining)}</td>
+      <td>${escapeHTML(formatEnglishDateTime(order.created_at))}</td>
+      <td><button class="daily-report-open-btn" type="button" data-order-id="${escapeHTML(String(order.id))}" onclick="openDailyReportOrder(this.dataset.orderId)">فتح الأوردر ↗</button></td>
+    </tr>`;
+  }).join('');
+  renderDailyReportPagination(filtered.length);
+}
+
+function openDailyReportOrder(id) {
+  const order = dailyReportOrders.find(item => String(item.id) === String(id));
+  if (order) openReportOrderTab('daily_report', order);
+}
+
+function renderLegacyDailyPerformanceReport() {
   const from = $("reportFromDate").value;
   const to = $("reportToDate").value;
   if (!from || !to) { setReportMode("daily"); return; }
@@ -9428,7 +10605,7 @@ function renderReport() {
   `;
 }
 
-function exportCurrentReport() {
+function exportLegacyDailyPerformanceReport() {
   const from = $("reportFromDate").value;
   const to = $("reportToDate").value;
   const list = getReportOrders();
@@ -9457,6 +10634,100 @@ function exportCurrentReport() {
     ...fakeDoctors.map((x, i) => [`${i + 1}. ${x.name}`, x.count])
   ];
   downloadCSV(`${title}-report-${from}-to-${to}.csv`, ["Metric", "Value"], rows);
+}
+
+function renderReport() {
+  const { from, to } = getDailyReportInputRange();
+  if (!from || !to) return;
+  const title = reportMode === 'daily' ? 'Daily Report — اليوم'
+    : reportMode === 'weekly' ? 'Daily Report — آخر 7 أيام'
+    : reportMode === 'monthly' ? 'Daily Report — الشهر الحالي'
+    : 'Daily Report — فترة مخصصة';
+  const reportTitle = document.getElementById('reportTitle');
+  const reportRange = document.getElementById('reportRangeText');
+  if (reportTitle) reportTitle.textContent = title;
+  if (reportRange) reportRange.textContent = `تاريخ التسجيل: ${from} → ${to}`;
+  applyDailyReportBranchCardVisibility();
+
+  if (!dailyReportDataReady || dailyReportOrdersScope !== getDailyReportScopeKey(from, to)) {
+    ['reportTotalOrders','reportZeroOrders','reportErrorOrders','reportSigned','reportDelivering','reportReturned','reportCancel','reportOther','reportNasrCity','reportAlexandria','reportTanta','reportMansoura','reportTotalValue','reportDeposit','reportCollected','reportRemaining'].forEach(id => {
+      const element = document.getElementById(id); if (element) element.textContent = '0';
+    });
+    const resultCount = document.getElementById('dailyReportResultCount');
+    if (resultCount) resultCount.textContent = '0 أوردر';
+    const body = document.getElementById('dailyReportTableBody');
+    if (body) body.innerHTML = `<tr><td colspan="12" class="empty">${dailyReportLoading ? 'جاري تحميل البيانات...' : 'اضغط Refresh لإعادة تحميل الفترة'}</td></tr>`;
+    renderDailyReportPagination(0);
+    return;
+  }
+
+  const allOrders = getReportOrders();
+  const categoryBase = dailyReportBranchFilter === 'all'
+    ? allOrders
+    : allOrders.filter(order => getProductReportOrderBranch(order) === dailyReportBranchFilter);
+  const branchBase = dailyReportCategoryFilter === 'all'
+    ? allOrders
+    : allOrders.filter(order => matchesDailyReportCategory(order));
+  const setCount = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = num(value); };
+  setCount('reportTotalOrders', categoryBase.length);
+  setCount('reportZeroOrders', categoryBase.filter(order => matchesOrderStatusFilter(order, 'ZeroOrders')).length);
+  setCount('reportErrorOrders', categoryBase.filter(order => matchesOrderStatusFilter(order, 'ErrorOrder')).length);
+  setCount('reportSigned', categoryBase.filter(order => normalizeDailyReportStatus(order) === 'Signed').length);
+  setCount('reportDelivering', categoryBase.filter(order => normalizeDailyReportStatus(order) === 'Delivering').length);
+  setCount('reportReturned', categoryBase.filter(order => normalizeDailyReportStatus(order) === 'Returned').length);
+  setCount('reportCancel', categoryBase.filter(order => normalizeDailyReportStatus(order) === 'Cancel').length);
+  setCount('reportOther', categoryBase.filter(order => !DAILY_REPORT_CORE_STATUSES.includes(normalizeDailyReportStatus(order))).length);
+  DAILY_REPORT_BRANCHES.forEach(item => setCount({
+    'nasr-city':'reportNasrCity', alexandria:'reportAlexandria', tanta:'reportTanta', mansoura:'reportMansoura'
+  }[item.key], branchBase.filter(order => getProductReportOrderBranch(order) === item.key).length));
+
+  const filtered = getDailyReportFilteredOrders();
+  const financial = filtered.reduce((totals, order) => {
+    const analysis = getDailyReportAnalysis(order);
+    totals.price += Number(analysis.price || 0);
+    totals.deposit += Number(analysis.deposit || 0);
+    totals.collected += Number(analysis.collected || 0);
+    totals.remaining += Number(analysis.remaining || 0);
+    return totals;
+  }, { price:0, deposit:0, collected:0, remaining:0 });
+  const setFinancial = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = enMoney(value); };
+  setFinancial('reportTotalValue', financial.price);
+  setFinancial('reportDeposit', financial.deposit);
+  setFinancial('reportCollected', financial.collected);
+  setFinancial('reportRemaining', financial.remaining);
+  renderDailyReportFilterState(filtered);
+  renderDailyReportTable(filtered);
+}
+
+function exportCurrentReport() {
+  if (!currentUser || !hasRoleFeature('daily_report')) { alert('لا توجد صلاحية لتصدير Daily Report'); return; }
+  const { from, to } = getDailyReportInputRange();
+  if (dailyReportLoading) { alert('انتظر اكتمال تحميل Daily Report ثم أعد المحاولة'); return; }
+  if (dailyReportLoadError) { alert('آخر تحديث للتقرير لم يكتمل. اضغط Refresh ثم أعد التصدير.'); return; }
+  if (!dailyReportDataReady || dailyReportOrdersScope !== getDailyReportScopeKey(from, to)) {
+    alert('بيانات الفترة غير جاهزة. اضغط Refresh ثم أعد التصدير.');
+    return;
+  }
+  const list = getDailyReportFilteredOrders();
+  if (!list.length) { alert('لا توجد بيانات مطابقة للفلاتر للتصدير'); return; }
+  const revision = dailyReportRevision;
+  const rows = list.map(order => {
+    const analysis = getDailyReportAnalysis(order);
+    const branch = DAILY_REPORT_BRANCHES.find(item => item.key === getProductReportOrderBranch(order))?.label || '';
+    return [
+      getTicketId(order), order.customer_name || '', order.employee_name || '', branch,
+      normalizeDailyReportStatus(order), getDailyReportClassifications(order).map(item => item.label).join(' + '),
+      analysis.price, analysis.deposit, analysis.collected, analysis.remaining,
+      formatEnglishDateTime(order.created_at)
+    ];
+  });
+  if (revision !== dailyReportRevision || !hasRoleFeature('daily_report')) {
+    alert('تغيّرت بيانات التقرير أو الصلاحيات؛ أعد التصدير.');
+    return;
+  }
+  const mode = reportMode === 'daily' ? 'daily' : reportMode === 'weekly' ? 'last-7-days' : reportMode === 'monthly' ? 'current-month' : 'custom';
+  downloadCSV(`Daily-Report-${mode}-${from}-to-${to}.csv`,
+    ['Ticket ID','العميل','الموظف','الفرع','الحالة','التصنيف','السعر','Deposit','التحصيل','المتبقي','تاريخ التسجيل'], rows);
 }
 
 // ===== دوال استيراد Excel =====
@@ -9847,7 +11118,14 @@ if(filterDoctorEl)filterDoctorEl.addEventListener('change',()=>{pageState.orders
 exportBtn.addEventListener("click", event => openOrdersExportMenu('dashboard', event));
 const shippingRankSearchEl = document.getElementById("shippingRankSearch");
 if (shippingRankSearchEl) shippingRankSearchEl.addEventListener("input", () => { pageState.shippingRank = 1; renderShippingRank(); renderShippingCharts(); });
-document.getElementById('doctorRankSearch')?.addEventListener('input', () => { pageState.doctorRank = 1; renderDoctorRank(); });
+document.getElementById('doctorRankSearch')?.addEventListener('input', () => {
+  if (doctorRankSearchTimer) clearTimeout(doctorRankSearchTimer);
+  doctorRankSearchTimer = setTimeout(() => {
+    doctorRankSearchTimer = null;
+    pageState.doctorRank = 1;
+    renderDoctorRank();
+  }, 120);
+});
 if (doctorsAnalysisSearch) doctorsAnalysisSearch.addEventListener("input", () => { pageState.doctorsAnalysis = 1; renderAnalytics(); });
 
 document.addEventListener("click", function(e) {
@@ -10839,7 +12117,7 @@ document.addEventListener('DOMContentLoaded', function() {
           await requestPaymentOcrAudit(savedOrder.id,'secretary',imgUrl,savedOrder.deposit);
         }
       }
-      await logActivity(wasEditing?'order_updated':'order_created',wasEditing?'تم تعديل أوردر من صفحة الفرع':'تم إضافة أوردر جديد من الفرع',`العميل: ${orderData.customer_name} | الفرع: ${currentBranchName} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
+      await logActivity(wasEditing?'order_updated':'order_created',wasEditing?'تم تعديل أوردر من صفحة الفرع':'تم إضافة أوردر جديد من الفرع',`العميل: ${orderData.customer_name} | الفرع: ${currentBranchName} | الحالة: ${orderData.status} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
       const secretaryAudit = analyzeSecretaryOrderInput(savedOrder || editingOrder || orderData);
       if (secretaryAudit.errors.length) await sendAutomatedAuditNotice('secretary', savedOrder || editingOrder || orderData, secretaryAudit.errors,{severity:'error'});
       if (secretaryAudit.warnings.length) await sendAutomatedAuditNotice('secretary', savedOrder || editingOrder || orderData, secretaryAudit.warnings,{severity:'warning'});
@@ -12172,8 +13450,10 @@ async function loadSecretaryAuditRows() {
 async function openSecretaryAudit() {
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   const today=getCairoDateISO(new Date());
-  const from=document.getElementById('secretaryAuditFrom'),to=document.getElementById('secretaryAuditTo');
+  const from=document.getElementById('secretaryAuditFrom'),to=document.getElementById('secretaryAuditTo'),severity=document.getElementById('secretaryAuditSeverityFilter');
   if(from)from.value=today;if(to)to.value=today;
+  if(severity)severity.value='error';
+  searchableOrderSelects.get('secretaryAuditSeverityFilter')?.syncFromSelect();
   hideAllPages();
   document.getElementById('secretaryAuditPage')?.classList.remove('hidden');
   setActiveMenu('secretaryAuditPage');
@@ -12190,7 +13470,7 @@ async function refreshSecretaryAudit(markRead=true){
 }
 async function resetSecretaryAuditFilters(){
   const today=getCairoDateISO(new Date());
-  const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'all'};
+  const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'error'};
   Object.entries(values).forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.value=value;});
   const search=document.getElementById('secretaryAuditSearch');if(search)search.value='';
   ['secretaryAuditBranchFilter','secretaryAuditEmployeeFilter','secretaryAuditSeverityFilter'].forEach(id=>searchableOrderSelects.get(id)?.syncFromSelect());
@@ -12398,26 +13678,46 @@ function describeSecretaryAuditCorrections(order,previousIssues=[]){
 async function recordSecretaryAuditResolution(order,actor=currentUser){
   const ticket=getTicketId(order)||order?.order_number||'';
   if(!ticket||!order?.id)return false;
-  const latest=await supabaseClient.from('activity_logs').select('id,action_type,action_details').in('action_type',SECRETARY_AUDIT_EVENT_ACTIONS).eq('ticket_id',String(ticket)).order('id',{ascending:false}).limit(1);
+  const latest=await supabaseClient.from('activity_logs').select('id,action_type,action_details').in('action_type',SECRETARY_AUDIT_EVENT_ACTIONS).eq('ticket_id',String(ticket)).order('id',{ascending:false}).limit(50);
   if(latest.error){console.error('Secretary Audit resolution lookup failed:',latest.error);return false;}
   if(!latest.data?.length||latest.data[0].action_type==='secretary_audit_resolved')return false;
-  let previousInfo={};try{previousInfo=JSON.parse(latest.data[0].action_details||'{}');}catch(_){previousInfo={issues:[latest.data[0].action_details||'خطأ إدخال سابق']};}
-  const previousIssues=Array.isArray(previousInfo.issues)?previousInfo.issues:[];
-  const info={order_id:order.id,ticket_id:ticket,order_number:order.order_number||'',customer_name:order.customer_name||'',doctor_name:order.doctor_name||'',branch:pendingOrderBranch(order)||order.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order.deposit||0),status:order.status||'',issues:describeSecretaryAuditCorrections(order,previousIssues)};
+  const unresolvedEvents=[];
+  for(const event of latest.data){
+    if(event.action_type==='secretary_audit_resolved')break;
+    unresolvedEvents.push(event);
+  }
+  const previousIssues=[...new Set(unresolvedEvents.flatMap(event=>{
+    let previousInfo={};
+    try{previousInfo=JSON.parse(event.action_details||'{}');}
+    catch(_){previousInfo={issues:[event.action_details||'خطأ إدخال سابق']};}
+    return Array.isArray(previousInfo.issues)?previousInfo.issues:[];
+  }).map(value=>String(value||'').trim()).filter(Boolean))];
+  if(!previousIssues.length)return false;
+  const corrections=describeSecretaryAuditCorrections(order,previousIssues);
+  const info={order_id:order.id,ticket_id:ticket,order_number:order.order_number||'',customer_name:order.customer_name||'',doctor_name:order.doctor_name||'',branch:pendingOrderBranch(order)||order.branch||'',actor:actor?.name||actor?.username||'',price:Number(getEffectiveOrderPrice(order)||0),deposit:Number(order.deposit||0),status:order.status||'',issues:corrections};
   const saved=await logActivity('secretary_audit_resolved','Secretary Audit — تم تعديل الخطأ',JSON.stringify(info),{order_id:order.id,ticket_id:ticket,customer_name:info.customer_name,branch_name:info.branch});
-  if(saved&&!document.getElementById('secretaryAuditPage')?.classList.contains('hidden'))scheduleSecretaryAuditLiveRefresh();
+  if(saved){
+    await sendAutomatedAuditNotice('secretary',order,corrections,{severity:'resolved',recordEvent:false,actor});
+    if(!document.getElementById('secretaryAuditPage')?.classList.contains('hidden'))scheduleSecretaryAuditLiveRefresh();
+  }
   return saved;
 }
 async function sendAutomatedAuditNotice(kind,order,issues,options={}){
   if(!order||!issues?.length)return false;
-  const key=`${kind}:${order.id||order.phone}:${issues.join('|')}`;
+  const severity=String(options.severity||'error').toLowerCase();
+  const key=`${kind}:${severity}:${order.id||order.phone}:${issues.join('|')}`;
   const last=auditNoticeThrottle.get(key)||0;if(Date.now()-last<120000)return true;auditNoticeThrottle.set(key,Date.now());
   try{
-    if(kind==='secretary')await recordSecretaryAuditEvent(order,issues,options.severity||'error',options.actor||currentUser);
+    if(kind==='secretary'&&options.recordEvent!==false&&severity!=='resolved')await recordSecretaryAuditEvent(order,issues,severity,options.actor||currentUser);
+    // Warnings remain available inside Secretary Audit, but Chat is reserved
+    // for blocking errors and confirmed corrections only.
+    if(severity!=='error'&&severity!=='resolved')return true;
     const recipients=await getAuditRecipientUsers(kind,options.actor||currentUser),bot=AUDIT_BOTS[kind];
     const ticket=getTicketId(order)||order.order_number||'—',branch=pendingOrderBranch(order)||order.branch||'—';
     const openMarker=order.id?`\n[OPEN_ORDER:${order.id}]`:'';
-    const message=`${kind==='secretary'?'خطأ إدخال أوردر':'خطأ في تحصيل أوردر'}\nالعميل: ${order.customer_name||'—'}\nTicket ID: ${ticket}\nالفرع: ${branch}\nبواسطة: ${(options.actor||currentUser)?.name||(options.actor||currentUser)?.username||'—'}\nالمشكلة: ${issues.join(' | ')}${openMarker}`;
+    const title=kind==='secretary'?(severity==='resolved'?'تم تعديل خطأ أوردر':'خطأ إدخال أوردر'):'خطأ في تحصيل أوردر';
+    const detailsLabel=severity==='resolved'?'التعديلات':'المشكلة';
+    const message=`${title}\nالعميل: ${order.customer_name||'—'}\nTicket ID: ${ticket}\nالفرع: ${branch}\nبواسطة: ${(options.actor||currentUser)?.name||(options.actor||currentUser)?.username||'—'}\n${detailsLabel}: ${issues.join(' | ')}${openMarker}`;
     // Keep sender_id as the authenticated actor UUID for compatibility with
     // existing chat schemas/RLS, while the visible sender is the audit bot.
     const payloads=recipients.map(receiver=>({sender_id:String((options.actor||currentUser)?.id||''),sender_username:bot.username,sender_name:bot.name,receiver_id:String(receiver.id||''),receiver_username:String(receiver.username||''),receiver_name:String(receiver.name||receiver.username||'User'),message,is_read:false}));

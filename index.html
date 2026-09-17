@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260914-pending-operation-weeks-v151">
+  <link rel="stylesheet" href="css/style.css?v=20260917-rescued-orders-true-rank-v158">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -1090,7 +1090,7 @@
 <section class="hidden" id="doctorRankPage">
 <div class="doctor-rank-shell">
   <div class="card doctor-rank-head">
-    <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p></div>
+    <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p><small class="doctor-rank-load-state" id="doctorRankLoadState" aria-live="polite"></small></div>
     <div class="doctor-rank-head-actions">
       <button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button>
       <button class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
@@ -1101,9 +1101,9 @@
     <label>إلى <input id="doctorRankToDate" type="date"></label>
     <label>الفرع <select id="doctorRankBranchFilter"><option value="all">كل الفروع</option><option value="nasr-city">مدينة نصر</option><option value="alexandria">اسكندرية</option><option value="tanta">طنطا</option><option value="mansoura">المنصورة</option></select></label>
     <input class="rank-search" id="doctorRankSearch" placeholder="بحث باسم الدكتور أو الكود...">
-    <button class="success" type="button" onclick="applyDoctorRankFilters()">Filter 🔍</button>
+    <button class="success" id="doctorRankFilterBtn" type="button" onclick="applyDoctorRankFilters()">Filter 🔍</button>
     <button class="doctor-weekly-btn doctor-rank-smart-export-btn" type="button" onclick="exportDoctorRank()">⬇ Smart Export</button>
-    <button class="soft" type="button" onclick="resetDoctorRankFilters()">Reset ✕</button>
+    <button class="soft" id="doctorRankResetBtn" type="button" onclick="resetDoctorRankFilters()">Reset ✕</button>
     <button class="doctor-weekly-btn" type="button" onclick="toggleDoctorWeeklyComparison(true)">📊 Weekly Comparison</button>
   </div>
   <section class="doctor-weekly-panel hidden" id="doctorWeeklyPanel">
@@ -1151,11 +1151,11 @@
 </section>
 <!-- ===== Reports / Daily Report Page ===== -->
 <section class="hidden" id="branchRankPage">
-<div class="card">
+<div class="card daily-report-head-card">
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
 <div>
-<h1 style="margin-bottom:4px">📋 مركز التقارير</h1>
-<p>اختار الفترة من / إلى ثم اعرض Daily أو Weekly أو Monthly Report.</p>
+<h1 style="margin-bottom:4px">📋 Daily Report</h1>
+<p>متابعة الأوردرات المسجلة فعليًا في الفروع الأربعة حسب تاريخ التسجيل.</p>
 </div>
 <div class="analytics-date-bar">
 <label>من</label>
@@ -1164,60 +1164,65 @@
 <input id="reportToDate" type="date"/>
 <button class="btn-filter" onclick="applyReportFilter()">🔍 Filter</button>
 <button class="btn-reset-date" onclick="resetReportFilter()">✕ Reset</button>
-<button class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">↻ Refresh</button>
+<button class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">Refresh</button>
 <button class="success" onclick="exportCurrentReport()">⬇ Export</button>
 </div>
 </div>
 <div class="report-tabs">
-<button id="dailyReportBtn" onclick="setReportMode('daily')">Daily Report</button>
-<button id="weeklyReportBtn" onclick="setReportMode('weekly')">Weekly Report</button>
-<button id="monthlyReportBtn" onclick="setReportMode('monthly')">Monthly Report</button>
+<button id="dailyReportBtn" onclick="setReportMode('daily')">اليوم</button>
+<button id="weeklyReportBtn" onclick="setReportMode('weekly')">آخر 7 أيام</button>
+<button id="monthlyReportBtn" onclick="setReportMode('monthly')">الشهر الحالي</button>
 </div>
 </div>
-<div class="card">
+<div class="card daily-report-body-card">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px">
 <h2 id="reportTitle" style="margin:0">Daily Report</h2>
 <p id="reportRangeText" style="margin:0">—</p>
 </div>
-<div class="report-grid">
-<div class="report-card"><span>📦 Total Orders</span><strong id="reportTotalOrders">0</strong></div>
-<div class="report-card"><span>↩️ Total Returned</span><strong id="reportReturned">0</strong></div>
-<div class="report-card"><span>🚚 Delivering</span><strong id="reportDelivering">0</strong></div>
-<div class="report-card"><span>❌ Cancel</span><strong id="reportCancel">0</strong></div>
-<div class="report-card" data-report-branch="nasr-city"><span>Nasr City Branch</span><strong id="reportNasrCity">0</strong></div>
-<div class="report-card" data-report-branch="alexandria"><span>Alexandria Branch</span><strong id="reportAlexandria">0</strong></div>
-<div class="report-card" data-report-branch="mansoura"><span>Mansoura Branch</span><strong id="reportMansoura">0</strong></div>
-<div class="report-card" data-report-branch="tanta"><span>TanTa Branch</span><strong id="reportTanta">0</strong></div>
+<div id="dailyReportLoadState" class="daily-report-load-state" role="status" aria-live="polite"></div>
+
+<h3 class="daily-report-section-title">ملخص التسجيل والحالات</h3>
+<div class="report-grid daily-report-status-grid">
+<button class="report-card daily-report-filter-card" type="button" data-report-category="all" onclick="clearDailyReportFilters()"><span>📦 إجمالي الأوردرات المسجلة</span><strong id="reportTotalOrders">0</strong></button>
+<button class="report-card daily-report-filter-card daily-report-zero-card" type="button" data-report-category="ZeroOrders" onclick="setDailyReportCategoryFilter('ZeroOrders')"><span>🔴 أوردرات صفر</span><strong id="reportZeroOrders">0</strong></button>
+<button class="report-card daily-report-filter-card daily-report-error-card" type="button" data-report-category="ErrorOrder" onclick="setDailyReportCategoryFilter('ErrorOrder')"><span>أخطاء❌</span><strong id="reportErrorOrders">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-category="Signed" onclick="setDailyReportCategoryFilter('Signed')"><span>Signed</span><strong id="reportSigned">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-category="Delivering" onclick="setDailyReportCategoryFilter('Delivering')"><span>Delivering</span><strong id="reportDelivering">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-category="Returned" onclick="setDailyReportCategoryFilter('Returned')"><span>Returned</span><strong id="reportReturned">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-category="Cancel" onclick="setDailyReportCategoryFilter('Cancel')"><span>Cancel</span><strong id="reportCancel">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-category="Other" onclick="setDailyReportCategoryFilter('Other')"><span>حالات أخرى</span><strong id="reportOther">0</strong></button>
 </div>
-<div class="daily-performance-layout">
-  <div class="daily-performance-panel daily-ranking-panel">
-    <h3>🎯 ترتيب الفروع حسب نسبة التوصيل</h3>
-    <div class="daily-ranking-head">
-      <span>الترتيب</span><span>الفرع</span><span>الفارق للوصول إلى 90%</span><span>Conversion Rate</span>
-    </div>
-    <div id="dailyBranchRanking"></div>
-  </div>
-  <div class="daily-performance-panel daily-target-panel">
-    <h3>الهدف الشهري</h3>
-    <div class="daily-target-gauge"><div><strong>90%</strong><span>الهدف</span></div></div>
-    <p>هدفنا الوصول إلى 90% من نسبة التوصيل لكل فرع</p>
-    <small>النسبة الحالية: <b id="dailyOverallConversion">0%</b></small>
-  </div>
+
+<h3 class="daily-report-section-title">أوردرات الفروع</h3>
+<div class="report-grid daily-report-branch-grid">
+<button class="report-card daily-report-filter-card" type="button" data-report-branch="nasr-city" onclick="setDailyReportBranchFilter('nasr-city')"><span>فرع مدينة نصر</span><strong id="reportNasrCity">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-branch="alexandria" onclick="setDailyReportBranchFilter('alexandria')"><span>فرع اسكندرية</span><strong id="reportAlexandria">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-branch="tanta" onclick="setDailyReportBranchFilter('tanta')"><span>فرع طنطا</span><strong id="reportTanta">0</strong></button>
+<button class="report-card daily-report-filter-card" type="button" data-report-branch="mansoura" onclick="setDailyReportBranchFilter('mansoura')"><span>فرع المنصورة</span><strong id="reportMansoura">0</strong></button>
 </div>
-<div class="daily-rate-grid">
-  <div class="daily-performance-panel">
-    <h3>📊 نسبة التوصيل الحالية لكل فرع</h3>
-    <div id="dailyConversionRates" class="daily-rate-list"></div>
-  </div>
-  <div class="daily-performance-panel">
-    <h3 class="daily-red-title">↩ معدل المرتجعات (Returned)</h3>
-    <div id="dailyReturnedRates" class="daily-rate-list"></div>
-  </div>
-  <div class="daily-performance-panel">
-    <h3 class="daily-red-title">✖ معدل الإلغاء (Cancel)</h3>
-    <div id="dailyCancelRates" class="daily-rate-list"></div>
+
+<h3 class="daily-report-section-title">المحرك المالي المركزي</h3>
+<div class="daily-report-financial-grid">
+<div class="daily-report-financial-card"><span>إجمالي قيمة الأوردرات</span><strong id="reportTotalValue">0</strong></div>
+<div class="daily-report-financial-card"><span>Deposit</span><strong id="reportDeposit">0</strong></div>
+<div class="daily-report-financial-card"><span>إجمالي التحصيل</span><strong id="reportCollected">0</strong></div>
+<div class="daily-report-financial-card"><span>المتبقي</span><strong id="reportRemaining">0</strong></div>
+</div>
+
+<div class="daily-report-table-tools">
+  <div><strong id="dailyReportResultCount">0 أوردر</strong><span id="dailyReportActiveFilters">كل الفروع · كل الحالات</span></div>
+  <div class="daily-report-search-wrap">
+    <input id="dailyReportSearch" type="search" autocomplete="off" placeholder="بحث بـ Ticket ID أو العميل أو الموظف..." oninput="onDailyReportSearch()"/>
+    <button class="soft" type="button" onclick="clearDailyReportFilters()">مسح الفلاتر</button>
   </div>
 </div>
+<div class="table-wrap daily-report-table-wrap">
+<table class="daily-report-table">
+<thead><tr><th>Ticket ID</th><th>العميل</th><th>الموظف</th><th>الفرع</th><th>الحالة</th><th>التصنيف</th><th>السعر</th><th>Deposit</th><th>التحصيل</th><th>المتبقي</th><th>تاريخ التسجيل</th><th>الإجراء</th></tr></thead>
+<tbody id="dailyReportTableBody"><tr><td colspan="12" class="empty">جاري تجهيز التقرير...</td></tr></tbody>
+</table>
+</div>
+<div id="dailyReportPagination" class="pagination"></div>
 </div>
 </section>
 <!-- ===== Users Page ===== -->
@@ -1734,11 +1739,11 @@
   </div>
 </div>
 
-<!-- ===== OKB Abnormal — Returned / Cancel / Rescued returns ===== -->
+<!-- ===== OKB Abnormal — Returned / Cancel / Rescued orders ===== -->
 <section class="hidden" id="okbStoresReportPage">
   <div class="pending-shell stores-report-shell">
     <div class="pending-head">
-      <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Abnormal</h1><p>متابعة Returned وGroup Cancel والمرتجعات التي تم إنقاذها في فروع OKB</p></div></div>
+      <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Abnormal</h1><p>متابعة Returned وGroup Cancel والأوردرات التي تم إنقاذها من الحالتين في فروع OKB</p></div></div>
       <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(false)">↻ تحديث</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="soft" type="button" onclick="showInitialPermittedPage()">← رجوع</button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
@@ -1751,14 +1756,14 @@
       <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="طنطا"><span>طنطا</span><strong id="storesReportTantaCount">0</strong></div>
       <div class="pending-summary-card stores-report-branch-card" data-stores-report-branch="المنصورة"><span>المنصورة</span><strong id="storesReportMansouraCount">0</strong></div>
       <div class="pending-summary-card stores-report-rescued-card">
-        <span class="stores-report-rescued-title">مرتجعات تم انقاذها</span>
+        <span class="stores-report-rescued-title">أوردرات تم إنقاذها</span>
         <div class="stores-report-rescued-branches" id="storesReportRescuedCounts" aria-live="polite"></div>
         <small id="storesReportRescuedMessage" class="hidden" role="status"></small>
       </div>
     </div>
     <div class="pending-toolbar">
       <input id="storesReportSearch" type="text" placeholder="ابحث بالعميل، الدكتور، الهاتف، Ticket ID أو رقم الأوردر..." oninput="renderOKBStoresReport()">
-      <select id="storesReportStatus" onchange="renderOKBStoresReport()"><option value="all">كل الحالات</option><option value="Returned" selected>Returned</option><option value="Cancel">Cancel</option><option value="RescuedReturned">مرتجعات تم انقاذها</option></select>
+      <select id="storesReportStatus" onchange="renderOKBStoresReport()"><option value="all">كل الحالات</option><option value="Returned" selected>Returned</option><option value="Cancel">Cancel</option><option value="RescuedReturned">أوردرات تم إنقاذها</option></select>
       <select id="storesReportBranch" onchange="renderOKBStoresReport()"><option value="all">كل الفروع</option></select>
     </div>
     <div id="storesReportOrdersList" class="pending-list"><div class="pending-loading">جاري تحميل المرتجعات...</div></div>
@@ -1768,7 +1773,7 @@
 <section class="hidden" id="pendingPage">
   <div class="pending-shell">
     <div class="pending-head">
-      <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>عملاء الفروع بحالة Delivering الذين مرّ عليهم 3 أيام أو أكثر بدون تحديث</p></div></div>
+      <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>أوردرات الشهر الحالي بحالة Delivering التي مرّ عليها 3 أيام أو أكثر بدون تحديث</p></div></div>
       <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">تحديث</button><button class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button class="soft" type="button" onclick="showOrdersPage()">← رجوع للـ Dashboard</button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
@@ -2303,6 +2308,6 @@
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="js/main.js?v=20260914-pending-operation-weeks-v151"></script>
+<script src="js/main.js?v=20260917-rescued-orders-true-rank-v158"></script>
 </body>
 </html>
