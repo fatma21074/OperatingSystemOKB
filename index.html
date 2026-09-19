@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260917-rescued-orders-true-rank-v158">
+  <link rel="stylesheet" href="css/style.css?v=20260918-okb-filter-v162">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -443,7 +443,7 @@
 }
 </style>
 
-  <link rel="stylesheet" href="css/page-navigation.css?v=20260917-users-role-toolbar-v161">
+  <link rel="stylesheet" href="css/page-navigation.css?v=20260918-okb-filter-v162">
 </head>
 
 <body>
@@ -597,7 +597,7 @@
   <span class="secretary-audit-icon" aria-hidden="true">🛡️<span id="secretaryAuditNotification" class="secretary-audit-notification hidden">0</span></span>
   <span>Secretary Audit</span>
 </button>
-<button class="logout-header-btn financial-audit-header-btn" id="financialAuditHeaderBtn" type="button" onclick="openFinancialAudit('branches')" title="Financial Audit">
+<button class="logout-header-btn financial-audit-header-btn" id="financialAuditHeaderBtn" type="button" onclick="openFinancialAudit('branches','main')" title="Financial Audit">
   <span class="logout-header-icon" aria-hidden="true">🛡️<b id="financialAuditNotification" class="secretary-audit-notification hidden">0</b></span>
   <span class="logout-header-label">Financial Audit</span>
 </button>
@@ -611,7 +611,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1>إضافة أوردر جديد</h1>
-<div class="page-user-refresh"><button id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="user-tag page-refresh-btn" type="button" onclick="refreshDashboardPage(this)">↻ Refresh</button></div>
+<div class="page-user-refresh"><button id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 </div>
 <form id="orderForm">
 <div class="form-grid">
@@ -726,22 +726,8 @@
 <button class="btn-reset-date" onclick="resetDateFilter()">✕ Reset</button>
 <span class="active-filter-badge" id="activeDateBadge">📅 فيلتر تاريخ مفعّل</span>
 <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل أو Ticket ID أو Barcode..."/>
-<select id="filterStatus">
+<select id="filterStatus" data-okb-unified-filter="dashboard">
 <option value="الكل" selected>كل الحالات</option>
-<option value="ZeroOrders">🔴 أوردرات صفر</option>
-<option value="Signed">Signed</option>
-<option value="UrgentOrder">استعجال الأوردر</option>
-<option value="ReplacementOrder">استبدال الأوردر</option>
-<option value="ErrorOrder">أخطاء❌</option>
-<option value="Transit">Transit</option>
-<option value="Returned">Returned</option>
-<option value="Fake Delivery update">Fake Delivery Update</option>
-<option value="Fake Doctor">Fake Doctor</option>
-<option value="Picked-up">Picked-up</option>
-<option value="Delivering">Delivering</option>
-<option value="Returning">Returning</option>
-<option value="Cancel">Cancel</option>
-<option value="PaymentProof">إثبات دفع</option>
 </select>
 <select id="filterEmployee"></select>
 <select id="filterShippingCompany"><option value="الكل">كل شركات الشحن</option></select>
@@ -1494,6 +1480,28 @@
     </div>
   </form>
 </div>
+
+<div class="card hidden" id="okbFilterSettingsCard">
+  <div class="okb-filter-settings-head">
+    <div>
+      <h2>OKB Filter</h2>
+      <p>مركز موحّد لفلاتر حالات الأوردر فقط. لا يغيّر رحلة الأوردر أو الحسابات أو المخزون.</p>
+    </div>
+    <span class="sticky-note-admin-chip">Admin فقط</span>
+  </div>
+  <form id="okbFilterSettingsForm" class="okb-filter-add-row">
+    <input id="okbFilterNameInput" maxlength="80" placeholder="اسم الحالة الجديدة" required />
+    <button class="success" id="okbFilterAddBtn" type="submit">＋ إضافة حالة</button>
+    <span id="okbFilterSettingsStatus" role="status"></span>
+  </form>
+  <div class="okb-filter-note">أي حالة جديدة تعمل كفلتر يطابق قيمة حالة الأوردر فقط. تعديل الاسم يغيّر اسم العرض ولا يغيّر بيانات الأوردرات.</div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table class="okb-filter-settings-table">
+      <thead><tr><th>#</th><th>اسم الحالة</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+      <tbody id="okbFilterSettingsTableBody"></tbody>
+    </table>
+  </div>
+</div>
 </section>
 <!-- ===== Role Permissions Page ===== -->
 <section class="hidden" id="permissionPage">
@@ -1636,23 +1644,8 @@
 <button class="btn-reset-date" onclick="resetBranchDateFilter()">✕ Reset</button>
 <span class="active-filter-badge" id="bActiveDateBadge">📅 فيلتر تاريخ مفعّل</span>
 <input id="bSearchInput" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..."/>
-<select id="bFilterStatus">
+<select id="bFilterStatus" data-okb-unified-filter="branch">
 <option value="الكل">كل الحالات</option>
-<option value="ZeroOrders">🔴 أوردرات صفر</option>
-<option value="UrgentOrder">استعجال الأوردر</option>
-<option value="ReplacementOrder">استبدال الأوردر</option>
-<option value="ErrorOrder">أخطاء❌</option>
-<option value="Transit">Transit</option>
-<option value="Returned">Returned</option>
-<option value="Fake Delivery update">Fake Delivery Update</option>
-<option value="Fake Doctor">Fake Doctor</option>
-<option value="Picked-up">Picked-up</option>
-<option value="Delivering">Delivering</option>
-<option value="Returning">Returning</option>
-<option value="Signed">Signed</option>
-<option value="PaymentProof">إثبات دفع</option>
-<option value="SecretaryTransfers">تحويلات السكرتارية</option>
-<option value="CollectionTransfers">تحويلات التحصيل من المندوب</option>
 </select>
 <select id="bFilterEmployee"></select>
 <select id="bFilterDoctor"><option value="الكل">كل الدكاترة</option></select>
@@ -1692,12 +1685,15 @@
         <label class="commission-date-field"><span>إلى</span><input id="commissionToDate" type="date" onchange="syncCommissionComparisonDates()"></label>
         <div class="commission-comparison-range">
           <label class="commission-auto-compare"><input id="commissionAutoCompare" type="checkbox" checked onchange="toggleCommissionAutoComparison(this.checked)"><span>مقارنة تلقائية</span></label>
-          <label class="commission-date-field"><span>مقارنة من</span><input id="commissionCompareFromDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
-          <label class="commission-date-field"><span>مقارنة إلى</span><input id="commissionCompareToDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
+          <label class="commission-date-field commission-compare-date-field"><span>من</span><input id="commissionCompareFromDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
+          <label class="commission-date-field commission-compare-date-field"><span>إلى</span><input id="commissionCompareToDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
         </div>
-        <button class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
-        <button class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
-        <div class="app-refresh-back"><button class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button><button class="commission-nav-action app-back-btn app-back-btn--gold" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+        <div class="commission-primary-actions">
+          <button class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
+          <button class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
+          <button class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button>
+          <button class="commission-nav-action app-back-btn app-back-btn--gold" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+        </div>
         <select id="commissionBranchFilter" onchange="renderCommissionDashboard()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
         <div class="commission-report-tabs" role="tablist" aria-label="تقارير العمولات">
           <button data-commission-view="dashboard" type="button" onclick="setCommissionView('dashboard',this)">Overview</button>
@@ -1805,7 +1801,7 @@
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <div><h1 style="margin:0;font-size:20px;">🏦 خزنة الفروع</h1><p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">مراجعة مالية موحدة ودقيقة للفروع الأربعة</p></div>
-      <div class="branches-treasury-header-actions"><button type="button" onclick="refreshBranchesTreasury(this)" class="btn-filter">↻ Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="branches-treasury-header-actions"><button type="button" onclick="refreshBranchesTreasury(this)" class="soft">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
@@ -1813,17 +1809,17 @@
       <div class="date-filter-group"><label>من</label><input id="btFromDate" type="date"></div>
       <div class="date-filter-group"><label>إلى</label><input id="btToDate" type="date"></div>
       <select id="btBranchFilter" class="bt-compact-select" onchange="loadBranchesTreasury()"><option value="الكل">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
-      <select id="btStatusFilter" class="bt-compact-select" onchange="loadBranchesTreasury()"><option value="Signed">Signed</option><option value="UrgentOrder">استعجال الأوردر</option><option value="ReplacementOrder">استبدال الأوردر</option><option value="ErrorOrder">أخطاء❌</option><option value="Delivering">Delivering</option><option value="Transit">Transit</option><option value="Picked-up">Picked-up</option><option value="Returning">Returning</option><option value="Returned">Returned</option><option value="Cancel">Cancel</option><option value="Fake Doctor">Fake Doctor</option><option value="Fake Delivery update">Fake Delivery Update</option><option value="PaymentProof">إثبات دفع</option><option value="SecretaryTransfers">تحويلات السكرتارية</option><option value="CollectionTransfers">تحويلات التحصيل من المندوب</option><option value="الكل">كل الحالات</option></select>
+      <select id="btStatusFilter" class="bt-compact-select" data-okb-unified-filter="branches-treasury" onchange="loadBranchesTreasury()"><option value="Signed">Signed</option></select>
       <input id="btSearch" class="barcode-search-input bt-treasury-search" placeholder="بحث بالعميل، الموبايل، الدكتور، الموظف، Ticket ID، رقم الأوردر أو Barcode..." type="text" oninput="renderBranchesTreasury()">
       <button class="btn-filter" type="button" onclick="loadBranchesTreasury()">Filter 🔍</button>
       <button class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
       <button id="btSummaryBtn" type="button" onclick="printBranchesTreasurySummary()" style="padding:8px 14px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;font-weight:900;cursor:pointer;">📊 Summary Report</button>
       <button id="btPrintBtn" type="button" onclick="printBranchesTreasuryReport()" style="padding:8px 14px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:800;cursor:pointer;">🖨️ طباعة التقرير</button>
-      <button type="button" onclick="openFinancialAudit('branches')" class="financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
+      <button type="button" onclick="openFinancialAudit('branches','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
     </div>
   </div>
   <div class="branches-treasury-stats">
-    <div class="card"><small>إجمالي مبيعات التوصيل</small><strong id="btTotalSales">0</strong></div>
+    <div class="card"><small>إجمالي مبيعات التوصيل</small><strong id="btTotalSales">0</strong><span>إجمالي مبيعات COD</span><strong id="btCodSales" style="font-size:16px;">0</strong></div>
     <div class="card"><small>إجمالي مصروفات الشحنات</small><strong id="btShipping">0</strong></div>
     <div class="card"><small>إجمالي إثبات الدفع</small><strong id="btTransfers">0</strong><span>تحويلات السكرتارية: <b id="btUpfrontTransfers">0</b></span><span>تحويلات التحصيل من المندوب: <b id="btCollectionTransfers">0</b></span></div>
     <div class="card"><small>صافي الكاش</small><strong id="btNetCash">0</strong></div>
@@ -1844,9 +1840,9 @@
 <h1 style="margin:0;font-size:20px;">🏦 الخزنة — <span id="khaznaTitle">فرع</span></h1>
 <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">تقفيل اليومية ومطابقة الخزينة</p>
 </div>
-<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-  <button type="button" onclick="refreshKhaznaPage(this)" style="padding:8px 16px;border-radius:8px;border:none;background:#0d9488;color:#fff;cursor:pointer;font-size:13px;font-weight:800;">↻ Refresh</button>
-  <button type="button" onclick="closeKhaznaPage()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">← رجوع للفرع</button>
+<div class="app-refresh-back khazna-header-nav">
+  <button class="soft" type="button" onclick="refreshKhaznaPage(this)">Refresh</button>
+  <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
 </div>
 </div>
 </div>
@@ -1858,26 +1854,12 @@
 <button class="btn-filter" onclick="loadKhaznaData()">Filter 🔍</button>
 <button class="btn-reset-date" onclick="resetKhaznaFilter()">Reset ✕</button>
 <input id="khaznaBarcodeSearch" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..." type="text"/>
-<select id="khaznaFilterStatus" style="flex:0 0 auto;min-width:160px;max-width:200px;min-height:40px;padding:8px 12px;font-size:13px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;color:var(--text-primary);">
-<option value="الكل">كل الحالات</option>
-<option value="UrgentOrder">استعجال الأوردر</option>
-<option value="ReplacementOrder">استبدال الأوردر</option>
-<option value="ErrorOrder">أخطاء❌</option>
-<option value="Transit">Transit</option>
-<option value="Returned">Returned</option>
-<option value="Fake Delivery update">Fake Delivery Update</option>
-<option value="Fake Doctor">Fake Doctor</option>
-<option value="Picked-up">Picked-up</option>
-<option value="Delivering">Delivering</option>
-<option value="Returning">Returning</option>
+<select id="khaznaFilterStatus" data-okb-unified-filter="khazna" style="flex:0 0 auto;min-width:160px;max-width:200px;min-height:40px;padding:8px 12px;font-size:13px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;color:var(--text-primary);">
 <option value="Signed">Signed</option>
-<option value="PaymentProof">إثبات دفع</option>
-<option value="SecretaryTransfers">تحويلات السكرتارية</option>
-<option value="CollectionTransfers">تحويلات التحصيل من المندوب</option>
 </select>
 <button id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
 <button id="khaznaPrintReportBtn" onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
-<button type="button" onclick="openFinancialAudit('branch')" class="financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
+<button type="button" onclick="openFinancialAudit('branch','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
 <button id="lockDailyBtn" onclick="lockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔒 قفل اليومية</button>
 <button id="unlockDailyBtn" onclick="unlockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#10b981;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔓 فتح القفل</button>
 <span id="khaznaBadge" style="display:none;background:#6366f1;color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;"></span>
@@ -1888,7 +1870,8 @@
 <div class="card" style="text-align:center;border:1px solid rgba(99,102,241,0.3);">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">إجمالي مبيعات التوصيل</p>
 <strong id="kTotalSales" style="font-size:24px;color:#6366f1;">0</strong>
-<p style="margin:4px 0 0;font-size:11px;color:var(--text-muted);">إجمالي الأوردرات المحددة</p>
+<p style="margin:6px 0 2px;font-size:11px;color:var(--text-muted);">إجمالي مبيعات COD</p>
+<strong id="kCodSales" style="font-size:16px;color:#6366f1;">0</strong>
 </div>
 <div class="card" style="text-align:center;border:1px solid rgba(239,68,68,0.3);position:relative;">
 <p style="margin:0 0 6px;font-size:12px;color:var(--text-muted);">إجمالي مصروفات الشحنات</p>
@@ -1933,7 +1916,7 @@
 <table>
 <thead><tr>
 <th><input id="khaznaSelectAll" type="checkbox" onchange="toggleAllKhaznaOrders(this)" title="تحديد الكل"/></th><th>#</th><th>العميل</th><th>الموبايل</th><th>الدكتور</th>
-<th>السعر</th><th>Deposit</th><th>التحصيل</th><th>إثباتات الدفع</th><th>مصروف الشحنة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th>
+<th>السعر</th><th>Deposit</th><th>التحصيل</th><th>إثباتات الدفع</th><th>مصروف الشحنة</th><th>الحالة</th><th>التاريخ</th><th class="khazna-actions-head">الإجراءات</th><th class="khazna-financial-comment-head">🛡️ Financial Comment</th>
 </tr></thead>
 <tbody id="khaznaOrdersBody"></tbody>
 </table>
@@ -2314,6 +2297,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.js?v=20260917-audit-profile-treasury-v160"></script>
+<script src="js/main.js?v=20260918-okb-filter-v162"></script>
 </body>
 </html>

@@ -1886,7 +1886,7 @@ body.customer-profile-open{overflow:hidden}
   table.mobile-branch-orders td:nth-child(3),table.mobile-branch-orders td:nth-child(7){color:#22d3ee!important;font-weight:900!important}
 
   /* Khazna orders: customer, notes/date/actions stay comfortably readable */
-  table.mobile-khazna-orders td:nth-child(3),table.mobile-khazna-orders td:nth-last-child(-n+3){grid-column:1/-1!important}
+  table.mobile-khazna-orders td:nth-child(3),table.mobile-khazna-orders td:nth-last-child(-n+4){grid-column:1/-1!important}
   table.mobile-khazna-orders td:nth-child(3){font-size:14px!important;font-weight:900!important;padding-left:34px!important}
 
   table.mobile-card-table td:last-child{border-bottom:0!important}
@@ -2583,6 +2583,52 @@ body.customer-profile-open{overflow:hidden}
   .secretary-audit-action-btn{flex:1 1 calc(50% - 4px)}
   .branches-treasury-header-actions{width:100%}
 }
+
+/* ===== v164 — Branch Khazna connected actions + Financial Comment ===== */
+#khaznaPage .khazna-header-nav{align-items:center;justify-content:flex-end}
+#khaznaPage #khaznaOrdersBody td.branch-actions-cell,
+#khaznaPage .khazna-actions-head{
+  min-width:230px;
+  text-align:center!important;
+  vertical-align:middle!important;
+}
+#khaznaPage #khaznaOrdersBody td.branch-actions-cell>div{
+  gap:8px!important;
+  flex-wrap:wrap;
+  justify-content:center!important;
+  align-items:center!important;
+}
+#khaznaPage .khazna-financial-comment-head,
+#khaznaPage #khaznaOrdersBody td.khazna-financial-comment-cell{
+  min-width:300px;
+  max-width:380px;
+  white-space:normal;
+  line-height:1.5;
+  text-align:center!important;
+  vertical-align:middle!important;
+}
+#khaznaPage .khazna-financial-comment{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  min-height:34px;
+  text-align:center;
+  font-size:10px;
+  font-weight:900;
+  line-height:1.55;
+  white-space:normal;
+}
+#khaznaPage .khazna-financial-comment.is-error{color:#f87171}
+#khaznaPage .khazna-financial-comment.is-warning{color:#fbbf24}
+#khaznaPage .khazna-financial-comment.is-clear{color:var(--text-muted);text-align:center}
+@media(max-width:700px){
+  #khaznaPage #khaznaOrdersBody td.branch-actions-cell,
+  #khaznaPage .khazna-actions-head,
+  #khaznaPage .khazna-financial-comment-head,
+  #khaznaPage #khaznaOrdersBody td.khazna-financial-comment-cell{min-width:0;max-width:none}
+}
+
 /* ===== Commission — approved workbook dashboard ===== */
 .commission-page{background:#090d11!important;color:#eef2f6;min-height:calc(100vh - 64px);padding:18px!important}
 .commission-shell{max-width:1540px;margin:auto;padding:16px;border:1px solid rgba(199,157,65,.22);border-radius:18px;background:linear-gradient(145deg,rgba(15,22,28,.98),rgba(7,11,14,.98));box-shadow:0 24px 70px rgba(0,0,0,.32)}
@@ -2590,7 +2636,7 @@ body.customer-profile-open{overflow:hidden}
 .commission-eyebrow{color:#d8b35f;font-size:13px;font-weight:800}.commission-head h1{font-size:36px;margin:2px 0 3px;color:#fff}.commission-head p{margin:0;color:#8e9aa5;font-size:13px}
 .commission-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;direction:rtl}.commission-controls input,.commission-controls select,.commission-controls button{height:42px;border:1px solid rgba(216,179,95,.45);border-radius:9px;background:#0c1217;color:#d8b35f;padding:0 15px;font-weight:900}.commission-controls button{cursor:pointer}.commission-controls .commission-nav-action{background:#10171d;color:#d8b35f;border-color:rgba(216,179,95,.36);box-shadow:none;transition:.18s ease}.commission-controls .commission-nav-action:hover{background:linear-gradient(135deg,#f1d27d,#b98a36);color:#171006;border-color:#f3d37f;box-shadow:0 6px 20px rgba(216,179,95,.16)}
 .commission-date-field{display:flex;align-items:center;gap:8px;height:42px;padding:0 10px;border:1px solid rgba(216,179,95,.45);border-radius:9px;background:#0c1217;color:#d8b35f;font-size:12px;font-weight:900}.commission-date-field input{border:0!important;padding:0!important;height:38px!important;min-width:132px;color-scheme:dark}
-.commission-comparison-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border:1px solid rgba(216,179,95,.22);border-radius:10px;background:#070b0e}.commission-auto-compare{display:flex;align-items:center;gap:7px;height:40px;padding:0 10px;color:#d8b35f;font-size:11px;font-weight:900;white-space:nowrap;cursor:pointer}.commission-auto-compare input{width:16px;height:16px;min-width:16px;padding:0;accent-color:#d8b35f}.commission-comparison-range input:disabled{opacity:.72;cursor:not-allowed}
+.commission-comparison-range{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;padding:4px 6px;border:1px solid rgba(216,179,95,.22);border-radius:10px;background:#070b0e;flex:0 1 auto}.commission-auto-compare{display:flex;align-items:center;gap:6px;height:38px;padding:0 7px;color:#d8b35f;font-size:10px;font-weight:900;white-space:nowrap;cursor:pointer}.commission-auto-compare input{width:15px;height:15px;min-width:15px;padding:0;accent-color:#d8b35f}.commission-comparison-range input:disabled{opacity:.72;cursor:not-allowed}.commission-compare-date-field{height:38px!important;padding:0 7px!important;gap:5px!important}.commission-compare-date-field input{width:112px!important;min-width:112px!important;height:34px!important;font-size:11px!important}.commission-primary-actions{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;direction:rtl;flex:0 0 auto}.commission-primary-actions .commission-nav-action{min-width:76px;padding-inline:12px}.commission-primary-actions .app-back-btn--gold{min-width:88px}
 .commission-report-tabs{display:flex;gap:9px;align-items:center;justify-content:center;flex-wrap:wrap;padding:0;width:100%;direction:rtl}.commission-report-tabs button{min-height:40px;padding:8px 17px;border-radius:9px;border:1px solid rgba(216,179,95,.32);background:#10171d;color:#cbd1d6;font-weight:900;cursor:pointer;transition:.18s ease}.commission-report-tabs button:hover,.commission-report-tabs button.active{color:#171006;background:linear-gradient(135deg,#f1d27d,#b98a36);border-color:#f3d37f;box-shadow:0 6px 20px rgba(216,179,95,.16)}
 .commission-report-tabs .commission-approve-btn{border-color:rgba(34,197,94,.58);color:#86efac;background:#0b1711}.commission-report-tabs .commission-approve-btn:hover{background:linear-gradient(135deg,#86efac,#22c55e);color:#041108;border-color:#86efac}.commission-report-tabs .commission-approve-btn:disabled{opacity:.7;cursor:not-allowed;background:#10171d;color:#9d8b63;border-color:rgba(216,179,95,.25)}
 .commission-notice{margin:14px 0 0;padding:12px;border:1px solid #b45309;background:rgba(120,53,15,.18);color:#fcd34d;border-radius:10px;font-weight:800}
@@ -2607,7 +2653,46 @@ body.customer-profile-open{overflow:hidden}
 }
 @media(max-width:1200px){.commission-kpis{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:1050px){.commission-head{flex-direction:column}.commission-kpis{grid-template-columns:repeat(2,1fr)}.commission-visuals{grid-template-columns:1fr}}
-@media(max-width:620px){.commission-page{padding:7px!important}.commission-shell{padding:9px}.commission-head h1{font-size:28px}.commission-controls>*{flex:1;min-width:135px}.commission-date-field{min-width:100%}.commission-comparison-range{width:100%;display:grid;grid-template-columns:1fr}.commission-report-tabs{display:grid;grid-template-columns:repeat(2,1fr)}.commission-report-summary{grid-template-columns:repeat(2,1fr)}.commission-kpis{grid-template-columns:1fr}.commission-chart-box{height:250px}}
+@media(max-width:620px){.commission-page{padding:7px!important}.commission-shell{padding:9px}.commission-head h1{font-size:28px}.commission-controls>*{flex:1;min-width:135px}.commission-date-field{min-width:100%}.commission-comparison-range{width:100%;display:flex;flex-wrap:wrap}.commission-comparison-range .commission-compare-date-field{min-width:0!important;flex:1 1 145px}.commission-comparison-range .commission-auto-compare{flex:0 0 auto}.commission-primary-actions{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.commission-primary-actions .commission-nav-action{min-width:0;width:100%;padding-inline:6px}.commission-report-tabs{display:grid;grid-template-columns:repeat(2,1fr)}.commission-report-summary{grid-template-columns:repeat(2,1fr)}.commission-kpis{grid-template-columns:1fr}.commission-chart-box{height:250px}}
 @media print{#commissionPage{background:#fff!important;color:#111!important}.commission-shell{border:0;box-shadow:none;background:#fff}.commission-controls,.commission-table-title button{display:none}.commission-panel,.commission-kpi{background:#fff;border-color:#aaa}.commission-kpi strong,.commission-panel h2,.commission-table td{color:#111}.commission-table th{color:#111;border-color:#777}.commission-visuals{display:none}}
 .commission-approval-modal{display:none;position:fixed;inset:0;z-index:15000;padding:16px;background:rgba(0,0,0,.82);backdrop-filter:blur(7px);align-items:center;justify-content:center}.commission-approval-modal.open{display:flex}.commission-approval-dialog{width:min(760px,96vw);max-height:94vh;overflow:auto;padding:20px;border:1px solid rgba(216,179,95,.5);border-radius:16px;background:#090d11;color:#e8d8af;box-shadow:0 24px 80px rgba(0,0,0,.65)}.commission-approval-head{display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:13px;border-bottom:1px solid rgba(216,179,95,.22)}.commission-approval-head span{color:#d8b35f;font-size:11px;font-weight:900}.commission-approval-head h2{margin:3px 0 0;color:#fff}.commission-approval-head>button{width:36px;height:36px;border:1px solid rgba(216,179,95,.35);border-radius:9px;background:#10171d;color:#d8b35f;cursor:pointer}.commission-approval-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:16px 0}.commission-approval-note{display:grid;gap:7px;margin-top:12px;color:#c6aa6b;font-size:12px;font-weight:900}.commission-approval-note textarea{width:100%;resize:vertical;border:1px solid rgba(216,179,95,.35);border-radius:9px;background:#0c1217;color:#eef2f6;padding:10px;font:700 12px Cairo,sans-serif}.commission-pending-override{display:flex;align-items:center;gap:9px;margin-top:13px;padding:11px;border:1px solid rgba(239,68,68,.42);border-radius:9px;background:rgba(127,29,29,.16);color:#fca5a5;font-weight:900}.commission-pending-override input{width:18px;height:18px;accent-color:#ef4444}.commission-approval-actions{display:flex;justify-content:flex-start;gap:9px;margin-top:18px}.commission-approval-actions button{min-height:40px;padding:8px 16px;border-radius:9px;font-weight:900;cursor:pointer}.commission-approve-confirm{border:1px solid #86efac;background:#14532d;color:#dcfce7}.commission-approve-confirm:disabled{opacity:.6;cursor:wait}@media(max-width:620px){.commission-approval-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .commission-approval-cancel{border:1px solid #ef4444!important;background:#b91c1c!important;color:#fff!important}.commission-approval-cancel:hover{background:#dc2626!important;border-color:#f87171!important}
+
+
+/* ===== OKB Filter — Unified order filters (v162) ===== */
+.okb-filter-settings-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.okb-filter-settings-head h2{margin:0 0 6px}.okb-filter-settings-head p{margin:0;color:var(--text-muted);font-size:12px}
+.okb-filter-add-row{display:grid;grid-template-columns:minmax(260px,1fr) auto minmax(180px,auto);gap:10px;align-items:center;margin-top:16px}
+.okb-filter-add-row input{min-height:42px}.okb-filter-add-row button{min-height:42px;white-space:nowrap}
+#okbFilterSettingsStatus{font-size:12px;color:var(--text-muted);font-weight:800}.okb-filter-status-success{color:#22c55e!important}.okb-filter-status-error{color:#ef4444!important}
+.okb-filter-note{margin-top:10px;padding:9px 11px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-soft);font-size:11px;color:var(--text-muted)}
+.okb-filter-settings-table td{vertical-align:middle}.okb-filter-state{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:900;border:1px solid var(--border-color)}
+.okb-filter-state.active{color:#22c55e;background:rgba(34,197,94,.09)}.okb-filter-state.inactive{color:#94a3b8;background:rgba(148,163,184,.08)}
+.okb-filter-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.okb-filter-actions button{padding:6px 10px;font-size:11px;border-radius:8px}
+.okb-filter-fixed{font-size:11px;color:var(--text-muted);font-weight:800}
+@media(max-width:760px){.okb-filter-add-row{grid-template-columns:1fr}.okb-filter-add-row button{width:100%}}
+
+/* v167 — OKB Filter is an independent Permission card beside Commission. */
+.permission-okb-filter-group .permission-table-wrap{
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  scrollbar-width:thin;
+  scrollbar-color:#475569 #0f172a;
+}
+.permission-okb-filter-group .permission-matrix-table td{
+  height:25px!important;
+  font-size:9px!important;
+}
+.permission-okb-filter-group .permission-matrix-table td:first-child{
+  white-space:nowrap!important;
+  text-overflow:ellipsis!important;
+  overflow:hidden!important;
+}
+.permission-okb-filter-group .permission-table-wrap::-webkit-scrollbar{
+  display:block!important;
+  width:5px!important;
+}
+.permission-okb-filter-group .permission-table-wrap::-webkit-scrollbar-thumb{
+  background:#475569!important;
+  border-radius:999px!important;
+}

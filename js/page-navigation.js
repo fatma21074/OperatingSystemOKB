@@ -24,6 +24,7 @@ function getAppPageRoute(pageId) {
   }
   if (pageId === 'financialAuditPage') {
     route.scope = financialAuditState.scope === 'branch' ? 'branch' : 'branches';
+    route.mode = financialAuditState.mode === 'treasury' ? 'treasury' : 'main';
     if (route.scope === 'branch') route.branch = currentBranchName || '';
   }
   return route;
@@ -64,7 +65,10 @@ function canRestoreAppPage(route) {
   if (route.pageId === 'khaznaPage') return branchAllowed() && canViewKhazna();
   if (route.pageId === 'permissionPage') return isAdmin();
   if (route.pageId === 'commissionPage') return hasRoleFeature('commission') && (isAdmin() || commissionAccessibleBranches().length > 0);
-  if (route.pageId === 'financialAuditPage') return hasButtonPermission('btn_financial_audit') && (route.scope !== 'branch' || branchAllowed());
+  if (route.pageId === 'financialAuditPage') {
+    const allowed = route.mode === 'treasury' ? hasButtonPermission('btn_khazna_financial_audit') : hasButtonPermission('btn_financial_audit_main');
+    return allowed && (route.scope !== 'branch' || branchAllowed());
+  }
   if (route.pageId === 'shippingRankPage') {
     return canViewShippingRank() && (route.mode !== 'company' || hasRoleFeature('company_rank')) &&
       (!route.branch || (branchAllowed() && hasButtonPermission('btn_branch_shipping_rank')));
@@ -81,7 +85,7 @@ function getAppPageFallback() {
       'okbStoresReportPage','doctorRankPage','branchesTreasuryPage','commissionPage','activityLogPage',
       'branchsPage','usersPage','chatPage','secretaryAuditPage','financialAuditPage','permissionPage'].map(pageId =>
       pageId === 'shippingRankPage' ? {pageId, mode:'branch', branch:''} :
-        pageId === 'financialAuditPage' ? {pageId, scope:'branches'} : {pageId})
+        pageId === 'financialAuditPage' ? {pageId, scope:'branches', mode:'main'} : {pageId})
   ];
   return candidates.find(canRestoreAppPage) || null;
 }
@@ -114,7 +118,7 @@ async function openRememberedAppPage(route, pending) {
     case 'khaznaPage': return openKhaznaPage();
     case 'chatPage': return showChatPage();
     case 'secretaryAuditPage': return openSecretaryAudit();
-    case 'financialAuditPage': return openFinancialAudit(route.scope);
+    case 'financialAuditPage': return openFinancialAudit(route.scope, route.mode || 'main');
     case 'shippingRankPage':
       if (route.branch) {
         shippingRankMode = route.mode;
