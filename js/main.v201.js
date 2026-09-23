@@ -4452,6 +4452,8 @@ async function exportPendingOrders(button){
         cell.font={name:'Calibri',size:12,bold:true,color:{argb:'FFFFFFFF'}};
       });
     });
+    ws.views=[{state:'normal',rightToLeft:true,activeCell:'A1',topLeftCell:'A1'}];
+    doctorSheet.views=[{state:'normal',rightToLeft:true,activeCell:'A1',topLeftCell:'A1'}];
     const buffer=await workbook.xlsx.writeBuffer();
     if(String(currentUser?.id||'')!==actorId||!hasRoleFeature('pending')||rows.some(order=>!canSeePendingOrder(order)))throw new Error('تغيّرت صلاحيات الحساب؛ حدّث البيانات قبل التصدير.');
     const availableIds=new Set(getFilteredPendingOrders().map(order=>String(order.id)));
@@ -9141,8 +9143,8 @@ async function exportAreaAnalysisReport() {
     workbook.created=new Date();
 
     const ws = workbook.addWorksheet('Area Analysis');
-    // v202: open the worksheet from the left (column A on the left) while preserving Arabic cell content.
-    ws.views=[{state:'normal',rightToLeft:false,activeCell:'A1',topLeftCell:'A1'}];
+    // v200: enforce native Excel RTL sheet view explicitly (not only cell alignment).
+    ws.views=[{state:'normal',rightToLeft:true,activeCell:'A1',topLeftCell:'A1'}];
     ws.columns = [
       {width:18},{width:20},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:22},{width:26},{width:18},{width:18}
     ];
@@ -9244,8 +9246,8 @@ async function exportAreaAnalysisReport() {
 
     const doctors=buildAreaAnalysisDoctorRows(currentMatches);
     const doctorSheet=workbook.addWorksheet('Doctor Breakdown');
-    // v202: open the worksheet from the left (column A on the left) for Doctor Breakdown too.
-    doctorSheet.views=[{state:'normal',rightToLeft:false,activeCell:'A1',topLeftCell:'A1'}];
+    // v200: enforce native Excel RTL sheet view explicitly for the second tab too.
+    doctorSheet.views=[{state:'normal',rightToLeft:true,activeCell:'A1',topLeftCell:'A1'}];
     doctorSheet.columns=[{width:26},{width:14},{width:14},{width:14},{width:14},{width:17},{width:17},{width:18}];
     doctorSheet.mergeCells('A1:H1');doctorSheet.getCell('A1').value=`Doctor Breakdown — ${query}`;doctorSheet.getCell('A1').font={bold:true,size:16,color:{argb:'FFFFFFFF'}};doctorSheet.getCell('A1').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0F766E'}};doctorSheet.getCell('A1').alignment={horizontal:'center'};
     const dh=['الدكتور','Total','Signed','Delivering','Returned','Signed Rate','Returned Rate','Signed Revenue'];
@@ -19338,3 +19340,6 @@ async function hardRefreshBranch(button) {
   refreshUrl.hash = '';
   window.location.replace(refreshUrl.toString());
 }
+
+// OKB build diagnostic marker — v201. No UI or business-logic effect.
+window.__OKB_BUILD_VERSION = 'v201';

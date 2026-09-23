@@ -19338,3 +19338,6 @@ async function hardRefreshBranch(button) {
   refreshUrl.hash = '';
   window.location.replace(refreshUrl.toString());
 }
+
+// OKB build diagnostic marker — v202. No UI or business-logic effect.
+window.__OKB_BUILD_VERSION = 'v202';
