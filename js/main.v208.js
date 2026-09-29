@@ -13346,7 +13346,7 @@ async function printSelectedBranchOrders(){
   win.document.close();
   try{
     const ready=[];
-    for(const order of selected) ready.push(await ensureOrderIdentifiers(order));
+    for(const order of selected) ready.push(await prepareOrderForReceipt(order));
     let receiptHead='';
     const receiptBodies=ready.map((order,index)=>{
       const doc=new DOMParser().parseFromString(generateReceiptHTML(order,currentBranchName||order.branch||''),'text/html');
@@ -15839,7 +15839,7 @@ function parseReceiptProducts(text) {
 async function printSingleOrder(orderId) {
   let order = khaznaOrders.find(o => String(o.id) === String(orderId));
   if (!order) return;
-  order = await ensureOrderIdentifiers(order);
+  order = await prepareOrderForReceipt(order);
   const win = window.open('', '_blank', 'width=400,height=700');
   win.document.write(generateReceiptHTML(order, currentBranchName));
   win.document.close();
@@ -15849,7 +15849,7 @@ async function printSingleOrder(orderId) {
 async function printSelectedOrders() {
   if (!khaznaSelectedIds.size) { alert('اختر أوردر واحد على الأقل للطباعة'); return; }
   const selected = [];
-  for (const o of khaznaOrders.filter(o => khaznaSelectedIds.has(String(o.id)))) selected.push(await ensureOrderIdentifiers(o));
+  for (const o of khaznaOrders.filter(o => khaznaSelectedIds.has(String(o.id)))) selected.push(await prepareOrderForReceipt(o));
   const win = window.open('', '_blank', 'width=400,height=700');
   let combined = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
   <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
@@ -16216,7 +16216,7 @@ async function printBranchOrderReceipt(orderId) {
   if (!hasButtonPermission('btn_order_print')) { alert('زر الطباعة غير مضاف لصلاحيات حسابك'); return; }
   let order = branchOrders.find(o => String(o.id) === String(orderId));
   if (!order) { alert('مش لاقي بيانات الأوردر دا للطباعة'); return; }
-  order = await ensureOrderIdentifiers(order);
+  order = await prepareOrderForReceipt(order);
   const win = window.open('', '_blank', 'width=400,height=700');
   win.document.write(generateReceiptHTML(order, currentBranchName || order.branch || ''));
   win.document.close();
@@ -17484,7 +17484,7 @@ function openCustomerOrderFromProfile(orderId) {
 async function printCustomerProfileOrder(orderId) {
   let order = customerProfileOrders.find(item => String(item.id) === String(orderId));
   if (!order) return;
-  order = await ensureOrderIdentifiers(order);
+  order = await prepareOrderForReceipt(order);
   const win = window.open('', '_blank', 'width=400,height=700');
   if (!win) { alert('المتصفح منع نافذة الطباعة'); return; }
   win.document.write(generateReceiptHTML(order, order.branch || order.shipping_company || ''));
@@ -18039,6 +18039,47 @@ function getReceiptCollectionConfirmation(order) {
 }
 
 // 👇 دي النسخة المحدثة - استبدليها بالدالة القديمة
+
+async function prepareOrderForReceipt(order) {
+  const prepared = await ensureOrderIdentifiers(order);
+  if (!prepared) return prepared;
+
+  let creatorUsername = String(getOrderMeta(prepared).created_by_username || '').trim();
+  const pickCreator = rows => String(rows?.[0]?.username || rows?.[0]?.user_name || '').trim();
+
+  try {
+    if (!creatorUsername && prepared.id) {
+      const byOrder = await supabaseClient
+        .from('activity_logs')
+        .select('username,user_name,created_at')
+        .eq('action_type', 'order_created')
+        .eq('order_id', prepared.id)
+        .order('created_at', { ascending:true })
+        .limit(1);
+      if (!byOrder.error) creatorUsername = pickCreator(byOrder.data);
+    }
+
+    if (!creatorUsername) {
+      const ticketId = String(getTicketId(prepared) || '').trim();
+      if (ticketId) {
+        const byTicket = await supabaseClient
+          .from('activity_logs')
+          .select('username,user_name,created_at')
+          .eq('action_type', 'order_created')
+          .eq('ticket_id', ticketId)
+          .order('created_at', { ascending:true })
+          .limit(1);
+        if (!byTicket.error) creatorUsername = pickCreator(byTicket.data);
+      }
+    }
+  } catch (error) {
+    console.warn('تعذر قراءة اسم منشئ الأوردر للريسيت:', error);
+  }
+
+  if (!creatorUsername) return prepared;
+  return { ...prepared, __receipt_creator_username: creatorUsername };
+}
+
 function generateReceiptHTML(order, branchName) {
   const qty       = Number(order.quantity || 1);
   const delivFee  = Number(order.delivery_fee || 0);
@@ -18058,6 +18099,7 @@ function generateReceiptHTML(order, branchName) {
   const barcode1  = getOrderBarcode(order);
   const editCount = getOrderEditCount(order);
   const collectionConfirmation = getReceiptCollectionConfirmation(order);
+  const receiptCreatorUsername = String(order?.__receipt_creator_username || getOrderMeta(order).created_by_username || '').trim();
   const receiptPhones = [...new Set(
     [order.phone, order.phone2]
       .map(value => String(value || '').trim())
@@ -18141,7 +18183,9 @@ function generateReceiptHTML(order, branchName) {
   <div class="center bold" style="font-size:19px;font-weight:900;margin-bottom:3px;">صيدليات العقبي</div>
   <div class="center" style="font-size:13px;">0223051430 - 012 02 7777 04</div>
   <div class="center" style="font-size:12px;margin-bottom:2px;">مبيعات توصيل طلبات</div>
-  <div class="center" style="font-size:12px;">فرع ${branchName}</div>
+  <div class="center" dir="rtl" style="font-size:12px;display:flex;justify-content:center;align-items:center;gap:4px;direction:rtl;">
+    <span dir="rtl">فرع ${branchName}</span>${receiptCreatorUsername ? `<span aria-hidden="true">-</span><bdi dir="ltr" style="unicode-bidi:isolate;">${escapeHTML(receiptCreatorUsername)}</bdi>` : ''}
+  </div>
 
   <div class="divider-solid"></div>
 
@@ -18420,8 +18464,8 @@ function openBranchesTreasuryOrder(id) {
   openReportOrderTab('branches_treasury',order);
 }
 
-async function printBranchesTreasuryOrder(id) { const order=branchesTreasuryOrders.find(item=>String(item.id)===String(id));if(!order)return;const ready=await ensureOrderIdentifiers(order);const win=window.open('','_blank','width=400,height=700');if(!win){alert('المتصفح منع نافذة الطباعة');return;}win.document.write(generateReceiptHTML(ready,pendingOrderBranch(ready)));win.document.close();win.onload=()=>{win.focus();win.print();}; }
-async function printSelectedBranchesTreasury(){const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(!rows.length)return;const win=window.open('','_blank','width=420,height=760');if(!win){alert('المتصفح منع نافذة الطباعة');return;}let body='',head='';for(const order of rows){const ready=await ensureOrderIdentifiers(order),doc=new DOMParser().parseFromString(generateReceiptHTML(ready,pendingOrderBranch(ready)),'text/html');if(!head)head=doc.head.innerHTML;body+=`<section class="bt-multi-receipt">${doc.body.innerHTML}</section>`;}win.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">${head}<style>.bt-multi-receipt:not(:last-child){page-break-after:always;break-after:page}</style></head><body>${body}</body></html>`);win.document.close();win.onload=()=>{win.focus();win.print();};}
+async function printBranchesTreasuryOrder(id) { const order=branchesTreasuryOrders.find(item=>String(item.id)===String(id));if(!order)return;const ready=await prepareOrderForReceipt(order);const win=window.open('','_blank','width=400,height=700');if(!win){alert('المتصفح منع نافذة الطباعة');return;}win.document.write(generateReceiptHTML(ready,pendingOrderBranch(ready)));win.document.close();win.onload=()=>{win.focus();win.print();}; }
+async function printSelectedBranchesTreasury(){const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(!rows.length)return;const win=window.open('','_blank','width=420,height=760');if(!win){alert('المتصفح منع نافذة الطباعة');return;}let body='',head='';for(const order of rows){const ready=await prepareOrderForReceipt(order),doc=new DOMParser().parseFromString(generateReceiptHTML(ready,pendingOrderBranch(ready)),'text/html');if(!head)head=doc.head.innerHTML;body+=`<section class="bt-multi-receipt">${doc.body.innerHTML}</section>`;}win.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">${head}<style>.bt-multi-receipt:not(:last-child){page-break-after:always;break-after:page}</style></head><body>${body}</body></html>`);win.document.close();win.onload=()=>{win.focus();win.print();};}
 
 async function deleteSelectedBranchesTreasury(){if(!isAdmin()){alert('الحذف متاح للأدمن فقط');return;}const rows=getBranchesTreasuryVisibleOrders().filter(order=>branchesTreasurySelectedIds.has(String(order.id)));if(!rows.length||!confirm(`حذف ${rows.length} أوردر نهائياً؟`))return;const {error}=await supabaseClient.from('orders').delete().in('id',rows.map(order=>order.id));if(error){alert(error.message);return;}await logActivity('order_deleted','حذف أوردرات من خزنة الفروع',`العدد: ${rows.length}`);await loadBranchesTreasury();}
 async function deleteSelectedBranchesTreasuryProof(){
@@ -19386,4 +19430,4 @@ async function hardRefreshBranch(button) {
 }
 
 // OKB build diagnostic marker — v204. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v206';
+window.__OKB_BUILD_VERSION = 'v208';
