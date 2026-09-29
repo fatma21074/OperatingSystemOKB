@@ -1740,6 +1740,7 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'btn_dashboard_export_okb_branch', label:'OKB Branch', group:'Dashboard — Export' },
   { key:'btn_dashboard_import', label:'📥 Import Excel', group:'Dashboard — إدارة' },
   { key:'btn_dashboard_edit', label:'✏️ تعديل', group:'Dashboard — إدارة' },
+  { key:'customer_profile_show_username', label:'اظهار اسم المستخدم - Customer Profile', group:'Dashboard — إدارة' },
   { key:'btn_branch_export', label:'⬇ Export', group:'الفروع — Export' },
   { key:'btn_branch_export_details', label:'Details', group:'الفروع — Export' },
   { key:'btn_branch_export_smart', label:'Smart Summary', group:'الفروع — Export' },
@@ -1835,6 +1836,7 @@ function getDefaultRolePermissions(role) {
     btn_dashboard_export_okb_branch:false,
     btn_dashboard_import:!doctor,
     btn_dashboard_edit:!doctor,
+    customer_profile_show_username:false,
     btn_branch_export:!doctor,
     btn_branch_export_details:!doctor,
     btn_branch_export_smart:false,
@@ -6180,7 +6182,7 @@ function getFilteredOrders() {
   return getVisibleOrders().filter(o => {
     const matchSearch = matchesOrderSearch(o, search);
     const matchStatus = matchesOrderStatusFilter(o, statusFilter);
-    const matchEmployee = !isAdmin() || employeeFilter === "الكل" || o.employee_name === employeeFilter;
+    const matchEmployee = employeeFilter === "الكل" || String(o.employee_name || "").trim() === String(employeeFilter || "").trim();
     const matchShipping = shippingFilter === "الكل" || o.shipping_company === shippingFilter;
     const matchDoctor=doctorFilter==='الكل'||String(o.doctor_name||'').trim()===doctorFilter;
     // A deliberate search is global and may return an order from an older
@@ -6469,7 +6471,7 @@ orderForm.addEventListener("submit", async (e) => {
     delivery_fee:     delivFee,
     status:           statusEl.value,
     fake_doctor:      statusEl.value === "Fake Doctor",
-    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), edit_count: dashboardEditingOrder ? getOrderEditCount(dashboardEditingOrder) + 1 : 0, discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder), secretary_audit_scope:'dashboard' }),
+    notes:            buildNotesWithOrderMeta((notesEl.value || '').trim() || "لا توجد ملاحظات", { ...getOrderMeta(dashboardEditingOrder), edit_count: dashboardEditingOrder ? getOrderEditCount(dashboardEditingOrder) + 1 : 0, discount: Number(document.getElementById('dashDiscountInput')?.value || 0), ticket_seq_v2: dashboardEditingOrder?getOrderMeta(dashboardEditingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('dashUrgentOrder')?.checked), replacement: Boolean(document.getElementById('dashReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(dashboardEditingOrder), secretary_audit_scope:'dashboard', created_by_username:dashboardEditingOrder?(getOrderMeta(dashboardEditingOrder).created_by_username||null):String(currentUser?.username||currentUser?.name||'').trim() }),
     product_names:    document.getElementById("productNames")?.value.trim() || productCartToText(dashProducts),
     branch:           isAdmin() ? (selectedAdminBranch || dashboardEditingOrder?.branch || null) : (dashboardEditingOrder?.branch || null)
   };
@@ -9384,7 +9386,8 @@ function smartExportPerformanceRows(filtered, key, label, statusColumns) {
 }
 
 function exportSmartOperationSummary(scope) {
-  if (!isAdmin()) { alert('هذا النوع من التصدير متاح للأدمن فقط'); return; }
+  const smartFeature = scope === 'branch' ? 'btn_branch_export_smart' : 'btn_dashboard_export_smart';
+  if (!hasButtonPermission(smartFeature)) { alert('Smart Summary غير مضاف لصلاحيات حسابك'); return; }
   if (typeof XLSX === 'undefined') { alert('مكتبة Excel غير متاحة. تأكد من اتصال الإنترنت وحاول مرة أخرى.'); return; }
   const filtered = scope === 'branch'
     ? (typeof getBranchFilteredOrders === 'function' ? getBranchFilteredOrders() : branchOrders)
@@ -13639,7 +13642,7 @@ document.addEventListener('DOMContentLoaded', function() {
       delivery_fee:     bDelivFee,
       status:           editingOrder ? (hasButtonPermission('btn_branch_edit') ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
-      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(editingOrder), secretary_audit_scope:'branch' }),
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(editingOrder), secretary_audit_scope:'branch', created_by_username:editingOrder?(getOrderMeta(editingOrder).created_by_username||null):String(currentUser?.username||currentUser?.name||'').trim() }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
@@ -17220,6 +17223,28 @@ function customerProfileStatusClass(status) {
   return 'is-other';
 }
 
+function canShowCustomerProfileUsername() {
+  return hasButtonPermission('customer_profile_show_username');
+}
+
+function getCustomerProfileOrderCreator(order) {
+  if (!canShowCustomerProfileUsername()) return '';
+  const storedCreator = String(getOrderMeta(order).created_by_username || '').trim();
+  if (storedCreator) return storedCreator;
+  const orderId = String(order?.id || '');
+  const ticket = String(getTicketId(order) || '');
+  const creationEvents = customerProfileActivities
+    .filter(activity => {
+      if (String(activity?.action_type || '') !== 'order_created') return false;
+      const sameOrder = orderId && String(activity?.order_id || '') === orderId;
+      const sameTicket = ticket && String(activity?.ticket_id || '') === ticket;
+      return sameOrder || sameTicket;
+    })
+    .sort((a,b) => new Date(a?.created_at || 0) - new Date(b?.created_at || 0));
+  const creator = creationEvents[0] || null;
+  return String(creator?.username || creator?.user_name || '').trim();
+}
+
 async function openCustomerProfile(orderId, source = 'dashboard') {
   customerProfileSource = source;
   customerProfileFocusOrderId = String(orderId||'');
@@ -17272,6 +17297,23 @@ async function openCustomerProfile(orderId, source = 'dashboard') {
         customerProfileActivities = (activityResult.data || []).filter(activity =>
           existingTickets.has(String(activity.ticket_id || '')) && activity.action_type !== 'order_deleted'
         );
+      }
+      if (canShowCustomerProfileUsername()) {
+        const creatorResult = await supabaseClient
+          .from('activity_logs')
+          .select('*')
+          .in('ticket_id', ticketIds)
+          .eq('action_type', 'order_created')
+          .order('created_at', { ascending: true })
+          .limit(1000);
+        if (!creatorResult.error) {
+          const seen = new Set(customerProfileActivities.map(activity => String(activity.id || '')));
+          (creatorResult.data || []).forEach(activity => {
+            const key = String(activity.id || '');
+            if (!key || !seen.has(key)) customerProfileActivities.push(activity);
+            if (key) seen.add(key);
+          });
+        }
       }
     }
     renderCustomerProfile();
@@ -17351,10 +17393,14 @@ function renderCustomerProfileOrderRow(order) {
   const paid = customerProfilePaid(order);
   const remaining = getOrderOutstandingBalance(order);
   const products = cleanVisibleOrderNotes(order.product_names || '') || order.product_names || '—';
-  return `<article class="customer-order-row">
+  const creatorUsername = getCustomerProfileOrderCreator(order);
+  const creatorInline = creatorUsername ? ` - بواسطة ${escapeHTML(creatorUsername)}` : '';
+  const creatorBadge = creatorUsername ? `<span class="customer-order-created-by">بواسطة ${escapeHTML(creatorUsername)}</span>` : '';
+  return `<article class="customer-order-row${creatorUsername ? ' has-created-by' : ''}">
     <div class="customer-order-ticket"><span>Ticket ID</span><strong>${escapeHTML(getTicketId(order) || '—')}</strong><small>Order: ${escapeHTML(order.order_number || '—')}</small></div>
-    <div class="customer-order-main"><strong>${escapeHTML(order.doctor_name || 'بدون دكتور')}</strong><span>${escapeHTML(products)}</span><small>${escapeHTML(order.branch || order.shipping_company || '—')} • ${formatEnglishDateTime(order.created_at)}</small></div>
+    <div class="customer-order-main"><strong>${escapeHTML(order.doctor_name || 'بدون دكتور')}</strong><span>${escapeHTML(products)}</span><small>${escapeHTML(order.branch || order.shipping_company || '—')} • ${formatEnglishDateTime(order.created_at)}${creatorInline}</small></div>
     <div class="customer-order-money"><span>الإجمالي <b>${money(total)}</b></span><span>المدفوع <b>${money(paid)}</b></span><span>المتبقي <b>${money(remaining)}</b></span></div>
+    ${creatorBadge}
     <span class="customer-order-status ${customerProfileStatusClass(order.status)}">${escapeHTML(getOrderDisplayStatus(order) || order.status || '—')}</span>
     <div class="customer-order-actions">${isAdmin() ? `<button type="button" onclick="showCustomerOrderTimeline('${order.id}')">التفاصيل</button>` : ''}<button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button><button type="button" onclick="printCustomerProfileOrder('${order.id}')">طباعة</button></div>
   </article>`;
@@ -19339,5 +19385,5 @@ async function hardRefreshBranch(button) {
   window.location.replace(refreshUrl.toString());
 }
 
-// OKB build diagnostic marker — v202. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v202';
+// OKB build diagnostic marker — v204. No UI or business-logic effect.
+window.__OKB_BUILD_VERSION = 'v206';
