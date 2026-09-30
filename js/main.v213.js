@@ -2368,6 +2368,7 @@ function populateUserRoleSelects(){
     select.innerHTML=roles.map(role=>`<option value="${escapeHTML(role.key)}">${escapeHTML(role.label)}</option>`).join('');
     if(roles.some(role=>role.key===current))select.value=current;
   });
+  populateUsersRoleFilter();
 }
 
 async function createCustomRole(){
@@ -3212,6 +3213,130 @@ function clearSelectedOrders() {
   if (!isAdmin()) return;
   selectedOrderIds.clear();
   renderOrders();
+}
+
+
+// ===== Allocate selected orders to Chat =====
+let allocateState={source:'',users:[],selectedUsername:'',sending:false};
+
+function ensureAllocateModal(){
+  let modal=document.getElementById('allocateOrdersModal');
+  if(modal)return modal;
+  modal=document.createElement('div');
+  modal.id='allocateOrdersModal';
+  modal.className='allocate-modal hidden';
+  modal.addEventListener('click',event=>{if(event.target===modal&&!allocateState.sending)closeAllocateModal();});
+  modal.innerHTML=`<div class="allocate-dialog" role="dialog" aria-modal="true" aria-labelledby="allocateOrdersTitle">
+    <div class="allocate-head"><div><h3 id="allocateOrdersTitle">Allocate Orders</h3><p><span class="allocate-count" id="allocateOrdersCount">0 Orders Selected</span> — اختر المستخدم الذي ستُرسل له الأوردرات في Chat.</p></div><button class="allocate-close-x" type="button" onclick="closeAllocateModal()" aria-label="إغلاق">✕</button></div>
+    <div class="allocate-body"><input class="allocate-search" id="allocateUserSearch" type="search" placeholder="Search user by name, username or role..." autocomplete="off" oninput="renderAllocateUsers()"><div class="allocate-users" id="allocateUsersList"><div class="allocate-empty">جاري تحميل المستخدمين...</div></div></div>
+    <div class="allocate-actions"><button class="allocate-cancel" type="button" onclick="closeAllocateModal()">إغلاق</button><button class="doctor-weekly-btn doctor-rank-smart-export-btn allocate-send" id="allocateSendBtn" type="button" onclick="sendAllocatedOrders()" disabled>إرسال</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function getAllocateSelection(source=allocateState.source){
+  const normalized=String(source||'').toLowerCase();
+  const ids=normalized==='branch'?[...branchSelectedOrderIds]:[...selectedOrderIds];
+  const pool=normalized==='branch'?(Array.isArray(branchOrders)?branchOrders:[]):(Array.isArray(orders)?orders:[]);
+  const byId=new Map(pool.map(order=>[String(order?.id||''),order]));
+  return {ids,orders:ids.map(id=>byId.get(String(id))).filter(Boolean)};
+}
+
+async function openAllocateModal(source){
+  const normalized=String(source||'').toLowerCase()==='branch'?'branch':'dashboard';
+  if(!hasRoleFeature('chat')){alert('Chat غير مضاف لصلاحيات حسابك');return;}
+  if(normalized==='dashboard'&&!isAdmin()){alert('Allocate في Dashboard متاح للأدمن من التحديد الذكي الحالي');return;}
+  const selection=getAllocateSelection(normalized);
+  if(!selection.ids.length){alert('اختر أوردر واحد على الأقل');return;}
+  if(selection.orders.length!==selection.ids.length){alert('تعذر العثور على بعض الأوردرات المحددة. حدّث الصفحة وأعد التحديد.');return;}
+  allocateState={source:normalized,users:[],selectedUsername:'',sending:false};
+  const modal=ensureAllocateModal();
+  const count=document.getElementById('allocateOrdersCount');
+  if(count)count.textContent=`${num(selection.ids.length)} Orders Selected`;
+  const search=document.getElementById('allocateUserSearch');if(search)search.value='';
+  const list=document.getElementById('allocateUsersList');if(list)list.innerHTML='<div class="allocate-empty">جاري تحميل المستخدمين...</div>';
+  const send=document.getElementById('allocateSendBtn');if(send){send.disabled=true;send.textContent='إرسال';}
+  modal.classList.remove('hidden');
+  try{
+    const {data,error}=await supabaseClient.rpc('okb_list_chat_users');
+    if(error)throw error;
+    allocateState.users=(data||[]).filter(user=>user?.active!==false&&String(user?.username||'').trim());
+    renderAllocateUsers();
+    requestAnimationFrame(()=>search?.focus());
+  }catch(error){
+    if(list)list.innerHTML='<div class="allocate-empty">تعذر تحميل المستخدمين.</div>';
+    alert('تعذر تحميل قائمة المستخدمين: '+(error?.message||error));
+  }
+}
+
+function closeAllocateModal(){
+  if(allocateState.sending)return;
+  document.getElementById('allocateOrdersModal')?.classList.add('hidden');
+  allocateState={source:'',users:[],selectedUsername:'',sending:false};
+}
+
+function selectAllocateUser(username){
+  if(allocateState.sending)return;
+  allocateState.selectedUsername=String(username||'');
+  renderAllocateUsers();
+}
+
+function renderAllocateUsers(){
+  const list=document.getElementById('allocateUsersList');if(!list)return;
+  const query=String(document.getElementById('allocateUserSearch')?.value||'').trim().toLowerCase();
+  const filtered=allocateState.users.filter(user=>!query||[user.name,user.username,getRoleDisplayName(user.role)].some(value=>String(value||'').toLowerCase().includes(query)));
+  if(!filtered.length){list.innerHTML='<div class="allocate-empty">لا يوجد مستخدمون مطابقون</div>';}
+  else list.innerHTML=filtered.map(user=>{
+    const username=String(user.username||''),selected=username===allocateState.selectedUsername;
+    const initial=String(user.name||username||'U').trim().charAt(0).toUpperCase();
+    return `<button class="allocate-user-row ${selected?'selected':''}" type="button" onclick="selectAllocateUser('${chatJs(username)}')"><span class="allocate-avatar">${escapeHTML(initial)}</span><span class="allocate-user-meta"><strong>${escapeHTML(user.name||username||'User')}</strong><small>@${escapeHTML(username)} · ${escapeHTML(getRoleDisplayName(user.role))}</small></span><span class="allocate-user-check">✓</span></button>`;
+  }).join('');
+  const send=document.getElementById('allocateSendBtn');if(send)send.disabled=allocateState.sending||!allocateState.selectedUsername;
+}
+
+function buildAllocatedOrderMessage(order){
+  const ticket=getTicketId(order)||order?.order_number||'—';
+  const branch=String(order?.branch||order?.branch_name||order?.shipping_company||order?.shipping_system||'—').trim()||'—';
+  const status=getOrderDisplayStatus(order)||order?.status||'—';
+  const openMarker=order?.id?`\n[OPEN_ORDER:${order.id}]`:'';
+  return `📌 Allocated Order\nالعميل: ${order?.customer_name||'—'}\nTicket ID: ${ticket}\nرقم الأوردر: ${order?.order_number||'—'}\nالموبايل: ${order?.phone||'—'}\nالحالة: ${status}\nالفرع / الشحن: ${branch}\nبواسطة: ${currentUser?.name||currentUser?.username||'—'}${openMarker}`;
+}
+
+async function sendAllocatedOrders(){
+  if(allocateState.sending)return;
+  const receiver=allocateState.users.find(user=>String(user.username||'')===allocateState.selectedUsername);
+  if(!receiver){alert('اختر مستخدمًا أولًا');return;}
+  const selection=getAllocateSelection();
+  if(!selection.ids.length||selection.orders.length!==selection.ids.length){alert('التحديد تغيّر. أغلق النافذة وأعد اختيار الأوردرات.');return;}
+  const button=document.getElementById('allocateSendBtn');
+  allocateState.sending=true;if(button){button.disabled=true;button.textContent='جاري الإرسال...';}
+  try{
+    const payloads=selection.orders.map(order=>({
+      sender_id:String(currentUser?.id||''),sender_username:chatCurrentUsername(),sender_name:String(currentUser?.name||currentUser?.username||'User'),
+      receiver_id:String(receiver.id||''),receiver_username:String(receiver.username||''),receiver_name:String(receiver.name||receiver.username||'User'),
+      message:buildAllocatedOrderMessage(order),attachment_url:null,is_read:false
+    }));
+    const {error}=await supabaseClient.from('chat_messages').insert(payloads);
+    if(error)throw error;
+    const sentCount=payloads.length,receiverName=receiver.name||receiver.username||'User';
+    if(allocateState.source==='branch'){
+      branchSelectedOrderIds.clear();
+      document.getElementById('allocateOrdersModal')?.classList.add('hidden');
+      allocateState={source:'',users:[],selectedUsername:'',sending:false};
+      renderBranchOrders();
+    }else{
+      selectedOrderIds.clear();
+      document.getElementById('allocateOrdersModal')?.classList.add('hidden');
+      allocateState={source:'',users:[],selectedUsername:'',sending:false};
+      renderOrders();
+    }
+    alert(`✅ تم إرسال ${sentCount} أوردر إلى ${receiverName} في Chat`);
+  }catch(error){
+    allocateState.sending=false;
+    if(button){button.disabled=false;button.textContent='إرسال';}
+    alert('تعذر إرسال الأوردرات. لم يتم مسح التحديد: '+(error?.message||error));
+  }
 }
 
 async function deleteSelectedOrders() {
@@ -4185,7 +4310,8 @@ async function loadUsers({throwOnError=false}={}) {
       userLastSeenByKey.set(key,user.last_seen_at);
     });
   });
-  users = data || []; 
+  users = data || [];
+  populateUsersRoleFilter();
   renderUsers();
   return true;
 }
@@ -6307,7 +6433,7 @@ function renderOrders() {
       <tr class="${getOrderPriorityRowClass(o)}">
         ${adminCheckbox}
         <td>${num(page.start + i + 1)}</td>
-        <td>${o.employee_name || ""}</td>
+        <td class="hidden" data-dashboard-column="employee">${o.employee_name || ""}</td>
         <td>${o.doctor_name || ""}</td>
         <td>${o.order_number || ""}</td>  
         <td><button class="customer-profile-link" type="button" onclick="openCustomerProfile('${o.id}','dashboard')">${escapeHTML(o.customer_name || '')}</button></td>
@@ -6548,6 +6674,7 @@ orderForm.addEventListener("submit", async (e) => {
     
     const savedOrder = (result && result.data && result.data[0]) ? result.data[0] : { id: orderId, ...orderData };
     await logActivity(wasEditingOrder ? 'order_updated' : 'order_created', wasEditingOrder ? 'تم تعديل أوردر' : 'تم إضافة أوردر جديد', `العميل: ${orderData.customer_name} | الحالة: ${orderData.status} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`, getActivityOrderInfo(savedOrder));
+    if(wasEditingOrder&&dashboardEditingOrder)await recordSecretaryAuditEdit(dashboardEditingOrder,savedOrder,currentUser,'dashboard');
     const secretaryAudit = analyzeSecretaryOrderInput(savedOrder);
     if (secretaryAudit.errors.length) await sendAutomatedAuditNotice('secretary', savedOrder, secretaryAudit.errors,{severity:'error',sourceScope:'dashboard'});
     if (secretaryAudit.warnings.length) await sendAutomatedAuditNotice('secretary', savedOrder, secretaryAudit.warnings,{severity:'warning',sourceScope:'dashboard'});
@@ -9403,12 +9530,14 @@ function exportSmartOperationSummary(scope) {
     return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
   });
   const employees = [...new Set(filtered.map(o => String(o.employee_name || 'بدون موظف').trim() || 'بدون موظف'))].sort();
-  const statusEmployeeRows = [];
-  employees.forEach(employee => {
-    statuses.forEach(status => {
-      const subset = filtered.filter(order => smartExportStatus(order) === status && String(order.employee_name || 'بدون موظف').trim() === employee);
-      if (subset.length) statusEmployeeRows.push([employee, status, subset.length, smartExportRevenue(subset)]);
+  const employeeOverviewHeaders = ['Employee', ...statuses.flatMap(status => [`${status} (Orders)`, `${status} (Revenue)`])];
+  const employeeOverviewRows = employees.map(employee => {
+    const employeeOrders = filtered.filter(order => String(order.employee_name || 'بدون موظف').trim() === employee);
+    const statusCells = statuses.flatMap(status => {
+      const subset = employeeOrders.filter(order => smartExportStatus(order) === status);
+      return [subset.length, smartExportRevenue(subset)];
     });
+    return [employee, ...statusCells];
   });
 
   const dateCaption = context.from === context.to ? context.from : `${context.from} → ${context.to}`;
@@ -9428,21 +9557,26 @@ function exportSmartOperationSummary(scope) {
     ['Branch', context.branch],
     ['Doctor', context.doctor],
     ['Employee', context.employee],
-    ['Employee', 'Status', 'Total Orders', 'Revenue'],
-    ...statusEmployeeRows,
+    employeeOverviewHeaders,
+    ...employeeOverviewRows,
     [],
     ['Operational KPIs', 'Value', 'Total Revenue'],
     ...operationalKpiRows
   ];
   const overview = XLSX.utils.aoa_to_sheet(overviewData);
-  overview['!cols'] = [{ wch: 26 }, { wch: 30 }, { wch: 16 }, { wch: 18 }];
+  overview['!cols'] = [{ wch: 26 }, ...statuses.flatMap(() => [{ wch: 18 }, { wch: 20 }])];
   overview['!rows'] = overviewData.map((_, index) => ({ hpt: index === 0 || index === 7 ? 23 : 17 }));
-  overview['!autofilter'] = statusEmployeeRows.length ? { ref: `A8:D${8 + statusEmployeeRows.length}` } : undefined;
-  for (let row = 8; row < 8 + statusEmployeeRows.length; row += 1) {
-    const ref = XLSX.utils.encode_cell({ r: row, c: 3 });
-    if (overview[ref]) overview[ref].z = '#,##0.00';
+  const employeeLastColumn = XLSX.utils.encode_col(employeeOverviewHeaders.length - 1);
+  overview['!autofilter'] = employeeOverviewRows.length ? { ref: `A8:${employeeLastColumn}${8 + employeeOverviewRows.length}` } : undefined;
+  for (let row = 8; row < 8 + employeeOverviewRows.length; row += 1) {
+    for (let statusIndex = 0; statusIndex < statuses.length; statusIndex += 1) {
+      const ordersRef = XLSX.utils.encode_cell({ r: row, c: 1 + statusIndex * 2 });
+      const revenueRef = XLSX.utils.encode_cell({ r: row, c: 2 + statusIndex * 2 });
+      if (overview[ordersRef] && typeof overview[ordersRef].v === 'number') overview[ordersRef].z = '#,##0';
+      if (overview[revenueRef] && typeof overview[revenueRef].v === 'number') overview[revenueRef].z = '#,##0.00';
+    }
   }
-  const kpiStart = 10 + statusEmployeeRows.length;
+  const kpiStart = 10 + employeeOverviewRows.length;
   for (let row = kpiStart; row < overviewData.length; row += 1) {
     const countRef = XLSX.utils.encode_cell({ r: row, c: 1 });
     const revenueRef = XLSX.utils.encode_cell({ r: row, c: 2 });
@@ -10368,23 +10502,58 @@ function getOnlinePresenceForUser(user){
   })||null;
 }
 
-function getUserLastSeenHtml(user){
+function getUserLastSeenState(user){
   const presence=getOnlinePresenceForUser(user);
-  if(presence)return `<span class="user-last-seen is-online"><i></i><b>Online</b></span>`;
   const keys=[user?.username,user?.name].map(value=>String(value||'').trim().toLowerCase()).filter(Boolean);
   const seen=[user?.last_seen_at,...keys.map(key=>userLastSeenByKey.get(key))]
     .filter(Boolean)
     .sort((a,b)=>(parsePreciseServerDate(b)?.getTime()||0)-(parsePreciseServerDate(a)?.getTime()||0))[0];
   const seenDate=seen?parsePreciseServerDate(seen):null;
+  return {presence,seen,seenDate};
+}
+
+function getUserLastSeenHtml(user){
+  const {presence,seen,seenDate}=getUserLastSeenState(user);
+  if(presence)return `<span class="user-last-seen is-online"><i></i><b>Online</b></span>`;
   if(seenDate&&Date.now()-seenDate.getTime()<=LAST_SEEN_OFFLINE_AFTER_MS){
     return `<span class="user-last-seen has-last-seen" title="آخر اتصال حقيقي"><i></i><span>Last Seen: ${escapeHTML(formatEnglishDateTime(seen))}</span></span>`;
+  }
+  if(seenDate){
+    return `<span class="user-last-seen is-offline" title="آخر اتصال حقيقي"><i></i><span>Offline · Last Seen: ${escapeHTML(formatEnglishDateTime(seen))}</span></span>`;
   }
   return `<span class="user-last-seen is-offline"><i></i><b>Offline</b></span>`;
 }
 
+function populateUsersRoleFilter(){
+  const select=document.getElementById('usersRoleFilter');
+  if(!select)return;
+  const current=select.value||'all';
+  const roleMap=new Map([['admin','Admin']]);
+  ROLE_PERMISSION_ROLES.forEach(role=>roleMap.set(canonicalPermissionRole(role.key),role.label));
+  (Array.isArray(users)?users:[]).forEach(user=>{
+    const key=canonicalPermissionRole(user?.role);
+    if(key&&!roleMap.has(key))roleMap.set(key,getRoleDisplayName(user?.role)||key);
+  });
+  select.innerHTML='<option value="all">Role Search — All</option>'+[...roleMap.entries()]
+    .map(([key,label])=>`<option value="${escapeHTML(key)}">${escapeHTML(label)}</option>`).join('');
+  select.value=roleMap.has(current)||current==='all'?current:'all';
+}
+
 function renderUsers() {
   const query = String($('usersSearch')?.value || '').trim().toLocaleLowerCase();
-  const visibleUsers = users.filter(user => !query || [user.name,user.username,user.role,getRoleDisplayName(user.role)].some(value => String(value || '').toLocaleLowerCase().includes(query)));
+  const roleFilter=String(document.getElementById('usersRoleFilter')?.value||'all');
+  const lastSeenFilter=String(document.getElementById('usersLastSeenFilter')?.value||'all');
+  const visibleUsers = users.filter(user => {
+    if(query&&![user.name,user.username,user.role,getRoleDisplayName(user.role)].some(value => String(value || '').toLocaleLowerCase().includes(query)))return false;
+    if(roleFilter!=='all'&&canonicalPermissionRole(user?.role)!==roleFilter)return false;
+    if(lastSeenFilter!=='all'){
+      const state=getUserLastSeenState(user);
+      if(lastSeenFilter==='online'&&!state.presence)return false;
+      if(lastSeenFilter==='offline'&&state.presence)return false;
+      if(lastSeenFilter==='last_seen'&&(state.presence||!state.seenDate))return false;
+    }
+    return true;
+  });
   if (!visibleUsers.length) {
     usersTableBody.innerHTML = `<tr><td colspan="7" class="empty">No users found</td></tr>`;
     return;
@@ -10401,6 +10570,7 @@ function renderUsers() {
     const actions = `
         ${canManageThisUser ? `<button class="${u.active === false ? 'success' : 'yellow'}" style="padding:5px 10px;font-size:11px" onclick="toggleUserActive('${u.id}', ${u.active !== false})">${u.active === false ? 'تفعيل' : 'تعطيل'}</button>` : ''}
         ${canManageThisUser ? `<button class="danger" style="padding:5px 10px;font-size:11px" onclick="deleteUser('${u.id}', '${(u.name || '').replace(/'/g, "\\'")}')">حذف</button>` : ''}
+        ${isAdmin() ? `<button class="users-action-edit" type="button" onclick="openEditUserModal('${u.id}')">Edit</button>` : ''}
         ${isAdmin() ? `<button class="edit" style="padding:5px 10px;font-size:11px" onclick="openEditRoleModal('${u.id}')">✏️ تعديل الصلاحية</button>` : ''}
         ${!canManageThisUser && !isAdmin() ? '<span style="font-size:11px;color:var(--text-muted);">—</span>' : ''}
       `;
@@ -10417,6 +10587,62 @@ function renderUsers() {
     </tr>
   `;
   }).join("");
+}
+
+window.openEditUserModal = function(id){
+  if(!isAdmin()){alert('تعديل بيانات المستخدم متاح للأدمن فقط');return;}
+  const user=users.find(item=>String(item.id)===String(id));
+  if(!user){alert('المستخدم غير موجود');return;}
+  $('editUserId').value=user.id;
+  $('editUserName').value=user.name||'';
+  $('editUsername').value=user.username||'';
+  $('editUserHint').textContent=`المستخدم الحالي: ${user.name||'—'} (${user.username||'—'})`;
+  $('editUserModal').style.display='flex';
+  $('editUserName').focus();
+};
+
+function closeEditUserModal(){
+  const modal=$('editUserModal');
+  if(modal)modal.style.display='none';
+}
+
+async function saveEditedUser(){
+  if(!isAdmin()){alert('غير مسموح');return;}
+  const id=String($('editUserId')?.value||'').trim();
+  const name=String($('editUserName')?.value||'').trim();
+  const username=String($('editUsername')?.value||'').trim();
+  const user=users.find(item=>String(item.id)===id);
+  if(!user){alert('المستخدم غير موجود');return;}
+  if(!name||!username){alert('اسم الموظف و Username مطلوبين');return;}
+  const duplicate=users.some(item=>String(item.id)!==id&&String(item.username||'').trim().toLowerCase()===username.toLowerCase());
+  if(duplicate){alert('Username مستخدم بالفعل لحساب آخر');return;}
+  if(String(user.name||'').trim()===name&&String(user.username||'').trim()===username){closeEditUserModal();return;}
+
+  const saveBtn=$('editUserSaveBtn');
+  if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='جاري الحفظ...';}
+  try{
+    const oldName=user.name||'';
+    const oldUsername=user.username||'';
+    const {error}=await supabaseClient.from('user').update({name,username}).eq('id',id);
+    if(error)throw error;
+
+    user.name=name;
+    user.username=username;
+    if(currentUser&&String(currentUser.id)===id){
+      currentUser.name=name;
+      currentUser.username=username;
+      sessionStorage.setItem('okb_current_user',JSON.stringify(currentUser));
+      setupUserView();
+    }
+    renderUsers();
+    closeEditUserModal();
+    await logActivity('user_management','تم تعديل بيانات مستخدم',`User ID: ${id} | الاسم: ${oldName} → ${name} | Username: ${oldUsername} → ${username}`);
+    alert('✅ تم تعديل بيانات المستخدم بنجاح');
+  }catch(error){
+    alert('مشكلة في تعديل بيانات المستخدم: '+(error?.message||error));
+  }finally{
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='حفظ التعديل';}
+  }
 }
 
 window.deleteUser = async function (id, name) {
@@ -13714,6 +13940,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       await logActivity(wasEditing?'order_updated':'order_created',wasEditing?'تم تعديل أوردر من صفحة الفرع':'تم إضافة أوردر جديد من الفرع',`العميل: ${orderData.customer_name} | الفرع: ${currentBranchName} | الحالة: ${orderData.status} | الإجمالي: ${money(orderData.price)}${changedOrderDate ? ` | التاريخ الجديد: ${formatEnglishDateTime(changedOrderDate)}` : ''}`,getActivityOrderInfo(savedOrder || editingOrder || orderData));
+      if(wasEditing&&editingOrder&&savedOrder)await recordSecretaryAuditEdit(editingOrder,savedOrder,currentUser,'branch');
       const secretaryAudit = analyzeSecretaryOrderInput(savedOrder || editingOrder || orderData);
       if (secretaryAudit.errors.length) await sendAutomatedAuditNotice('secretary', savedOrder || editingOrder || orderData, secretaryAudit.errors,{severity:'error',sourceScope:'branch'});
       if (secretaryAudit.warnings.length) await sendAutomatedAuditNotice('secretary', savedOrder || editingOrder || orderData, secretaryAudit.warnings,{severity:'warning',sourceScope:'branch'});
@@ -14975,10 +15202,12 @@ function printFinancialAudit() {
 }
 
 // ===== Secretary Audit: order-entry integrity monitor =====
-let secretaryAuditState = { rows:[], findings:[], from:'', to:'' };
+let secretaryAuditState = { rows:[], findings:[], from:'', to:'', searchTerm:'' };
 let secretaryAuditLiveRefreshTimer = null;
+let secretaryAuditSearchTimer = null;
+let secretaryAuditSearchToken = 0;
 const SECRETARY_AUDIT_ACTIONS=['secretary_audit_error','secretary_audit_warning'];
-const SECRETARY_AUDIT_EVENT_ACTIONS=[...SECRETARY_AUDIT_ACTIONS,'secretary_audit_resolved'];
+const SECRETARY_AUDIT_EVENT_ACTIONS=[...SECRETARY_AUDIT_ACTIONS,'secretary_audit_resolved','secretary_audit_edit'];
 const SECRETARY_AUDIT_NOTIFICATION_ACTIONS=[...SECRETARY_AUDIT_EVENT_ACTIONS];
 let secretaryAuditWeeklyCount=0;
 function secretaryAuditSeenIdKey(){return `okb_secretary_audit_seen_${currentUser?.username||currentUser?.id||'user'}`;}
@@ -14997,11 +15226,12 @@ function isSecretaryAuditBranchOrder(order){
   return String(meta?.secretary_audit_scope||'').trim().toLowerCase()==='branch';
 }
 function isFourBranchSecretaryAuditEvent(event){
-  if(!SECRETARY_AUDIT_NOTIFICATION_ACTIONS.includes(String(event?.action_type||'')))return false;
+  const action=String(event?.action_type||'');
+  if(!SECRETARY_AUDIT_NOTIFICATION_ACTIONS.includes(action))return false;
   const info=parseSecretaryAuditEventInfo(event);
-  if(String(info?.source_scope||'').trim().toLowerCase()!=='branch')return false;
+  if(action!=='secretary_audit_edit'&&String(info?.source_scope||'').trim().toLowerCase()!=='branch')return false;
   const branch=String(info?.branch||event?.branch_name||'').trim();
-  return PENDING_BRANCH_NAMES.includes(branch);
+  return action==='secretary_audit_edit'?Boolean(branch):PENDING_BRANCH_NAMES.includes(branch);
 }
 function updateSecretaryAuditBadge(count=secretaryAuditUnreadCount){
   secretaryAuditUnreadCount=Math.max(0,Number(count)||0);
@@ -15185,6 +15415,51 @@ function findSecretaryAuditCorrectedOrder(info,event,rows){
   }).filter(Boolean).sort((a,b)=>b.score-a.score||a.time-b.time)[0]?.order||null;
 }
 
+function getSecretaryAuditDirectSearchTerm(){
+  const raw=String(document.getElementById('secretaryAuditSearch')?.value||'').trim();
+  const digits=onlyDigits(raw);
+  return digits.length>=5?digits:'';
+}
+function mergeSecretaryAuditRows(baseRows,extraRows){
+  const map=new Map((baseRows||[]).map(row=>[String(row.id),row]));
+  (extraRows||[]).forEach(row=>{if(row?.id!==undefined&&row?.id!==null)map.set(String(row.id),row);});
+  return [...map.values()].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+}
+async function loadSecretaryAuditDirectSearchOrders(term){
+  if(!term)return [];
+  const fields=['phone','phone2','ticket_id','order_barcode','order_number'];
+  const {data,error}=await supabaseClient.from('orders').select('*').or(fields.map(field=>`${field}.ilike.%${term}%`).join(',')).order('created_at',{ascending:false}).limit(150);
+  if(error){console.warn('Secretary Audit direct search:',error.message);return [];}
+  return (data||[]).filter(order=>PENDING_BRANCH_NAMES.includes(getSecretaryAuditOrderBranch(order)));
+}
+async function loadSecretaryAuditEventOrders(events,existingRows){
+  const existingTickets=new Set((existingRows||[]).map(row=>String(getTicketId(row)||'')).filter(Boolean));
+  const tickets=[...new Set((events||[]).filter(event=>String(event?.action_type||'')==='secretary_audit_edit').map(event=>{
+    const info=parseSecretaryAuditEventInfo(event);
+    return String(info.ticket_id||event.ticket_id||'').trim();
+  }).filter(ticket=>ticket&&!existingTickets.has(ticket)))];
+  if(!tickets.length)return [];
+  const found=[];
+  for(let index=0;index<tickets.length;index+=100){
+    const batch=tickets.slice(index,index+100);
+    const {data,error}=await supabaseClient.from('orders').select('*').in('ticket_id',batch);
+    if(error){console.warn('Secretary Audit edit-order lookup:',error.message);continue;}
+    found.push(...(data||[]));
+  }
+  return found;
+}
+function scheduleSecretaryAuditSearch(){
+  renderSecretaryAudit();
+  clearTimeout(secretaryAuditSearchTimer);
+  const term=getSecretaryAuditDirectSearchTerm();
+  if(term===String(secretaryAuditState.searchTerm||''))return;
+  const token=++secretaryAuditSearchToken;
+  secretaryAuditSearchTimer=setTimeout(async()=>{
+    if(token!==secretaryAuditSearchToken)return;
+    await refreshSecretaryAudit(false);
+  },300);
+}
+
 async function loadSecretaryAuditRows() {
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom')?.value||today;
@@ -15206,28 +15481,47 @@ async function loadSecretaryAuditRows() {
   // Shipping companies and any external/legacy branch values are excluded from
   // cards, findings, filters, reports and exports at the shared data source.
   rows=rows.filter(order=>PENDING_BRANCH_NAMES.includes(getSecretaryAuditOrderBranch(order)));
-  const findings=buildSecretaryAuditFindings(rows);
+  const directSearchTerm=getSecretaryAuditDirectSearchTerm();
+  if(directSearchTerm)rows=mergeSecretaryAuditRows(rows,await loadSecretaryAuditDirectSearchOrders(directSearchTerm));
+  let findings=buildSecretaryAuditFindings(rows);
   const eventResult=await supabaseClient.from('activity_logs').select('id,action_type,action_details,order_id,ticket_id,customer_name,branch_name,user_name,username,created_at').in('action_type',SECRETARY_AUDIT_EVENT_ACTIONS).gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).limit(2000);
-  if(!eventResult.error){
+  let auditEvents=eventResult.error?[]:(eventResult.data||[]);
+  if(directSearchTerm){
+    const directEventResult=await supabaseClient.from('activity_logs').select('id,action_type,action_details,order_id,ticket_id,customer_name,branch_name,user_name,username,created_at').in('action_type',SECRETARY_AUDIT_EVENT_ACTIONS).or(`ticket_id.ilike.%${directSearchTerm}%,action_details.ilike.%${directSearchTerm}%`).order('created_at',{ascending:false}).limit(2000);
+    if(!directEventResult.error){
+      const byId=new Map(auditEvents.map(event=>[String(event.id),event]));
+      (directEventResult.data||[]).forEach(event=>byId.set(String(event.id),event));
+      auditEvents=[...byId.values()].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    }
+  }
+  const eventOrders=await loadSecretaryAuditEventOrders(auditEvents,rows);
+  if(eventOrders.length){
+    rows=mergeSecretaryAuditRows(rows,eventOrders);
+    const knownFindingKeys=new Set(findings.map(item=>`${String(item.order?.id||'')}|${item.severity}|${item.issue}`));
+    buildSecretaryAuditFindings(eventOrders.filter(order=>PENDING_BRANCH_NAMES.includes(getSecretaryAuditOrderBranch(order)))).forEach(item=>{const key=`${String(item.order?.id||'')}|${item.severity}|${item.issue}`;if(!knownFindingKeys.has(key)){knownFindingKeys.add(key);findings.push(item);}});
+  }
+  if(!eventResult.error||auditEvents.length){
     const seenOrderEvents=new Set();
-    (eventResult.data||[]).forEach(event=>{
+    auditEvents.forEach(event=>{
       let info={};try{info=JSON.parse(event.action_details||'{}');}catch(_){info={issue:event.action_details||'خطأ إدخال مسجل'};}
       const issues=Array.isArray(info.issues)?info.issues:[info.issue||event.action_details||'خطأ إدخال مسجل'];
       const matched=rows.find(row=>String(row.id||'')===String(info.order_id||event.order_id||'')||String(getTicketId(row)||'')===String(info.ticket_id||event.ticket_id||''));
       const savedOrderId=String(info.order_id||event.order_id||'').trim();
-      if(savedOrderId&&!matched)return;
+      if(savedOrderId&&!matched&&event.action_type!=='secretary_audit_edit')return;
       const eventOrderKey=savedOrderId||String(info.ticket_id||event.ticket_id||'').trim();
-      if(eventOrderKey&&seenOrderEvents.has(eventOrderKey))return;
-      if(eventOrderKey)seenOrderEvents.add(eventOrderKey);
-      const order=matched||{id:info.order_id||event.order_id||'',customer_name:info.customer_name||event.customer_name||'—',doctor_name:info.doctor_name||'',employee_name:info.actor||event.user_name||event.username||'—',branch:info.branch||event.branch_name||'—',shipping_company:info.shipping_company||'',phone:info.phone||'',phone2:info.phone2||'',price:Number(info.price||0),deposit:Number(info.deposit||0),status:info.status||'',created_at:event.created_at,order_number:info.order_number||'',ticket_id:info.ticket_id||event.ticket_id||''};
-      const auditBranch=getSecretaryAuditOrderBranch(order);
-      if(!PENDING_BRANCH_NAMES.includes(auditBranch))return;
+      const keepEveryEdit=event.action_type==='secretary_audit_edit';
+      if(!keepEveryEdit&&eventOrderKey&&seenOrderEvents.has(eventOrderKey))return;
+      if(!keepEveryEdit&&eventOrderKey)seenOrderEvents.add(eventOrderKey);
+      const order=matched||{id:info.order_id||event.order_id||'',customer_name:info.customer_name||event.customer_name||'—',doctor_name:info.doctor_name||'',employee_name:info.registered_by||info.actor||event.user_name||event.username||'—',branch:info.branch||event.branch_name||'—',shipping_company:info.shipping_company||'',phone:info.phone||'',phone2:info.phone2||'',price:Number(info.price||0),deposit:Number(info.deposit||0),status:info.status||'',created_at:event.created_at,order_number:info.order_number||'',ticket_id:info.ticket_id||event.ticket_id||''};
+      const auditBranch=event.action_type==='secretary_audit_edit'?String(info.branch||getSecretaryAuditOrderBranch(order)||order?.branch||order?.shipping_company||'—').trim():getSecretaryAuditOrderBranch(order);
+      if(event.action_type!=='secretary_audit_edit'&&!PENDING_BRANCH_NAMES.includes(auditBranch))return;
       const correctedOrder=matched||findSecretaryAuditCorrectedOrder(info,event,rows);
       issues.forEach(issue=>{
-        const severity=event.action_type==='secretary_audit_resolved'?'resolved':event.action_type==='secretary_audit_warning'?'warning':'error';
+        const severity=(event.action_type==='secretary_audit_resolved'||event.action_type==='secretary_audit_edit')?'resolved':event.action_type==='secretary_audit_warning'?'warning':'error';
         const ticket=getTicketId(order)||info.ticket_id||event.ticket_id||'—';
-        const duplicate=findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
-        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:order.employee_name||event.user_name||'—',event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||''});
+        const duplicate=event.action_type==='secretary_audit_edit'?findings.some(item=>String(item.event_id||'')===String(event.id)):findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
+        const eventActor=event.action_type==='secretary_audit_edit'?(info.edited_by||info.actor||event.user_name||event.username||'—'):(order.employee_name||info.actor||event.user_name||'—');
+        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:eventActor,event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||''});
       });
     });
   }
@@ -15240,7 +15534,7 @@ async function loadSecretaryAuditRows() {
     if(!duplicate)findings.push({...item,created_at:item.at||item.ocr?.updated_at||item.order?.updated_at||item.order?.created_at||''});
   });
   findings.sort((a,b)=>new Date(b.created_at||b.order?.updated_at||b.order?.created_at||0)-new Date(a.created_at||a.order?.updated_at||a.order?.created_at||0));
-  secretaryAuditState={rows,findings,from,to};
+  secretaryAuditState={rows,findings,from,to,searchTerm:directSearchTerm};
   populateSecretaryAuditEmployeeFilter();
 }
 
@@ -15473,6 +15767,55 @@ function describeSecretaryAuditCorrections(order,previousIssues=[]){
   });
   return [...new Set(corrections)].length? [...new Set(corrections)] : ['تم تعديل الأوردر وتصحيح بياناته'];
 }
+function secretaryAuditComparableValue(order,key){
+  if(key==='price')return Number(getEffectiveOrderPrice(order)||0);
+  if(key==='deposit'||key==='quantity'||key==='delivery_fee')return Number(order?.[key]||0);
+  if(key==='notes')return cleanVisibleOrderNotes(order?.notes||'').trim();
+  if(key==='discount')return Number(getOrderMeta(order).discount||0);
+  return String(order?.[key]??'').trim();
+}
+function formatSecretaryAuditChangeValue(key,value){
+  if(['price','deposit','delivery_fee','discount'].includes(key))return enMoney(Number(value||0));
+  if(key==='quantity')return String(Number(value||0));
+  const text=String(value??'').trim();
+  return text||'—';
+}
+function getSecretaryAuditOrderChanges(before,after){
+  const fields=[
+    ['customer_name','اسم العميل'],['doctor_name','اسم الدكتور'],['order_number','رقم الأوردر'],['phone','الموبايل'],['phone2','الموبايل 2'],
+    ['shipping_company','شركة الشحن'],['area','المنطقة'],['product_names','المنتجات'],['quantity','الكمية'],['price','السعر'],['deposit','Deposit'],
+    ['delivery_fee','خدمة التوصيل'],['discount','الخصم'],['status','الحالة'],['notes','الملاحظات']
+  ];
+  return fields.map(([key,label])=>{
+    const oldValue=secretaryAuditComparableValue(before,key),newValue=secretaryAuditComparableValue(after,key);
+    return String(oldValue)===String(newValue)?null:{field:key,label,before:formatSecretaryAuditChangeValue(key,oldValue),after:formatSecretaryAuditChangeValue(key,newValue)};
+  }).filter(Boolean);
+}
+async function recordSecretaryAuditEdit(before,after,actor=currentUser,sourceScope=''){
+  if(!before||!after||!isSecretary())return false;
+  const changes=getSecretaryAuditOrderChanges(before,after);
+  if(!changes.length)return false;
+  const branch=getSecretaryAuditOrderBranch(after)||getSecretaryAuditOrderBranch(before)||String(after?.branch||before?.branch||after?.shipping_company||before?.shipping_company||'').trim()||'غير محدد';
+  const beforeMeta=getOrderMeta(before);
+  const registeredUsername=String(beforeMeta.created_by_username||'').trim();
+  const creatorUser=registeredUsername?(users||[]).find(user=>String(user?.username||'').trim().toLowerCase()===registeredUsername.toLowerCase()):null;
+  const registeredBy=String(creatorUser?.name||registeredUsername||before?.employee_name||'غير محدد').trim()||'غير محدد';
+  const editedBy=String(actor?.name||actor?.username||'Secretary').trim();
+  const editedUsername=String(actor?.username||'').trim();
+  const details=changes.map(change=>`${change.label}: ${change.before} → ${change.after}`).join(' | ');
+  const identity=`مسجل بواسطة: ${registeredBy}${registeredUsername&&registeredUsername!==registeredBy?` (${registeredUsername})`:''} | عدّل بواسطة: ${editedBy}${editedUsername&&editedUsername!==editedBy?` (${editedUsername})`:''}`;
+  const ticket=getTicketId(after)||getTicketId(before)||after?.order_number||before?.order_number||'';
+  const info={
+    order_id:after?.id||before?.id||'',ticket_id:ticket,order_number:after?.order_number||before?.order_number||'',customer_name:after?.customer_name||before?.customer_name||'',doctor_name:after?.doctor_name||before?.doctor_name||'',
+    phone:after?.phone||before?.phone||'',phone2:after?.phone2||before?.phone2||'',shipping_company:after?.shipping_company||before?.shipping_company||'',branch,source_scope:String(sourceScope||'').trim().toLowerCase(),
+    actor:editedBy,edited_by:editedBy,edited_username:editedUsername,registered_by:registeredBy,registered_username:registeredUsername,price:Number(getEffectiveOrderPrice(after)||0),deposit:Number(after?.deposit||0),status:after?.status||'',changes,
+    issues:[`${identity} | ${details}`]
+  };
+  const saved=await logActivity('secretary_audit_edit','Secretary Audit — تم تعديل الأوردر',JSON.stringify(info),{order_id:after?.id||before?.id,ticket_id:ticket,customer_name:info.customer_name,branch_name:branch});
+  if(saved&&!document.getElementById('secretaryAuditPage')?.classList.contains('hidden'))scheduleSecretaryAuditLiveRefresh();
+  return saved;
+}
+
 async function recordSecretaryAuditResolution(order,actor=currentUser,sourceScope=''){
   if(String(sourceScope||'').trim().toLowerCase()!=='branch')return false;
   const ticket=getTicketId(order)||order?.order_number||'';
@@ -18109,8 +18452,8 @@ function generateReceiptHTML(order, branchName) {
   // ✅ توليد باركود SVG
   const barcodeSvg = generateCode128BarcodeSVG(barcode1);
   
-  const printDate = new Date().toLocaleDateString('ar-EG') + ' ' + new Date().toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'});
-  const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString('ar-EG') + ' ' + new Date(order.created_at).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'}) : '';
+  const printDate = new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',hour12:true});
+  const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString('en-GB') + ' ' + new Date(order.created_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',hour12:true}) : '';
 
   const productRows = products.length > 0
     ? products.map(p => `
@@ -19430,4 +19773,4 @@ async function hardRefreshBranch(button) {
 }
 
 // OKB build diagnostic marker — v204. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v208';
+window.__OKB_BUILD_VERSION = 'v213';

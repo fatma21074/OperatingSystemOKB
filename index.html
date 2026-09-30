@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260929-smart-summary-permission-v206">
+  <link rel="stylesheet" href="css/style.css?v=20260930-secretary-audit-edit-v211">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -740,6 +740,7 @@
 <div class="bulk-actions admin-only hidden" id="bulkDeleteBar">
 <span id="selectedOrdersCount">0 عميل محدد</span>
 <button class="danger" onclick="deleteSelectedOrders()" type="button">🗑 حذف العملاء المحددين</button>
+<button class="doctor-weekly-btn doctor-rank-smart-export-btn" id="dashboardAllocateBtn" onclick="openAllocateModal('dashboard')" type="button">Allocate</button>
 <button class="soft" onclick="clearSelectedOrders()" type="button">إلغاء التحديد</button>
 </div>
 <div class="table-wrap">
@@ -747,7 +748,7 @@
 <thead>
 <tr>
 <th class="admin-only"><input class="row-check" id="selectPageOrders" onchange="toggleSelectCurrentPage(this)" title="اختيار كل العملاء في الصفحة" type="checkbox"/></th>
-<th>#</th><th>الموظف</th><th>الدكتور</th><th>رقم الأوردر</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
+<th>#</th><th class="hidden" data-dashboard-column="employee">الموظف</th><th>الدكتور</th><th>رقم الأوردر</th><th>العميل</th><th>الموبايل</th><th>الموبايل 2</th>
 <th>الشحن</th><th>المنطقة</th><th>السعر</th><th>Deposit</th><th>المتبقي</th><th>إثباتات الدفع</th><th>الحالة</th><th>ملاحظات</th><th>التاريخ</th><th>الإجراءات</th>
 </tr>
 </thead>
@@ -1264,7 +1265,7 @@
 <div class="actions"><button class="success" type="submit">Add User</button><button class="soft" onclick="userForm.reset(); $('newUserBranchesWrap').classList.add('hidden');" type="button">Clear</button></div>
 </form>
 </div>
-<div class="card"><div class="current-users-header"><h2>Current Users</h2><input id="usersSearch" type="search" dir="auto" aria-label="بحث بالاسم أو Username أو Role" placeholder="بحث بالاسم أو Username أو Role..." oninput="renderUsers()" autocomplete="off"></div>
+<div class="card"><div class="current-users-header"><h2>Current Users</h2><input id="usersSearch" type="search" dir="auto" aria-label="بحث بالاسم أو Username أو Role" placeholder="بحث بالاسم أو Username أو Role..." oninput="renderUsers()" autocomplete="off"><select id="usersRoleFilter" class="users-filter-select" aria-label="Role Search" onchange="renderUsers()"><option value="all">Role Search — All</option></select><select id="usersLastSeenFilter" class="users-filter-select" aria-label="Last Seen" onchange="renderUsers()"><option value="all">Last Seen — All</option><option value="online">Online</option><option value="offline">Offline</option><option value="last_seen">Last Seen</option></select></div>
 <div class="table-wrap">
 <table>
 <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>الفروع المُدارة</th><th>Active</th><th>الإجراءات</th><th>Last Seen</th></tr></thead>
@@ -1273,6 +1274,23 @@
 </div>
 </div>
 </section>
+
+<!-- ===== Edit User Modal (Admin Only) ===== -->
+<div id="editUserModal" class="users-edit-modal" style="display:none;">
+  <div class="users-edit-dialog">
+    <h3>✏️ Edit User</h3>
+    <p id="editUserHint">تعديل اسم الموظف و Username فقط.</p>
+    <input type="hidden" id="editUserId"/>
+    <label for="editUserName">اسم الموظف</label>
+    <input id="editUserName" type="text" autocomplete="off"/>
+    <label for="editUsername">Username</label>
+    <input id="editUsername" type="text" autocomplete="off"/>
+    <div class="users-edit-actions">
+      <button type="button" class="soft" onclick="closeEditUserModal()">إلغاء</button>
+      <button type="button" class="users-edit-save" id="editUserSaveBtn" onclick="saveEditedUser()">حفظ التعديل</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===== Edit Role Modal (Admin Only) ===== -->
 <div id="editRoleModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
@@ -1703,6 +1721,7 @@
 <div class="branch-bulk-actions hidden" id="branchBulkActions">
   <strong id="branchSelectedCount">0 عميل محدد</strong>
   <button class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
+  <button class="doctor-weekly-btn doctor-rank-smart-export-btn" id="branchAllocateBtn" type="button" onclick="openAllocateModal('branch')">Allocate</button>
   <button class="branch-bulk-delete hidden" id="branchBulkDeleteBtn" type="button" onclick="deleteSelectedBranchOrders()">🗑️ حذف المحدد</button>
   <button class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
   <button class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف إثبات السكرتارية</button>
@@ -1998,7 +2017,7 @@
     <div class="financial-audit-head">
       <div><h2 id="secretaryAuditTitle">🛡️ Secretary Audit — مراجعة أخطاء إدخال الأوردرات</h2><p id="secretaryAuditMeta"></p></div>
       <div class="secretary-audit-head-actions">
-        <input id="secretaryAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." autocomplete="off" oninput="renderSecretaryAudit()">
+        <input id="secretaryAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو الموبايل أو العميل..." autocomplete="off" oninput="scheduleSecretaryAuditSearch()">
         <button type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
         <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
@@ -2345,6 +2364,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v208.js?v=20260929-receipt-creator-rtl-v208"></script>
+<script src="js/main.v213.js?v=20260930-allocate-orders-chat-v213"></script>
 </body>
 </html>
