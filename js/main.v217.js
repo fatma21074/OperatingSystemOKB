@@ -4387,19 +4387,9 @@ function setActiveMenu(pageId) {
 let pendingOrders = [];
 let pendingLoadSequence = 0;
 let pendingDataReady = false;
-let pendingDataMonthKey = '';
 let pendingHeaderLoadSequence = 0;
 let pendingExportInProgress = false;
 const PENDING_BRANCH_NAMES = ['مدينة نصر','اسكندرية','طنطا','المنصورة'];
-function getPendingMonthRange(){
-  const month=getCurrentDashboardMonthRange();
-  return {...month,...getCairoDateRangeUTC(month.from,month.to)};
-}
-function isPendingOrderInMonth(order,month){
-  const date=parsePreciseServerDate(order?.created_at);
-  const timestamp=date?.toISOString();
-  return Boolean(timestamp&&timestamp>=month.start&&timestamp<month.endExclusive);
-}
 function pendingReferenceDate(order) {
   const now = Date.now();
   const candidates = [order?.status_updated_at, order?.updated_at, order?.modified_at, order?.created_at]
@@ -4433,23 +4423,15 @@ async function refreshPendingHeaderCount(){
   const request=++pendingHeaderLoadSequence;
   const actorId=String(currentUser?.id||'');
   if(!canViewPendingHeaderCount()){updatePendingHeaderBadge(0);return;}
-  const month=getPendingMonthRange();
-  if(isLivePageVisible('pendingPage')&&pendingDataMonthKey!==month.key){
-    renderPendingOrders();
-    await loadPendingOrders(false);
-    return;
-  }
   try{
     let count=0;
     for(let offset=0;;offset+=1000){
       const {data,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
-        .gte('created_at',month.start).lt('created_at',month.endExclusive)
         .order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
       if(error)throw error;
       if(request!==pendingHeaderLoadSequence||String(currentUser?.id||'')!==actorId)return;
       if(!canViewPendingHeaderCount()){updatePendingHeaderBadge(0);return;}
-      if(month.key!==getCurrentDashboardMonthRange().key)return refreshPendingHeaderCount();
-      count+=(data||[]).filter(order=>isPendingOrderInMonth(order,month)&&pendingDays(order)>=3&&canSeePendingOrder(order)).length;
+      count+=(data||[]).filter(order=>pendingDays(order)>=3&&canSeePendingOrder(order)).length;
       if(!data||data.length<1000)break;
     }
     updatePendingHeaderBadge(count);
@@ -4484,7 +4466,6 @@ async function showPendingPage(){
 async function loadPendingOrders(showMessage){
   const actorId=String(currentUser?.id||'');
   const request=++pendingLoadSequence;
-  const month=getPendingMonthRange();
   pendingDataReady=false;
   const exportButton=$('pendingExportBtn');if(exportButton)exportButton.disabled=true;
   if(!hasRoleFeature('pending')){pendingOrders=[];renderPendingOrders();return false;}
@@ -4493,17 +4474,14 @@ async function loadPendingOrders(showMessage){
     const data=[];
     for(let offset=0;;offset+=1000){
       const {data:page,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
-        .gte('created_at',month.start).lt('created_at',month.endExclusive)
         .order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
       if(error)throw error;
       if(request!==pendingLoadSequence||String(currentUser?.id||'')!==actorId)return false;
       if(!hasRoleFeature('pending')){pendingOrders=[];renderPendingOrders();return false;}
-      if(month.key!==getCurrentDashboardMonthRange().key)return loadPendingOrders(showMessage);
       data.push(...(page||[]));
       if(!page||page.length<1000)break;
     }
-    pendingOrders=data.filter(o=>isPendingOrderInMonth(o,month)&&pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingReferenceTime(a)-pendingReferenceTime(b));
-    pendingDataMonthKey=month.key;
+    pendingOrders=data.filter(o=>pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingReferenceTime(a)-pendingReferenceTime(b));
     pendingDataReady=true;
     updatePendingHeaderBadge(pendingOrders.length);
     setupPendingBranchFilter(); renderPendingOrders();
@@ -4518,11 +4496,10 @@ async function loadPendingOrders(showMessage){
 }
 function getFilteredPendingOrders(){
   if(!hasRoleFeature('pending'))return [];
-  const month=getPendingMonthRange();
   const query=String($('pendingSearch')?.value||'').trim().toLowerCase();
   const branchFilter=(isAdmin()||isOperationManager())?($('pendingBranchFilter')?.value||'all'):'all';
   return pendingOrders.filter(order=>{
-    if(!isPendingOrderInMonth(order,month)||order.status!=='Delivering'||pendingDays(order)<3||!canSeePendingOrder(order))return false;
+    if(order.status!=='Delivering'||pendingDays(order)<3||!canSeePendingOrder(order))return false;
     return (branchFilter==='all'||pendingOrderBranch(order)===branchFilter)&&(!query||[order.customer_name,order.phone,order.phone2,order.order_number,order.ticket_id,order.employee_name,order.doctor_name,order.area,pendingOrderBranch(order)].some(value=>String(value||'').toLowerCase().includes(query)));
   });
 }
@@ -4545,7 +4522,7 @@ async function exportPendingOrders(button){
     const summary=workbook.addWorksheet('Overview');
     summary.columns=[{width:36},{width:44}];
     summary.addRows([
-      ['Pending Orders','متأخرات الشهر الحالي طبقًا للفلاتر المختارة'],
+      ['Pending Orders','كل أوردرات Delivering المتأخرة 3 أيام أو أكثر طبقًا للفلاتر المختارة'],
       ['الفرع',branchLabel],
       ['البحث',search||'—'],['إجمالي المتأخر',rows.length],
       ['7 أيام أو أكثر',rows.filter(order=>pendingDays(order)>=7).length],
@@ -4616,7 +4593,7 @@ function renderPendingOrders(){
   document.getElementById('pendingTotalCount').textContent=num(rows.length);
   document.getElementById('pendingCriticalCount').textContent=num(rows.filter(o=>pendingDays(o)>=7).length);
   document.getElementById('pendingOldestDays').textContent=num(rows.reduce((max,order)=>Math.max(max,pendingDays(order)),0))+' يوم';
-  if(!rows.length){list.innerHTML='<div class="pending-empty">لا توجد أوردرات من الشهر الحالي بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
+  if(!rows.length){list.innerHTML='<div class="pending-empty">لا توجد أوردرات بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
   list.innerHTML=rows.map(o=>`<div class="pending-row"><div class="pending-days">${num(pendingDays(o))}<small>يوم</small></div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="pending-status">Delivering</span><span class="pending-meta">Last update: ${formatEnglishDateTime(pendingReferenceDate(o))}</span></div><div><span class="pending-meta">رقم الأوردر: ${escapeHTML(o.order_number||'—')}</span><span class="pending-meta">Ticket: ${escapeHTML(getTicketId(o))}</span></div><div><span class="pending-meta">${escapeHTML(o.employee_name||'—')}</span><span class="pending-meta">${escapeHTML(o.doctor_name||'')}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(o.area||'')}</span></div><button class="pending-open-btn" type="button" onclick="openPendingOrder('${o.id}')">فتح الأوردر</button></div>`).join('');
 }
 function openPendingOrder(orderId){const order=pendingOrders.find(item=>String(item.id)===String(orderId));if(order)openReportOrderTab('pending',order);}
@@ -15521,7 +15498,7 @@ async function loadSecretaryAuditRows() {
         const ticket=getTicketId(order)||info.ticket_id||event.ticket_id||'—';
         const duplicate=event.action_type==='secretary_audit_edit'?findings.some(item=>String(item.event_id||'')===String(event.id)):findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
         const eventActor=event.action_type==='secretary_audit_edit'?(info.edited_by||info.actor||event.user_name||event.username||'—'):(order.employee_name||info.actor||event.user_name||'—');
-        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:eventActor,event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||''});
+        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:eventActor,event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||'',action_type:event.action_type,audit_info:event.action_type==='secretary_audit_edit'?info:null,changes:event.action_type==='secretary_audit_edit'&&Array.isArray(info.changes)?info.changes:[]});
       });
     });
   }
@@ -15595,6 +15572,67 @@ function getSecretaryAuditTopEmployee(findings){
   const ordersByActor={};findings.filter(x=>x.severity!=='resolved').forEach(x=>{const key=x.actor||'غير محدد';(ordersByActor[key]||(ordersByActor[key]=new Set())).add(String(x.order?.id||x.ticket||x.event_id||x.issue));});
   const top=Object.entries(ordersByActor).map(([name,set])=>[name,set.size]).sort((a,b)=>b[1]-a[1])[0];return top?{name:top[0],count:top[1]}:{name:'—',count:0};
 }
+function getSecretaryAuditEditSummary(item){
+  const changes=Array.isArray(item?.changes)?item.changes:[];
+  if(item?.action_type!=='secretary_audit_edit')return {text:String(item?.issue||'—'),details:false};
+  if(!changes.length)return {text:String(item?.issue||'تم تعديل الأوردر'),details:true};
+  if(changes.length===1){
+    const change=changes[0]||{};
+    if(change.field==='product_names')return {text:'تعديل المنتجات',details:true};
+    return {text:`تعديل ${change.label||'البيانات'}`,details:true};
+  }
+  const labels=changes.map(change=>String(change?.label||'').trim()).filter(Boolean);
+  const text=changes.length===2&&labels.length===2?`تعديل ${labels[0]} + ${labels[1]}`:`${changes.length} تعديلات`;
+  return {text,details:true};
+}
+function secretaryAuditProductMap(value){
+  const map=new Map();
+  parseReceiptProducts(String(value||'')).forEach(item=>{
+    const name=String(item?.name||'').trim()||'منتج';
+    const key=name.toLowerCase();
+    const current=map.get(key)||{name,qty:0,price:Number(item?.price||0)};
+    current.qty+=Math.max(0,Number(item?.qty||0));
+    if(Number(item?.price||0)||!current.price)current.price=Number(item?.price||0);
+    map.set(key,current);
+  });
+  return map;
+}
+function renderSecretaryAuditProductDiff(change){
+  const before=secretaryAuditProductMap(change?.before),after=secretaryAuditProductMap(change?.after);
+  const keys=[...new Set([...before.keys(),...after.keys()])];
+  const rows=keys.map(key=>{
+    const oldItem=before.get(key),newItem=after.get(key),name=newItem?.name||oldItem?.name||'منتج';
+    if(!oldItem&&newItem)return `<div class="secretary-audit-product-diff added"><strong>${escapeHTML(name)}</strong><span>تمت الإضافة</span><b>${escapeHTML(String(newItem.qty))} قطعة${newItem.price?` — ${enMoney(newItem.price)}`:''}</b></div>`;
+    if(oldItem&&!newItem)return `<div class="secretary-audit-product-diff removed"><strong>${escapeHTML(name)}</strong><span>تم الحذف</span><b>${escapeHTML(String(oldItem.qty))} قطعة${oldItem.price?` — ${enMoney(oldItem.price)}`:''}</b></div>`;
+    if(oldItem&&newItem&&(oldItem.qty!==newItem.qty||oldItem.price!==newItem.price)){
+      const parts=[];
+      if(oldItem.qty!==newItem.qty)parts.push(`الكمية: ${oldItem.qty} → ${newItem.qty}`);
+      if(oldItem.price!==newItem.price)parts.push(`السعر: ${enMoney(oldItem.price)} → ${enMoney(newItem.price)}`);
+      return `<div class="secretary-audit-product-diff changed"><strong>${escapeHTML(name)}</strong><span>تم التعديل</span><b>${parts.join(' · ')}</b></div>`;
+    }
+    return '';
+  }).filter(Boolean).join('');
+  if(rows)return `<div class="secretary-audit-product-diffs">${rows}</div>`;
+  return `<div class="secretary-audit-before-after"><div><span>قبل التعديل</span><p>${escapeHTML(String(change?.before||'—'))}</p></div><div><span>بعد التعديل</span><p>${escapeHTML(String(change?.after||'—'))}</p></div></div>`;
+}
+function renderSecretaryAuditChangeDetails(change){
+  if(change?.field==='product_names')return renderSecretaryAuditProductDiff(change);
+  return `<div class="secretary-audit-before-after"><div><span>قبل التعديل</span><p>${escapeHTML(String(change?.before??'—'))}</p></div><div><span>بعد التعديل</span><p>${escapeHTML(String(change?.after??'—'))}</p></div></div>`;
+}
+function openSecretaryAuditChangeDetails(eventId){
+  const item=secretaryAuditState.findings.find(finding=>String(finding?.event_id||'')===String(eventId||'')&&finding?.action_type==='secretary_audit_edit');
+  const modal=document.getElementById('secretaryAuditChangeModal'),body=document.getElementById('secretaryAuditChangeBody');
+  if(!item||!modal||!body)return;
+  const info=item.audit_info||{},changes=Array.isArray(item.changes)?item.changes:[];
+  const registeredBy=String(info.registered_by||item.order?.employee_name||'غير محدد');
+  const editedBy=String(info.edited_by||info.actor||item.actor||'غير محدد');
+  const at=item.created_at||item.order?.updated_at||item.order?.created_at||'';
+  const changeContent=changes.length?changes.map(change=>`<section><h4>${escapeHTML(String(change?.label||'تعديل'))}</h4>${renderSecretaryAuditChangeDetails(change)}</section>`).join(''):'<div class="secretary-audit-change-empty">لا توجد تفاصيل حقول محفوظة لهذا التعديل القديم، لكن بيانات منفذ التعديل ووقت الحركة محفوظة بالأعلى.</div>';
+  body.innerHTML=`<div class="secretary-audit-change-meta"><div><span>Ticket ID</span><strong>${escapeHTML(String(item.ticket||'—'))}</strong></div><div><span>وقت التعديل</span><strong>${escapeHTML(formatEnglishDateTime(at))}</strong></div></div><div class="secretary-audit-change-people"><div><span>المسجل الأصلي</span><strong>${escapeHTML(registeredBy)}</strong></div><div><span>تم التعديل بواسطة</span><strong>${escapeHTML(editedBy)}</strong></div></div><div class="secretary-audit-change-list">${changeContent}</div>`;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+}
+function closeSecretaryAuditChangeDetails(){const modal=document.getElementById('secretaryAuditChangeModal');if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}
 function renderSecretaryAudit(){
   const state=secretaryAuditState,findings=getFilteredSecretaryAuditFindings(),errors=findings.filter(x=>x.severity==='error').length,warnings=findings.filter(x=>x.severity==='warning').length,resolved=findings.filter(x=>x.severity==='resolved').length,top=getSecretaryAuditTopEmployee(state.findings);
   const totalOrders=getSecretaryAuditBranchOrders().length;
@@ -15602,7 +15640,7 @@ function renderSecretaryAudit(){
   const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['Total Orders',totalOrders,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده أخطاء',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   const verdict=document.getElementById('secretaryAuditVerdict');if(verdict){verdict.className=`financial-audit-verdict ${errors?'bad':'ok'}`;verdict.textContent=errors?`❌ يوجد ${errors} خطأ إدخال يجب تصحيحه قبل خروج الأوردرات للفروع.`:`✅ لا توجد أخطاء إدخال مانعة${warnings?` — يوجد ${warnings} تنبيه للمراجعة`:''}.`;}
   const body=document.getElementById('secretaryAuditBody');if(!body)return;
-  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const linkedId=o?.id||item.corrected_order_id||'';const openButton=linkedId?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${linkedId}')">فتح الأوردر</button>`:'';const openAction=o?.id?openButton:`<div style="display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;"><span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>${openButton}</div>`;const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td><strong>${escapeHTML(item.issue)}</strong></td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td>${openAction}</td></tr>`;}).join(''):'<tr><td colspan="11" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
+  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const linkedId=o?.id||item.corrected_order_id||'';const openButton=linkedId?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${linkedId}')">فتح الأوردر</button>`:'';const openAction=o?.id?openButton:`<div style="display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;"><span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>${openButton}</div>`;const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';const issueSummary=getSecretaryAuditEditSummary(item);const issueCell=`<div class="secretary-audit-issue-summary"><strong>${escapeHTML(issueSummary.text)}</strong></div>`;const detailsCell=issueSummary.details?`<button class="secretary-audit-details-btn" type="button" onclick="openSecretaryAuditChangeDetails('${String(item.event_id||'').replace(/'/g,'\\\'')}')">عرض التفاصيل</button>`:`<span class="secretary-audit-no-details">—</span>`;return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td class="secretary-audit-issue-cell">${issueCell}</td><td class="secretary-audit-detail-cell">${detailsCell}</td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td class="secretary-audit-action-cell">${openAction}</td></tr>`;}).join(''):'<tr><td colspan="12" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
 }
 async function toggleSecretaryAuditReport(){
   const panel=document.getElementById('secretaryAuditReportPanel');if(!panel)return;
@@ -19773,4 +19811,4 @@ async function hardRefreshBranch(button) {
 }
 
 // OKB build diagnostic marker — v204. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v213';
+window.__OKB_BUILD_VERSION = 'v217';

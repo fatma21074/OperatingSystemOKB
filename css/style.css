@@ -2760,3 +2760,39 @@ body.customer-profile-open{overflow:hidden}
 .users-edit-dialog{width:min(410px,94vw);padding:24px;border:1px solid var(--border-color);border-radius:16px;background:var(--bg-card);box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .users-edit-dialog h3{margin:0 0 7px;font-size:17px}.users-edit-dialog p{margin:0 0 16px;color:var(--text-muted);font-size:11px}.users-edit-dialog label{display:block;margin:10px 0 6px;color:var(--text-muted);font-size:11px;font-weight:800}.users-edit-dialog input[type="text"]{width:100%;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;color:var(--text-main);font:600 13px Cairo,Inter,sans-serif;outline:none}.users-edit-dialog input[type="text"]:focus{border-color:#14b8a6;box-shadow:0 0 0 3px rgba(20,184,166,.10)}
 .users-edit-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:18px}.users-edit-actions button{padding:8px 16px;border-radius:8px;cursor:pointer}.users-edit-save{border:1px solid #050505;background:#050505;color:#fff;font-weight:800}.users-edit-save:disabled{opacity:.55;cursor:wait}
+/* v214 — Secretary Audit compact edit details (scoped) */
+.secretary-audit-issue-compact{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;max-width:360px;margin:auto}
+.secretary-audit-issue-compact strong{white-space:normal;line-height:1.5}
+.secretary-audit-issue-compact button{min-height:28px;padding:5px 9px;border:1px solid rgba(34,211,238,.42);border-radius:8px;background:rgba(34,211,238,.09);color:#67e8f9;font:900 10px Cairo,sans-serif;cursor:pointer;white-space:nowrap;transition:.16s ease}
+.secretary-audit-issue-compact button:hover{transform:translateY(-1px);background:rgba(34,211,238,.15);border-color:#22d3ee}
+.secretary-audit-change-modal{display:none;position:fixed;inset:0;z-index:12550;padding:18px;background:rgba(2,6,23,.84);backdrop-filter:blur(7px);align-items:center;justify-content:center}
+.secretary-audit-change-modal.open{display:flex}
+.secretary-audit-change-dialog{width:min(780px,96vw);max-height:90vh;overflow:auto;border:1px solid rgba(34,211,238,.34);border-radius:16px;background:var(--bg-card);box-shadow:0 26px 90px rgba(0,0,0,.55);padding:16px}
+.secretary-audit-change-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:12px;border-bottom:1px solid var(--border-color)}
+.secretary-audit-change-head h3{margin:0;color:var(--text-primary);font-size:18px}.secretary-audit-change-head p{margin:5px 0 0;color:var(--text-muted);font-size:10px;font-weight:700}.secretary-audit-change-head>button{flex:0 0 36px;width:36px;height:36px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-soft);color:var(--text-primary);font-weight:900;cursor:pointer}
+.secretary-audit-change-body{padding-top:12px}.secretary-audit-change-meta,.secretary-audit-change-people{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:10px}.secretary-audit-change-meta>div,.secretary-audit-change-people>div{padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-soft)}
+.secretary-audit-change-meta span,.secretary-audit-change-people span{display:block;color:var(--text-muted);font-size:9px;font-weight:800}.secretary-audit-change-meta strong,.secretary-audit-change-people strong{display:block;margin-top:5px;color:var(--text-primary);font-size:12px;overflow-wrap:anywhere}.secretary-audit-change-people>div:last-child{border-color:rgba(34,211,238,.34);background:rgba(34,211,238,.06)}
+.secretary-audit-change-list{display:grid;gap:9px}.secretary-audit-change-list section{padding:11px;border:1px solid var(--border-color);border-radius:11px;background:var(--bg-soft)}.secretary-audit-change-list h4{margin:0 0 9px;color:var(--text-primary);font-size:12px}
+.secretary-audit-before-after{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.secretary-audit-before-after>div{min-width:0;padding:9px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-card)}.secretary-audit-before-after span{display:block;margin-bottom:5px;color:var(--text-muted);font-size:9px;font-weight:900}.secretary-audit-before-after p{margin:0;color:var(--text-primary);font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.secretary-audit-product-diffs{display:grid;gap:7px}.secretary-audit-product-diff{display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(150px,1fr);align-items:center;gap:8px;padding:9px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-card)}.secretary-audit-product-diff strong{color:var(--text-primary);font-size:11px;overflow-wrap:anywhere}.secretary-audit-product-diff span{padding:3px 7px;border-radius:999px;font-size:9px;font-weight:900;text-align:center}.secretary-audit-product-diff b{color:var(--text-primary);font-size:10px;text-align:left;direction:rtl}.secretary-audit-product-diff.added span{color:#86efac;background:rgba(16,185,129,.15)}.secretary-audit-product-diff.removed span{color:#fca5a5;background:rgba(239,68,68,.15)}.secretary-audit-product-diff.changed span{color:#fde68a;background:rgba(245,158,11,.14)}
+@media(max-width:700px){.secretary-audit-change-modal{padding:6px}.secretary-audit-change-dialog{width:100%;max-height:96vh;padding:11px}.secretary-audit-change-meta,.secretary-audit-change-people,.secretary-audit-before-after{grid-template-columns:1fr}.secretary-audit-product-diff{grid-template-columns:1fr}.secretary-audit-product-diff b{text-align:right}}
+
+/* v216 — Secretary Audit all edit details + centered table headers (scoped) */
+.secretary-audit-table-wrap thead th{text-align:center!important;vertical-align:middle!important}
+.secretary-audit-change-empty{padding:12px;border:1px dashed var(--border-color);border-radius:10px;background:var(--bg-soft);color:var(--text-muted);font-size:11px;font-weight:800;text-align:center;line-height:1.7}
+
+
+
+/* v217 — Secretary Audit split issue summary / details action columns (scoped) */
+.secretary-audit-table-wrap table{min-width:1400px}
+.secretary-audit-table-wrap .secretary-audit-issue-head{min-width:190px}
+.secretary-audit-table-wrap .secretary-audit-details-head{width:122px;min-width:122px}
+.secretary-audit-table-wrap .secretary-audit-action-head{width:122px;min-width:122px}
+.secretary-audit-issue-cell{text-align:center!important;vertical-align:middle!important;min-width:190px}
+.secretary-audit-issue-summary{display:flex;align-items:center;justify-content:center;min-height:36px;max-width:240px;margin:0 auto;padding:0 8px}
+.secretary-audit-issue-summary strong{display:block;color:var(--text-primary);font-size:10px;font-weight:900;line-height:1.55;text-align:center;white-space:normal;overflow-wrap:anywhere}
+.secretary-audit-detail-cell,.secretary-audit-action-cell{text-align:center!important;vertical-align:middle!important;width:122px;min-width:122px}
+.secretary-audit-details-btn{display:inline-flex;align-items:center;justify-content:center;width:104px;min-width:104px;height:36px;padding:0 10px;border:1px solid rgba(34,211,238,.48);border-radius:10px;background:rgba(34,211,238,.09);color:#67e8f9;font:900 10px Cairo,sans-serif;cursor:pointer;white-space:nowrap;box-shadow:0 0 14px rgba(34,211,238,.08);transition:.16s ease}
+.secretary-audit-details-btn:hover{transform:translateY(-1px);background:rgba(34,211,238,.15);border-color:#22d3ee;box-shadow:0 0 20px rgba(34,211,238,.18)}
+.secretary-audit-no-details{display:inline-flex;align-items:center;justify-content:center;width:104px;height:36px;color:var(--text-muted);font-weight:900}
+.secretary-audit-action-cell>.operation-manager-report-btn{display:inline-flex;align-items:center;justify-content:center;width:104px;min-width:104px;min-height:36px;height:36px;padding:0 10px;border-radius:10px;font-size:10px}

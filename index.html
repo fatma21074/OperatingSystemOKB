@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260930-secretary-audit-edit-v211">
+  <link rel="stylesheet" href="css/style.css?v=20261001-secretary-audit-columns-v217">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -1841,7 +1841,7 @@
 <section class="hidden" id="pendingPage">
   <div class="pending-shell">
     <div class="pending-head">
-      <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>أوردرات الشهر الحالي بحالة Delivering التي مرّ عليها 3 أيام أو أكثر بدون تحديث</p></div></div>
+      <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>كل أوردرات Delivering التي مرّ عليها 3 أيام أو أكثر بدون تحديث، بغض النظر عن تاريخ إنشائها</p></div></div>
       <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">Refresh</button><button class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
@@ -2035,9 +2035,22 @@
     </div>
     <div id="secretaryAuditSummary" class="financial-audit-summary"></div>
     <div id="secretaryAuditVerdict" class="financial-audit-verdict"></div>
-    <div class="table-wrap financial-audit-table-wrap secretary-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th>المشكلة المكتشفة</th><th>التاريخ</th><th>الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
+    <div class="table-wrap financial-audit-table-wrap secretary-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th class="secretary-audit-issue-head">المشكلة المكتشفة</th><th class="secretary-audit-details-head">عرض التفاصيل</th><th>التاريخ</th><th class="secretary-audit-action-head">الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
   </div>
 </section>
+
+<div id="secretaryAuditChangeModal" class="secretary-audit-change-modal" onclick="if(event.target===this)closeSecretaryAuditChangeDetails()" aria-hidden="true">
+  <div class="secretary-audit-change-dialog" role="dialog" aria-modal="true" aria-labelledby="secretaryAuditChangeTitle">
+    <div class="secretary-audit-change-head">
+      <div>
+        <h3 id="secretaryAuditChangeTitle">تفاصيل التعديل</h3>
+        <p>يتم عرض الحقول التي تغيّرت فقط بدون حذف أي تفاصيل من سجل الـ Audit.</p>
+      </div>
+      <button type="button" onclick="closeSecretaryAuditChangeDetails()" aria-label="إغلاق">✕</button>
+    </div>
+    <div id="secretaryAuditChangeBody" class="secretary-audit-change-body"></div>
+  </div>
+</div>
 </main>
 </div>
 
@@ -2364,6 +2377,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v213.js?v=20260930-allocate-orders-chat-v213"></script>
+<script src="js/main.v217.js?v=20261001-secretary-audit-columns-v217"></script>
 </body>
 </html>
