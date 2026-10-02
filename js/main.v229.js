@@ -4083,6 +4083,8 @@ if (!document.getElementById('khaznaPage')?.classList.contains('hidden')) {
   }
 
   if (!isAdmin()) { employeeName.value = currentUser.name; employeeName.readOnly = true; } else employeeName.readOnly = false;
+  syncMobileFoundationAccess();
+  syncMobileFoundationPage();
 }
 
 setTimeout(ensureCashierBranchReportButton, 100);
@@ -15507,6 +15509,9 @@ async function loadSecretaryAuditRows() {
   // corrected before the order leaves the branch.
   const ocrAudits=await loadPaymentOcrAudits(rows);
   buildPaymentOcrFindings(rows,ocrAudits).forEach(item=>{
+    // Secretary Audit does not need the technical OCR execution-failed notice;
+    // screenshot review remains handled by the dedicated review workflow.
+    if(item?.ocr?.proof_type==='secretary'&&item?.ocr?.status==='failed')return;
     const duplicate=findings.some(existing=>String(existing.order?.id||'')===String(item.order?.id||'')&&String(existing.issue)===String(item.issue));
     if(!duplicate)findings.push({...item,created_at:item.at||item.ocr?.updated_at||item.order?.updated_at||item.order?.created_at||''});
   });
@@ -15520,7 +15525,7 @@ async function openSecretaryAudit() {
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom'),to=document.getElementById('secretaryAuditTo'),severity=document.getElementById('secretaryAuditSeverityFilter');
   if(from)from.value=today;if(to)to.value=today;
-  if(severity)severity.value='error';
+  if(severity)severity.value='all';
   searchableOrderSelects.get('secretaryAuditSeverityFilter')?.syncFromSelect();
   hideAllPages();
   document.getElementById('secretaryAuditPage')?.classList.remove('hidden');
@@ -15538,7 +15543,7 @@ async function refreshSecretaryAudit(markRead=true){
 }
 async function resetSecretaryAuditFilters(){
   const today=getCairoDateISO(new Date());
-  const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'error'};
+  const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'all'};
   Object.entries(values).forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.value=value;});
   const search=document.getElementById('secretaryAuditSearch');if(search)search.value='';
   ['secretaryAuditBranchFilter','secretaryAuditEmployeeFilter','secretaryAuditSeverityFilter'].forEach(id=>searchableOrderSelects.get(id)?.syncFromSelect());
@@ -15637,7 +15642,7 @@ function renderSecretaryAudit(){
   const state=secretaryAuditState,findings=getFilteredSecretaryAuditFindings(),errors=findings.filter(x=>x.severity==='error').length,warnings=findings.filter(x=>x.severity==='warning').length,resolved=findings.filter(x=>x.severity==='resolved').length,top=getSecretaryAuditTopEmployee(state.findings);
   const totalOrders=getSecretaryAuditBranchOrders().length;
   const meta=document.getElementById('secretaryAuditMeta');if(meta)meta.textContent=`${state.from} → ${state.to} | ${totalOrders} أوردر في الفروع الأربعة | ${formatEnglishDateTime(new Date().toISOString())}`;
-  const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['Total Orders',totalOrders,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده أخطاء',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
+  const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['Total Orders',totalOrders,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده تنبيهات',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   const verdict=document.getElementById('secretaryAuditVerdict');if(verdict){verdict.className=`financial-audit-verdict ${errors?'bad':'ok'}`;verdict.textContent=errors?`❌ يوجد ${errors} خطأ إدخال يجب تصحيحه قبل خروج الأوردرات للفروع.`:`✅ لا توجد أخطاء إدخال مانعة${warnings?` — يوجد ${warnings} تنبيه للمراجعة`:''}.`;}
   const body=document.getElementById('secretaryAuditBody');if(!body)return;
   body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const linkedId=o?.id||item.corrected_order_id||'';const openButton=linkedId?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${linkedId}')">فتح الأوردر</button>`:'';const openAction=o?.id?openButton:`<div style="display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;"><span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>${openButton}</div>`;const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';const issueSummary=getSecretaryAuditEditSummary(item);const issueCell=`<div class="secretary-audit-issue-summary"><strong>${escapeHTML(issueSummary.text)}</strong></div>`;const detailsCell=issueSummary.details?`<button class="secretary-audit-details-btn" type="button" onclick="openSecretaryAuditChangeDetails('${String(item.event_id||'').replace(/'/g,'\\\'')}')">عرض التفاصيل</button>`:`<span class="secretary-audit-no-details">—</span>`;return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td class="secretary-audit-issue-cell">${issueCell}</td><td class="secretary-audit-detail-cell">${detailsCell}</td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td class="secretary-audit-action-cell">${openAction}</td></tr>`;}).join(''):'<tr><td colspan="12" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
@@ -15663,7 +15668,7 @@ function renderSecretaryAuditReport(){
   current.forEach(x=>{issueCounts[x.issue]=(issueCounts[x.issue]||0)+1;branchCounts[x.branch]=(branchCounts[x.branch]||0)+1;});
   const topIssue=Object.entries(issueCounts).sort((a,b)=>b[1]-a[1])[0]||['—',0];
   const affected=new Set(current.map(x=>String(x.order?.id||x.ticket))).size,total=secretaryAuditState.rows.length,rate=total?affected/total*100:0;
-  const cards=[['أكثر موظف عنده أخطاء',`${top.name} — ${top.count}`],['أكثر نوع خطأ متكرر',`${topIssue[0]} — ${topIssue[1]}`],['أخطاء اليوم',current.length],['أخطاء آخر 7 أيام',secretaryAuditWeeklyCount],['نسبة الأخطاء من الأوردرات',`${rate.toFixed(1)}%`]];
+  const cards=[['أكثر موظف عنده تنبيهات',`${top.name} — ${top.count}`],['أكثر نوع خطأ متكرر',`${topIssue[0]} — ${topIssue[1]}`],['أخطاء اليوم',current.length],['أخطاء آخر 7 أيام',secretaryAuditWeeklyCount],['نسبة الأخطاء من الأوردرات',`${rate.toFixed(1)}%`]];
   const branches=['مدينة نصر','اسكندرية','طنطا','المنصورة'];
   panel.innerHTML=`<div class="secretary-audit-report-grid">${cards.map(([l,v])=>`<div class="secretary-audit-report-card"><span>${escapeHTML(l)}</span><b>${escapeHTML(String(v))}</b></div>`).join('')}</div><h4>الأخطاء حسب الفرع</h4><div class="secretary-audit-branch-stats">${branches.map(branch=>`<div><span>${branch}</span><b>${branchCounts[branch]||Object.entries(branchCounts).filter(([k])=>k.includes(branch)).reduce((s,[,v])=>s+v,0)}</b></div>`).join('')}</div>`;
 }
@@ -17727,7 +17732,7 @@ function renderCustomerProfile() {
         ${addNote}
         ${adminEdit}
         <button class="customer-profile-new-btn" type="button" onclick="startNewOrderForCustomer()"><span>＋ أوردر جديد لنفس العميل</span></button>
-        <button class="customer-profile-close" type="button" onclick="closeCustomerProfile()">✕</button>
+        <button class="customer-profile-close" type="button" onclick="closeCustomerProfile()"><span class="customer-profile-close-desktop">✕</span><span class="customer-profile-close-mobile">إغلاق</span></button>
       </div>
     </header>
 
@@ -18010,6 +18015,22 @@ function stopChatRealtime(){
   updateChatUnreadBadge(0);
 }
 
+function isChatConversationActuallyOpen(){
+  const page=document.getElementById('chatPage');
+  if(!page||page.classList.contains('hidden')||!chatSelectedUser)return false;
+  return !isMobileFoundationViewport()||page.classList.contains('mobile-conversation-open');
+}
+
+function getDefaultChatUser(){
+  const ordered=[...chatUsers].sort((a,b)=>{
+    const aTime=a._lastMessageAt?new Date(a._lastMessageAt).getTime():0;
+    const bTime=b._lastMessageAt?new Date(b._lastMessageAt).getTime():0;
+    if(aTime!==bTime)return bTime-aTime;
+    return String(a.name||a.username||'').localeCompare(String(b.name||b.username||''),'ar');
+  });
+  return ordered.find(user=>Number(user._unread||0)>0)||ordered[0]||null;
+}
+
 function startChatRealtime(){
   stopChatRealtime();
   if (!currentUser) return;
@@ -18022,9 +18043,9 @@ function startChatRealtime(){
       const isMine=String(row.sender_username||'')===me;
       if (!isForMe && !isMine) return;
       const selectedKey=chatUserKey(chatSelectedUser);
-      const pageOpen=!document.getElementById('chatPage')?.classList.contains('hidden');
+      const conversationOpen=isChatConversationActuallyOpen();
       const belongsToOpenChat=selectedKey && (String(row.sender_username||'')===selectedKey || String(row.receiver_username||'')===selectedKey);
-      if (pageOpen && belongsToOpenChat) {
+      if (conversationOpen && belongsToOpenChat) {
         await loadChatMessages();
         if (isForMe) await markChatConversationRead(selectedKey);
       }
@@ -18053,11 +18074,17 @@ async function showChatPage(){
   if (!currentUser) return;
   if (!hasRoleFeature('chat')) { alert('صفحة Chat غير مضافة لصلاحيات حسابك'); return; }
   hideAllPages();
-  document.getElementById('chatPage')?.classList.remove('hidden');
+  const page=document.getElementById('chatPage');
+  page?.classList.remove('hidden');
+  if(isMobileFoundationViewport()){
+    page?.classList.remove('mobile-conversation-open');
+    document.body.classList.remove('mobile-chat-conversation-open');
+  }
   setActiveMenu('chatPage');
   await loadChatUsers();
   await refreshChatUnreadCount();
-  if (chatSelectedUser) await loadChatMessages();
+  const defaultUser=getDefaultChatUser();
+  if(defaultUser)await selectChatUser(chatUserKey(defaultUser));
 }
 
 async function refreshChatPage(button){
@@ -18098,14 +18125,27 @@ function renderChatUsers(){
 async function selectChatUser(key){
   chatSelectedUser=chatUsers.find(user=>chatUserKey(user)===String(key))||null;
   if(!chatSelectedUser)return;
+  const page=document.getElementById('chatPage');
+  if(isMobileFoundationViewport()){
+    page?.classList.add('mobile-conversation-open');
+    document.body.classList.add('mobile-chat-conversation-open');
+  }
   renderChatUsers();
   const head=document.getElementById('chatConversationHead');
-  if(head)head.innerHTML=`<div class="chat-avatar">${escapeHTML(String(chatSelectedUser.name||chatSelectedUser.username||'U').trim().charAt(0).toUpperCase())}</div><div><strong>${escapeHTML(chatSelectedUser.name||chatSelectedUser.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(chatSelectedUser.role))}</small></div>`;
+  if(head)head.innerHTML=`<div class="chat-avatar">${escapeHTML(String(chatSelectedUser.name||chatSelectedUser.username||'U').trim().charAt(0).toUpperCase())}</div><div class="chat-conversation-user"><strong>${escapeHTML(chatSelectedUser.name||chatSelectedUser.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(chatSelectedUser.role))}</small></div><button type="button" class="mobile-chat-back-to-list" onclick="closeMobileChatConversation()" aria-label="Back To Chat">Back To Chat</button>`;
   const input=document.getElementById('chatMessageInput'),send=document.getElementById('chatSendBtn'),file=document.getElementById('chatAttachmentInput');
   const auditBot=Boolean(chatSelectedUser.is_audit_bot);
   if(input){input.disabled=auditBot;input.placeholder=auditBot?'محادثة تنبيهات آلية — للقراءة فقط':'اكتب رسالة...';if(!auditBot)input.focus();} if(send)send.disabled=auditBot; if(file)file.disabled=auditBot;
   await loadChatMessages();
   await markChatConversationRead(chatUserKey(chatSelectedUser));
+}
+
+function closeMobileChatConversation(){
+  if(!isMobileFoundationViewport())return;
+  document.getElementById('chatPage')?.classList.remove('mobile-conversation-open');
+  document.body.classList.remove('mobile-chat-conversation-open');
+  renderChatUsers();
+  requestAnimationFrame(()=>document.getElementById('chatUserSearch')?.focus({preventScroll:true}));
 }
 
 async function fetchChatDirection(sender,receiver){
@@ -18124,7 +18164,7 @@ async function loadChatMessages(){
     const attachment=row.attachment_url?`<img src="${escapeHTML(row.attachment_url)}" alt="Chat attachment" onclick="openChatAttachment('${encodeURIComponent(row.attachment_url)}')"/>`:'';
     const raw=String(row.message||''),match=raw.match(/\[OPEN_ORDER:([^\]]+)\]/),clean=raw.replace(/\n?\[OPEN_ORDER:[^\]]+\]/g,'').trim();
     const openButton=match?`<button type="button" class="operation-manager-report-btn chat-audit-open-order" onclick="openAuditChatOrder('${chatJs(match[1])}')">فتح الأوردر</button>`:'';
-    return `<div class="chat-message ${mine?'mine':''}">${clean?`<div class="chat-message-text">${escapeHTML(clean)}</div>`:''}${attachment}${openButton}<div class="chat-message-time">${formatActivityTime(row.created_at)}</div></div>`;
+    return `<div class="chat-message ${mine?'mine':''} ${match?'has-order':''}">${match?'<div class="chat-order-chip">📦 Order</div>':''}${clean?`<div class="chat-message-text">${escapeHTML(clean)}</div>`:''}${attachment}${openButton}<div class="chat-message-time">${formatActivityTime(row.created_at)}</div></div>`;
   }).join('');
   requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
 }
@@ -19206,12 +19246,13 @@ function normalizeSearchableText(value) {
     .trim();
 }
 
-function enhanceOrderSearchableSelect(selectId, searchPlaceholder) {
+function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant = '') {
   const select = document.getElementById(selectId);
   if (!select || searchableOrderSelects.has(selectId)) return;
 
   const wrapper = document.createElement('div');
-  wrapper.className = 'order-search-select';
+  wrapper.className = `order-search-select${visualVariant === 'allocate' ? ' dashboard-allocate-filter' : ''}`;
+  wrapper.classList.add(`order-search-select-${selectId}`);
   select.parentNode.insertBefore(wrapper, select);
   wrapper.appendChild(select);
   select.classList.add('order-search-native');
@@ -19227,7 +19268,13 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder) {
 
   const arrow = document.createElement('span');
   arrow.className = 'order-search-arrow';
-  arrow.textContent = '⌄';
+  if (visualVariant === 'allocate') {
+    arrow.classList.add('allocate-filter-arrow');
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9.5 12 14.5 17 9.5"/></svg>';
+  } else {
+    arrow.textContent = '⌄';
+  }
 
   const panel = document.createElement('div');
   panel.className = 'order-search-options';
@@ -19286,7 +19333,42 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder) {
       button.className = 'order-search-option';
       button.setAttribute('role', 'option');
       button.dataset.value = option.value;
-      button.textContent = String(option.textContent || '').trim();
+      const label = String(option.textContent || '').trim();
+      if (visualVariant === 'allocate') {
+        const rawValue = String(option.value || '').trim();
+        const isAllValue = rawValue === 'الكل' || rawValue === 'all';
+        let primary = label;
+        let secondary = 'اختيار';
+        let avatar = isAllValue ? '★' : (label.replace(/^[@#\s]+/, '').charAt(0) || '•');
+        const employeeFilterIds = ['filterEmployee','bFilterEmployee','activityLogEmployee','financialAuditEmployeeFilter','secretaryAuditEmployeeFilter'];
+        if (employeeFilterIds.includes(selectId)) {
+          const matchedUser = (Array.isArray(users) ? users : []).find(user =>
+            [user?.name, user?.username].some(value => String(value || '').trim() === rawValue)
+          );
+          secondary = matchedUser ? getRoleDisplayName(matchedUser.role) : (isAllValue ? 'عرض كل الموظفين' : 'موظف');
+        } else if (['filterStatus','bFilterStatus','btStatusFilter','financialAuditSeverityFilter','secretaryAuditSeverityFilter'].includes(selectId)) {
+          secondary = isAllValue ? 'عرض كل الحالات' : 'حالة';
+        } else if (selectId === 'filterShippingCompany') {
+          secondary = isAllValue ? 'عرض كل شركات الشحن' : 'شركة الشحن';
+        } else if (selectId === 'filterDoctor' || selectId === 'bFilterDoctor') {
+          const parts = label.split(' - ');
+          primary = parts.shift() || label;
+          secondary = isAllValue ? 'عرض كل الدكاترة' : (parts.join(' - ') || 'دكتور');
+        } else if (['btBranchFilter','financialAuditBranchFilter','secretaryAuditBranchFilter'].includes(selectId)) {
+          secondary = isAllValue ? 'عرض كل الفروع' : 'فرع';
+        } else if (selectId === 'activityLogType') {
+          secondary = isAllValue ? 'عرض كل الحركات' : 'نوع الحركة';
+        } else if (selectId === 'usersRoleFilter') {
+          secondary = isAllValue ? 'عرض كل الأدوار' : 'Role';
+        } else if (selectId === 'usersLastSeenFilter') {
+          const descriptions = {all:'عرض كل حالات الظهور',online:'متصل الآن',offline:'غير متصل الآن',last_seen:'آخر ظهور مسجل'};
+          secondary = descriptions[rawValue] || 'حالة الظهور';
+        }
+        button.classList.add('dashboard-allocate-option');
+        button.innerHTML = `<span class="dashboard-filter-avatar">${escapeHTML(avatar)}</span><span class="dashboard-filter-option-meta"><strong>${escapeHTML(primary)}</strong><small>${escapeHTML(secondary)}</small></span><span class="dashboard-filter-option-check">✓</span>`;
+      } else {
+        button.textContent = label;
+      }
       if (String(option.value) === String(select.value)) button.classList.add('selected');
       button.addEventListener('mousedown', event => event.preventDefault());
       button.addEventListener('click', () => choose(option));
@@ -19361,19 +19443,25 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceOrderSearchableSelect('dashProductNameInput', 'ابحث باسم المنتج...');
   enhanceOrderSearchableSelect('bDoctorName', 'ابحث باسم الدكتور أو الكود...');
   enhanceOrderSearchableSelect('branchProductNameInput', 'ابحث باسم المنتج...');
-  enhanceOrderSearchableSelect('filterEmployee', 'ابحث باسم الموظف...');
-  enhanceOrderSearchableSelect('filterStatus', 'ابحث باسم الحالة...');
-  enhanceOrderSearchableSelect('filterShippingCompany', 'ابحث باسم شركة الشحن...');
-  enhanceOrderSearchableSelect('filterDoctor', 'ابحث باسم الدكتور أو الكود...');
-  enhanceOrderSearchableSelect('secretaryAuditBranchFilter', 'ابحث باسم الفرع...');
-  enhanceOrderSearchableSelect('secretaryAuditEmployeeFilter', 'ابحث باسم الموظف...');
-  enhanceOrderSearchableSelect('secretaryAuditSeverityFilter', 'ابحث باسم الحالة...');
-  enhanceOrderSearchableSelect('financialAuditBranchFilter', 'ابحث باسم الفرع...');
-  enhanceOrderSearchableSelect('financialAuditEmployeeFilter', 'ابحث باسم الموظف...');
-  enhanceOrderSearchableSelect('financialAuditSeverityFilter', 'ابحث باسم الحالة...');
-  enhanceOrderSearchableSelect('bFilterEmployee', 'ابحث باسم الموظف...');
-  enhanceOrderSearchableSelect('bFilterStatus', 'ابحث باسم الحالة...');
-  enhanceOrderSearchableSelect('bFilterDoctor', 'ابحث باسم الدكتور أو الكود...');
+  enhanceOrderSearchableSelect('filterEmployee', 'ابحث باسم الموظف...', 'allocate');
+  enhanceOrderSearchableSelect('filterStatus', 'ابحث باسم الحالة...', 'allocate');
+  enhanceOrderSearchableSelect('filterShippingCompany', 'ابحث باسم شركة الشحن...', 'allocate');
+  enhanceOrderSearchableSelect('filterDoctor', 'ابحث باسم الدكتور أو الكود...', 'allocate');
+  enhanceOrderSearchableSelect('secretaryAuditBranchFilter', 'ابحث باسم الفرع...', 'allocate');
+  enhanceOrderSearchableSelect('secretaryAuditEmployeeFilter', 'ابحث باسم الموظف...', 'allocate');
+  enhanceOrderSearchableSelect('secretaryAuditSeverityFilter', 'ابحث باسم الحالة...', 'allocate');
+  enhanceOrderSearchableSelect('financialAuditBranchFilter', 'ابحث باسم الفرع...', 'allocate');
+  enhanceOrderSearchableSelect('financialAuditEmployeeFilter', 'ابحث باسم الموظف...', 'allocate');
+  enhanceOrderSearchableSelect('financialAuditSeverityFilter', 'ابحث باسم الحالة...', 'allocate');
+  enhanceOrderSearchableSelect('btBranchFilter', 'ابحث باسم الفرع...', 'allocate');
+  enhanceOrderSearchableSelect('btStatusFilter', 'ابحث باسم الحالة...', 'allocate');
+  enhanceOrderSearchableSelect('usersRoleFilter', 'ابحث باسم الـ Role...', 'allocate');
+  enhanceOrderSearchableSelect('usersLastSeenFilter', 'ابحث في Last Seen...', 'allocate');
+  enhanceOrderSearchableSelect('activityLogEmployee', 'ابحث باسم الموظف...', 'allocate');
+  enhanceOrderSearchableSelect('activityLogType', 'ابحث باسم الحركة...', 'allocate');
+  enhanceOrderSearchableSelect('bFilterEmployee', 'ابحث باسم الموظف...', 'allocate');
+  enhanceOrderSearchableSelect('bFilterStatus', 'ابحث باسم الحالة...', 'allocate');
+  enhanceOrderSearchableSelect('bFilterDoctor', 'ابحث باسم الدكتور أو الكود...', 'allocate');
 });
 
 // ===== Commission — approved branch commission workbook =====
@@ -19810,5 +19898,306 @@ async function hardRefreshBranch(button) {
   window.location.replace(refreshUrl.toString());
 }
 
+
+/* ===== v223 — OKB Mobile Foundation (presentation/navigation only) ===== */
+const MOBILE_FOUNDATION_MAX_WIDTH = 768;
+let mobileFoundationObserver = null;
+let mobileFoundationBadgeObserver = null;
+let mobileFoundationResizeTimer = null;
+
+function isMobileFoundationViewport(){
+  return window.matchMedia(`(max-width:${MOBILE_FOUNDATION_MAX_WIDTH}px)`).matches;
+}
+
+function mobileFoundationSetHidden(id, hidden){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.toggle('mobile-nav-hidden', Boolean(hidden));
+}
+
+function getMobileFoundationQuickAction(){
+  if(!currentUser)return null;
+  if(isAdmin() && hasRoleFeature('activity_log'))return {target:'activity',label:'Activity Log',icon:'📈'};
+  if(!isAdmin() && canViewShippingRank())return {target:'branchRank',label:'Branch Rank',icon:'🏆'};
+  if(hasRoleFeature('chat'))return {target:'chat',label:'Chat',icon:'◌'};
+  return null;
+}
+
+function syncMobileFoundationAccess(){
+  const nav=document.getElementById('mobileBottomNav');
+  if(!nav)return;
+  const hasUser=Boolean(currentUser);
+  const quick=getMobileFoundationQuickAction();
+  const quickBtn=document.getElementById('mobileNavChat');
+  const quickIcon=document.getElementById('mobileQuickIcon');
+  const quickLabel=document.getElementById('mobileQuickLabel');
+  if(quickBtn)quickBtn.dataset.mobileTarget=quick?.target||'';
+  if(quickIcon)quickIcon.textContent=quick?.icon||'◌';
+  if(quickLabel)quickLabel.textContent=quick?.label||'Chat';
+  const access={
+    mobileNavDashboard:hasUser&&hasRoleFeature('dashboard'),
+    mobileNavBranches:hasUser&&hasRoleFeature('okb_stores'),
+    mobileNavPending:hasUser&&hasRoleFeature('pending'),
+    mobileNavChat:hasUser&&Boolean(quick),
+    mobileNavMore:hasUser
+  };
+  Object.entries(access).forEach(([id,allowed])=>mobileFoundationSetHidden(id,!allowed));
+  const count=Object.values(access).filter(Boolean).length||1;
+  nav.style.setProperty('--mobile-nav-count',String(count));
+  syncMobileFoundationBadges();
+}
+
+function mobileFoundationPageInfo(){
+  const quickTarget=getMobileFoundationQuickAction()?.target||'';
+  const descriptors=[
+    ['ordersPage','Dashboard','dashboard'],['branchPage',currentBranchName||'Branch','branches'],
+    ['pendingPage','Pending Orders','pending'],['chatPage','Chat',quickTarget==='chat'?'quick':'more'],
+    ['shippingRankPage',shippingRankMode==='company'?'Company Rank':'Branch Rank',shippingRankMode==='branch'&&quickTarget==='branchRank'?'quick':'more'],
+    ['branchStockPage','Branch Stock','more'],['okbStoresReportPage','OKB Abnormal','more'],
+    ['doctorRankPage','Doctor Rank','more'],['branchesTreasuryPage','خزنة الفروع','more'],
+    ['khaznaPage',`الخزنة${currentBranchName?' — '+currentBranchName:''}`,'more'],
+    ['activityLogPage','Activity Log',quickTarget==='activity'?'quick':'more'],['productReportsPage','Product Reports','more'],
+    ['usersPage','Users','more'],['branchsPage','Settings','more'],['permissionPage','Permission','more'],
+    ['branchRankPage','Daily Report','more'],['commissionPage','Commission','more'],
+    ['financialAuditPage','Financial Audit','more'],['secretaryAuditPage','Secretary Audit','more'],
+    ['analyticsPage','Analytics','more']
+  ];
+  for(const [id,title,nav] of descriptors){
+    const el=document.getElementById(id);
+    if(el&&!el.classList.contains('hidden')&&el.style.display!=='none')return {id,title,nav};
+  }
+  return {id:'',title:'OKB System',nav:'more'};
+}
+
+function syncMobileFoundationPage(){
+  const info=mobileFoundationPageInfo();
+  const mobileChatPageOpen=isMobileFoundationViewport()&&info.id==='chatPage';
+  document.body.classList.toggle('mobile-chat-page-open',mobileChatPageOpen);
+  if(info.id!=='chatPage'){
+    document.getElementById('chatPage')?.classList.remove('mobile-conversation-open');
+    document.body.classList.remove('mobile-chat-conversation-open');
+  }
+  const title=document.getElementById('mobilePageTitle');
+  if(title)title.textContent=info.title;
+  document.querySelectorAll('.mobile-bottom-nav-item').forEach(btn=>btn.classList.toggle('active',btn.dataset.mobileNav===info.nav));
+}
+
+function mobileFoundationSourceAllowed(el){
+  if(!el)return false;
+  if(el.classList.contains('hidden'))return false;
+  if(el.style&&el.style.display==='none')return false;
+  return true;
+}
+
+function mobileFoundationAddGroup(container,label){
+  const title=document.createElement('div');
+  title.className='mobile-foundation-group-title';
+  title.textContent=label;
+  container.appendChild(title);
+}
+
+function mobileFoundationAddAction(container,{icon='•',title,subtitle='',run,danger=false,badgeCount=0}){
+  const button=document.createElement('button');
+  button.type='button';
+  button.className=`mobile-foundation-action${danger?' danger':''}`;
+  const iconEl=document.createElement('span');iconEl.className='mobile-foundation-action-icon';iconEl.textContent=icon;
+  const copy=document.createElement('span');copy.className='mobile-foundation-action-copy';
+  const strong=document.createElement('strong');strong.textContent=title;copy.appendChild(strong);
+  if(subtitle){const small=document.createElement('small');small.textContent=subtitle;copy.appendChild(small);}
+  button.append(iconEl,copy);
+  const count=Math.max(0,Number(badgeCount)||0);
+  if(count>0){const badge=document.createElement('b');badge.className='mobile-foundation-action-badge';badge.textContent=count>99?'99+':String(count);button.appendChild(badge);}
+  button.addEventListener('click',()=>{
+    closeMobileFoundationSheet();
+    setTimeout(()=>{
+      try{const result=run?.();if(result&&typeof result.catch==='function')result.catch(error=>console.error('Mobile action failed:',error));}
+      catch(error){console.error('Mobile action failed:',error);}
+    },20);
+  });
+  container.appendChild(button);
+  return button;
+}
+
+function renderMobileBranchesSheet(container){
+  mobileFoundationAddGroup(container,'الفروع المتاحة');
+  let count=0;
+  document.querySelectorAll('.okb-branch-btn[data-branch]').forEach(source=>{
+    if(!mobileFoundationSourceAllowed(source))return;
+    const branch=source.dataset.branch||source.textContent.trim();
+    mobileFoundationAddAction(container,{icon:'🏪',title:source.textContent.trim(),subtitle:'فتح صفحة الفرع',run:()=>openBranchPage(branch)});
+    count++;
+  });
+  const tools=[
+    ['okbStoresReportMenuBtn','⚠️','OKB Abnormal','متابعة الحالات غير الطبيعية',()=>showOKBStoresReportPage()],
+    ['doctorRankStoresMenuBtn','👨‍⚕️','Doctor Rank','أداء الدكاترة',()=>showDoctorRankPage()],
+    ['branchesTreasuryMenuBtn','🏦','خزنة الفروع','المراجعة الموحدة للفروع',()=>showBranchesTreasuryPage()],
+    ['commissionMenuBtn','🚩','Commission','العمولات والبونص',()=>showCommissionPage()]
+  ];
+  const allowedTools=tools.filter(([id])=>mobileFoundationSourceAllowed(document.getElementById(id)));
+  if(allowedTools.length){
+    mobileFoundationAddGroup(container,'أدوات الفروع');
+    allowedTools.forEach(([,icon,title,subtitle,run])=>mobileFoundationAddAction(container,{icon,title,subtitle,run}));
+  }
+  if(!count&&!allowedTools.length){
+    const empty=document.createElement('div');empty.className='mobile-foundation-group-title';empty.textContent='لا توجد فروع متاحة لصلاحيات هذا الحساب';container.appendChild(empty);
+  }
+}
+
+function mobileFoundationBadgeValue(id){
+  const el=document.getElementById(id);
+  if(!el||el.classList.contains('hidden'))return 0;
+  return Math.max(0,Number(String(el.textContent||'0').replace(/[^0-9]/g,''))||0);
+}
+
+function renderMobileMoreSheet(container){
+  const operations=[];
+  const quickTarget=getMobileFoundationQuickAction()?.target||'';
+  if(hasRoleFeature('chat')&&quickTarget!=='chat')operations.push(['💬','Chat','المحادثات الداخلية',()=>showChatPage(),mobileFoundationBadgeValue('settingsChatUnreadBadge')||mobileFoundationBadgeValue('chatUnreadBadge')]);
+  if(canViewShippingRank())operations.push(['🚚','Branch Rank','ترتيب وأداء الفروع',()=>openShippingRankMode('branch'),0]);
+  if(hasRoleFeature('company_rank'))operations.push(['🚛','Company Rank','أداء شركات الشحن',()=>openShippingRankMode('company'),0]);
+  if(hasRoleFeature('branch_stock'))operations.push(['📦','Branch Stock','الجرد والمخزون',()=>showBranchStockPage(),mobileFoundationBadgeValue('branchStockNotification')]);
+  if(hasRoleFeature('activity_log')&&quickTarget!=='activity')operations.push(['📈','Activity Log','سجل الحركات',()=>showActivityLogPage(),mobileFoundationBadgeValue('activityLogNotification')]);
+  if(canViewProductReports())operations.push(['📊','Product Reports','تقارير المنتجات',()=>showProductReportsPage(),0]);
+  if(hasRoleFeature('secretary_audit'))operations.push(['🛡️','Secretary Audit','مراجعة السكرتارية',()=>openSecretaryAudit(),mobileFoundationBadgeValue('secretaryAuditNotification')]);
+  if(hasButtonPermission('btn_financial_audit_main'))operations.push(['💰','Financial Audit','المراجعة المالية',()=>openFinancialAudit('branches','main'),mobileFoundationBadgeValue('financialAuditNotification')]);
+  if(operations.length){
+    mobileFoundationAddGroup(container,'التشغيل والمتابعة');
+    operations.forEach(([icon,title,subtitle,run,badgeCount])=>mobileFoundationAddAction(container,{icon,title,subtitle,run,badgeCount}));
+  }
+
+  const management=[];
+  if(hasRoleFeature('settings_page')||hasRoleFeature('commission_settings_room'))management.push(['⚙️','Settings','إعدادات النظام',()=>openHeaderSettingsPage('settings')]);
+  if(hasRoleFeature('users'))management.push(['👥','Users','إدارة المستخدمين',()=>openHeaderSettingsPage('users')]);
+  if(hasRoleFeature('daily_report'))management.push(['📋','Daily Report','التقرير اليومي',()=>openHeaderSettingsPage('daily')]);
+  if(isAdmin())management.push(['🔐','Permission','الصلاحيات',()=>openHeaderSettingsPage('permission')]);
+  if(management.length){
+    mobileFoundationAddGroup(container,'الإدارة');
+    management.forEach(([icon,title,subtitle,run])=>mobileFoundationAddAction(container,{icon,title,subtitle,run}));
+  }
+
+  mobileFoundationAddGroup(container,'الحساب والمظهر');
+  mobileFoundationAddAction(container,{icon:'◐',title:'Theme',subtitle:'تبديل الوضع الليلي / النهاري',run:()=>toggleTheme()});
+  mobileFoundationAddAction(container,{icon:'👤',title:'My Account',subtitle:currentUser?.name||'الحساب الحالي',run:()=>openMyAccountModal()});
+  mobileFoundationAddAction(container,{icon:'↪',title:'Log out',subtitle:'تسجيل الخروج من النظام',run:()=>logout(),danger:true});
+}
+
+function openMobileFoundationSheet(type){
+  if(!isMobileFoundationViewport())return;
+  const sheet=document.getElementById('mobileFoundationSheet');
+  const backdrop=document.getElementById('mobileFoundationBackdrop');
+  const body=document.getElementById('mobileFoundationSheetBody');
+  const title=document.getElementById('mobileFoundationSheetTitle');
+  const subtitle=document.getElementById('mobileFoundationSheetSubtitle');
+  if(!sheet||!backdrop||!body)return;
+  body.replaceChildren();
+  if(type==='branches'){
+    if(title)title.textContent='Branches & Stores';
+    if(subtitle)subtitle.textContent='الفروع والأدوات المتاحة لصلاحياتك';
+    renderMobileBranchesSheet(body);
+  }else{
+    if(title)title.textContent='More';
+    if(subtitle)subtitle.textContent='كل أدوات النظام المتاحة لصلاحياتك';
+    renderMobileMoreSheet(body);
+  }
+  sheet.classList.add('open');backdrop.classList.add('open');
+  sheet.setAttribute('aria-hidden','false');backdrop.setAttribute('aria-hidden','false');
+  document.body.classList.add('mobile-sheet-open');
+  const activeKey=type==='branches'?'branches':'more';
+  document.querySelectorAll('.mobile-bottom-nav-item').forEach(btn=>btn.classList.toggle('active',btn.dataset.mobileNav===activeKey));
+}
+
+function closeMobileFoundationSheet(){
+  const sheet=document.getElementById('mobileFoundationSheet');
+  const backdrop=document.getElementById('mobileFoundationBackdrop');
+  sheet?.classList.remove('open');backdrop?.classList.remove('open');
+  sheet?.setAttribute('aria-hidden','true');backdrop?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('mobile-sheet-open');
+  syncMobileFoundationPage();
+}
+
+function mobileSmartBack(){
+  if(isMobileFoundationViewport() && document.getElementById('chatPage')?.classList.contains('mobile-conversation-open')){
+    closeMobileChatConversation();
+    return;
+  }
+  if(typeof goBackToPreviousPage==='function')return goBackToPreviousPage();
+}
+
+function mobileFoundationNavigate(target){
+  if(!currentUser)return;
+  if(target==='branches')return openMobileFoundationSheet('branches');
+  if(target==='more')return openMobileFoundationSheet('more');
+  closeMobileFoundationSheet();
+  if(target==='dashboard')return showOrdersPage();
+  if(target==='pending')return showPendingPage();
+  if(target==='activity'&&isAdmin()&&hasRoleFeature('activity_log'))return showActivityLogPage();
+  if(target==='branchRank'&&!isAdmin()&&canViewShippingRank())return openShippingRankMode('branch');
+  if(target==='chat'&&hasRoleFeature('chat'))return showChatPage();
+}
+
+function scrollBranchPerformanceTable(direction){
+  const wrap=document.getElementById('branchPerformanceTableWrap');
+  if(!wrap)return;
+  const step=Math.max(220,Math.round(wrap.clientWidth*.78));
+  wrap.scrollBy({left:(Number(direction)||0)*step,behavior:'smooth'});
+}
+
+function syncMobileFoundationBadges(){
+  const pendingSource=document.getElementById('pendingHeaderNotification');
+  const pendingTarget=document.getElementById('mobilePendingBadge');
+  if(pendingTarget){
+    const value=mobileFoundationBadgeValue('pendingHeaderNotification');
+    pendingTarget.textContent=value>99?'99+':String(value);
+    pendingTarget.classList.toggle('hidden',value<=0);
+  }
+
+  const quickTarget=getMobileFoundationQuickAction()?.target||'';
+  const quickBadge=document.getElementById('mobileChatBadge');
+  let quickValue=0;
+  if(quickTarget==='chat')quickValue=mobileFoundationBadgeValue('settingsChatUnreadBadge')||mobileFoundationBadgeValue('chatUnreadBadge');
+  else if(quickTarget==='activity')quickValue=mobileFoundationBadgeValue('activityLogNotification');
+  if(quickBadge){
+    quickBadge.textContent=quickValue>99?'99+':String(quickValue);
+    quickBadge.classList.toggle('hidden',quickValue<=0);
+  }
+
+  const moreValues=[];
+  if(quickTarget!=='chat')moreValues.push(mobileFoundationBadgeValue('settingsChatUnreadBadge')||mobileFoundationBadgeValue('chatUnreadBadge'));
+  if(quickTarget!=='activity')moreValues.push(mobileFoundationBadgeValue('activityLogNotification'));
+  moreValues.push(mobileFoundationBadgeValue('branchStockNotification'));
+  moreValues.push(mobileFoundationBadgeValue('secretaryAuditNotification'));
+  moreValues.push(mobileFoundationBadgeValue('financialAuditNotification'));
+  moreValues.push(mobileFoundationBadgeValue('okbStoresReportBadge'));
+  const moreValue=moreValues.reduce((sum,value)=>sum+value,0);
+  const moreBadge=document.getElementById('mobileMoreBadge');
+  if(moreBadge){
+    moreBadge.textContent=moreValue>99?'99+':String(moreValue);
+    moreBadge.classList.toggle('hidden',moreValue<=0);
+  }
+}
+
+function initMobileFoundation(){
+  const appContent=document.querySelector('.app-content');
+  if(appContent&&!mobileFoundationObserver){
+    mobileFoundationObserver=new MutationObserver(()=>requestAnimationFrame(syncMobileFoundationPage));
+    appContent.querySelectorAll(':scope > section').forEach(section=>mobileFoundationObserver.observe(section,{attributes:true,attributeFilter:['class','style']}));
+  }
+  if(!mobileFoundationBadgeObserver){
+    mobileFoundationBadgeObserver=new MutationObserver(()=>syncMobileFoundationBadges());
+    ['pendingHeaderNotification','settingsChatUnreadBadge','chatUnreadBadge','activityLogNotification','branchStockNotification','secretaryAuditNotification','financialAuditNotification','okbStoresReportBadge'].forEach(id=>{
+      const el=document.getElementById(id);if(el)mobileFoundationBadgeObserver.observe(el,{attributes:true,childList:true,characterData:true,subtree:true});
+    });
+  }
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMobileFoundationSheet();});
+  window.addEventListener('resize',()=>{
+    clearTimeout(mobileFoundationResizeTimer);
+    mobileFoundationResizeTimer=setTimeout(()=>{if(!isMobileFoundationViewport())closeMobileFoundationSheet();syncMobileFoundationAccess();syncMobileFoundationPage();},120);
+  },{passive:true});
+  syncMobileFoundationAccess();syncMobileFoundationPage();syncMobileFoundationBadges();
+}
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initMobileFoundation,{once:true});
+else initMobileFoundation();
+
 // OKB build diagnostic marker — v204. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v217';
+window.__OKB_BUILD_VERSION = 'v229';
