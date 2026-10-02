@@ -3514,3 +3514,294 @@ body.customer-profile-open{overflow:hidden}
     min-height:42px!important;
   }
 }
+
+
+/* ===== v230 — Mobile Chat true viewport + no-auto-keyboard interaction polish ===== */
+/* Mobile-only layout correction. Desktop/tablet/business logic stay untouched. */
+@media screen and (max-width:768px){
+  body.mobile-chat-page-open{overflow:hidden!important}
+  body.mobile-chat-page-open .app-content{
+    height:calc(100dvh - 60px)!important;
+    min-height:0!important;
+    padding:8px 10px max(8px,env(safe-area-inset-bottom,0px))!important;
+    overflow:hidden!important;
+  }
+  body.mobile-chat-page-open #chatPage,
+  body.mobile-chat-conversation-open #chatPage{
+    height:100%!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    overflow:hidden!important;
+  }
+  body.mobile-chat-page-open #chatPage .chat-shell{height:100%!important;min-height:0!important}
+  body.mobile-chat-page-open #chatPage .chat-users-panel,
+  body.mobile-chat-page-open #chatPage .chat-conversation-panel{height:100%!important;min-height:0!important}
+  body.mobile-chat-page-open #chatPage .chat-users-list,
+  body.mobile-chat-page-open #chatPage .chat-messages{min-height:0!important;max-height:none!important}
+}
+
+/* ===== v231 — Mobile true full-screen Chat + Customer Profile =====
+   Mobile presentation only. No data/realtime/profile/business logic changes. */
+@media screen and (max-width:768px){
+  /* Chat owns the complete visual viewport below the fixed 60px mobile header. */
+  #chatPage:not(.hidden){
+    position:fixed!important;
+    z-index:9400!important;
+    top:60px!important;
+    right:0!important;
+    bottom:0!important;
+    left:0!important;
+    width:100vw!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    padding:10px 10px max(10px,env(safe-area-inset-bottom,0px))!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+    background:var(--bg-main)!important;
+  }
+  #chatPage:not(.hidden) .chat-shell{
+    width:100%!important;
+    height:100%!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+  }
+  #chatPage:not(.hidden) .chat-users-panel,
+  #chatPage:not(.hidden) .chat-conversation-panel{
+    height:100%!important;
+    min-height:0!important;
+    max-height:none!important;
+    box-sizing:border-box!important;
+  }
+  #chatPage:not(.hidden) .chat-users-list,
+  #chatPage:not(.hidden) .chat-messages{
+    flex:1 1 auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    overflow-y:auto!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+
+  /* Customer Profile occupies the real mobile visual viewport; only its content scrolls. */
+  .customer-profile-overlay{
+    width:100vw!important;
+    height:100dvh!important;
+    min-height:100dvh!important;
+    max-height:100dvh!important;
+    inset:0!important;
+    padding:0!important;
+    overflow:hidden!important;
+    box-sizing:border-box!important;
+  }
+  .customer-profile-overlay.open{display:flex!important}
+  .customer-profile-glass{
+    display:flex!important;
+    flex-direction:column!important;
+    width:100vw!important;
+    height:100dvh!important;
+    min-height:100dvh!important;
+    max-height:100dvh!important;
+    margin:0!important;
+    border-radius:0!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  .customer-profile-content{
+    flex:1 1 auto!important;
+    min-height:0!important;
+    height:auto!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior-y:contain;
+  }
+}
+
+/* ===== v232 — Mobile hard full-screen ownership for Chat + Customer Profile =====
+   Presentation only. Uses inset/flex ownership instead of inherited percentage heights. */
+@media screen and (max-width:768px){
+  /* Chat page owns every pixel below the 60px mobile header. */
+  body.mobile-chat-page-open{overflow:hidden!important}
+  body.mobile-chat-page-open #chatPage:not(.hidden){
+    position:fixed!important;
+    inset:60px 0 0 0!important;
+    width:auto!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    padding:10px!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+    background:var(--bg-main)!important;
+    z-index:9400!important;
+  }
+  body.mobile-chat-page-open #chatPage:not(.hidden) .chat-shell{
+    position:absolute!important;
+    inset:10px!important;
+    width:auto!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    display:block!important;
+    overflow:hidden!important;
+    box-sizing:border-box!important;
+  }
+  body.mobile-chat-page-open #chatPage:not(.hidden) .chat-users-panel,
+  body.mobile-chat-page-open #chatPage:not(.hidden) .chat-conversation-panel{
+    position:absolute!important;
+    inset:0!important;
+    width:100%!important;
+    height:100%!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  body.mobile-chat-page-open #chatPage:not(.hidden) .chat-users-panel{
+    display:flex!important;
+    flex-direction:column!important;
+  }
+  body.mobile-chat-page-open #chatPage.mobile-conversation-open .chat-users-panel{display:none!important}
+  body.mobile-chat-page-open #chatPage:not(.mobile-conversation-open) .chat-conversation-panel{display:none!important}
+  body.mobile-chat-page-open #chatPage.mobile-conversation-open .chat-conversation-panel{
+    display:flex!important;
+    flex-direction:column!important;
+  }
+  body.mobile-chat-page-open #chatPage .chat-users-list,
+  body.mobile-chat-page-open #chatPage .chat-messages{
+    flex:1 1 0!important;
+    min-height:0!important;
+    max-height:none!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+
+  /* Customer Profile owns the entire visual page, independent of inherited modal sizing. */
+  .customer-profile-overlay.open{
+    display:block!important;
+    position:fixed!important;
+    inset:0!important;
+    width:auto!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    padding:0!important;
+    overflow:hidden!important;
+    box-sizing:border-box!important;
+    z-index:17000!important;
+  }
+  .customer-profile-overlay.open .customer-profile-glass{
+    position:absolute!important;
+    inset:0!important;
+    display:flex!important;
+    flex-direction:column!important;
+    width:auto!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    border-radius:0!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  .customer-profile-overlay.open .customer-profile-content{
+    flex:1 1 0!important;
+    min-height:0!important;
+    max-height:none!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+}
+
+/* ===== v233 — Customer Profile true full-width on mobile =====
+   Presentation only: force the profile surface and its inner layout to own the mobile viewport width. */
+@media screen and (max-width:768px){
+  .customer-profile-overlay.open{
+    left:0!important;
+    right:0!important;
+    width:100vw!important;
+    min-width:100vw!important;
+    max-width:100vw!important;
+    margin:0!important;
+    padding:0!important;
+    box-sizing:border-box!important;
+    overflow-x:hidden!important;
+  }
+  .customer-profile-overlay.open .customer-profile-glass{
+    left:0!important;
+    right:0!important;
+    width:100vw!important;
+    min-width:100vw!important;
+    max-width:100vw!important;
+    margin:0!important;
+    transform:none!important;
+    box-sizing:border-box!important;
+    overflow-x:hidden!important;
+  }
+  .customer-profile-overlay.open .customer-profile-content{
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+    overflow-x:hidden!important;
+  }
+  .customer-profile-overlay.open .customer-profile-header,
+  .customer-profile-overlay.open .customer-profile-stats,
+  .customer-profile-overlay.open .customer-profile-info,
+  .customer-profile-overlay.open .customer-profile-edit,
+  .customer-profile-overlay.open .customer-profile-history-section,
+  .customer-profile-overlay.open .customer-order-timeline,
+  .customer-profile-overlay.open .customer-profile-orders,
+  .customer-profile-overlay.open .customer-order-row{
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+  }
+}
+
+/* ===== v234 — Customer Profile true physical viewport width on mobile =====
+   The app intentionally uses html { zoom:75% } globally. 100vw inside that zoom
+   renders at ~75% of the physical mobile width, so compensate only this modal.
+   Presentation-only; no Customer Profile logic/data changes. */
+@media screen and (max-width:768px){
+  .customer-profile-overlay.open{
+    left:auto!important;
+    right:0!important;
+    width:133.333333vw!important;
+    min-width:133.333333vw!important;
+    max-width:133.333333vw!important;
+    margin:0!important;
+    padding:0!important;
+    box-sizing:border-box!important;
+    overflow-x:hidden!important;
+  }
+  .customer-profile-overlay.open .customer-profile-glass{
+    left:auto!important;
+    right:0!important;
+    width:133.333333vw!important;
+    min-width:133.333333vw!important;
+    max-width:133.333333vw!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+    overflow-x:hidden!important;
+  }
+  .customer-profile-overlay.open .customer-profile-content{
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+    overflow-x:hidden!important;
+  }
+}

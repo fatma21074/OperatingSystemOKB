@@ -18144,8 +18144,9 @@ function closeMobileChatConversation(){
   if(!isMobileFoundationViewport())return;
   document.getElementById('chatPage')?.classList.remove('mobile-conversation-open');
   document.body.classList.remove('mobile-chat-conversation-open');
+  document.getElementById('chatUserSearch')?.blur();
+  if(document.activeElement&&typeof document.activeElement.blur==='function')document.activeElement.blur();
   renderChatUsers();
-  requestAnimationFrame(()=>document.getElementById('chatUserSearch')?.focus({preventScroll:true}));
 }
 
 async function fetchChatDirection(sender,receiver){
@@ -19308,7 +19309,8 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
     input.value = String(option.textContent || '').trim();
     select.dispatchEvent(new Event('change', { bubbles: true }));
     closePanel(false);
-    input.focus();
+    if (visualVariant === 'allocate' && isMobileFoundationViewport()) input.blur();
+    else input.focus();
   }
 
   function renderOptions(query = '') {
@@ -19413,6 +19415,7 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
   });
   arrow.addEventListener('click', () => {
     if (wrapper.classList.contains('open')) closePanel();
+    else if (visualVariant === 'allocate' && isMobileFoundationViewport()) { input.blur(); openPanel(true); }
     else { input.focus(); openPanel(true); }
   });
   select.addEventListener('change', syncFromSelect);
@@ -20200,4 +20203,4 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 else initMobileFoundation();
 
 // OKB build diagnostic marker — v204. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v229';
+window.__OKB_BUILD_VERSION = 'v233';
