@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20261002-customer-profile-viewportwidth-v234">
+  <link rel="stylesheet" href="css/style.css?v=20261006-doctor-allocate-khazna-signed-v240">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -651,7 +651,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1>إضافة أوردر جديد</h1>
-<div class="page-user-refresh"><button id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+<div class="page-user-refresh"><button id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><button class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 </div>
 <form id="orderForm">
 <div class="form-grid">
@@ -1643,7 +1643,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1 id="branchPageTitle">📦 Dashboard — فرع</h1>
-<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
+<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
 </div>
 <form id="branchOrderForm">
 <div class="form-grid">
@@ -2073,13 +2073,18 @@
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAuditManagementReport()">📊 Report</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">↻ Refresh</button>
       <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAudit()">⬇ Export Excel</button>
-      <select id="secretaryAuditBranchFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
-      <select id="secretaryAuditEmployeeFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الموظفين</option></select>
-      <select id="secretaryAuditSeverityFilter" class="secretary-audit-select" onchange="renderSecretaryAudit()"><option value="all">كل الحالات</option><option value="warning">تنبيه</option><option value="error">خطأ</option><option value="resolved">تم التعديل</option></select>
+      <select id="secretaryAuditBranchFilter" class="secretary-audit-select" onchange="renderSecretaryAudit(true)"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
+      <select id="secretaryAuditEmployeeFilter" class="secretary-audit-select" onchange="renderSecretaryAudit(true)"><option value="all">كل الموظفين</option></select>
+      <select id="secretaryAuditSeverityFilter" class="secretary-audit-select" onchange="renderSecretaryAudit(true)"><option value="all">كل الحالات</option><option value="warning">تنبيه</option><option value="error">خطأ</option><option value="resolved">تم التعديل</option></select>
     </div>
     <div id="secretaryAuditSummary" class="financial-audit-summary"></div>
     <div id="secretaryAuditVerdict" class="financial-audit-verdict"></div>
     <div class="table-wrap financial-audit-table-wrap secretary-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th class="secretary-audit-issue-head">المشكلة المكتشفة</th><th class="secretary-audit-details-head">عرض التفاصيل</th><th>التاريخ</th><th class="secretary-audit-action-head">الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
+    <div id="secretaryAuditPagination" class="secretary-audit-pagination hidden" aria-label="Secretary Audit Pagination">
+      <button id="secretaryAuditPrevPage" type="button" onclick="changeSecretaryAuditPage(-1)">السابق</button>
+      <span id="secretaryAuditPaginationText">صفحة 1 من 1</span>
+      <button id="secretaryAuditNextPage" type="button" onclick="changeSecretaryAuditPage(1)">التالي</button>
+    </div>
   </div>
 </section>
 
@@ -2421,6 +2426,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v234.js?v=20261002-customer-profile-viewportwidth-v234"></script>
+<script src="js/main.v240.js?v=20261006-doctor-allocate-khazna-signed-v240"></script>
 </body>
 </html>

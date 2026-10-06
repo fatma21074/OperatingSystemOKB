@@ -2801,6 +2801,13 @@ body.customer-profile-open{overflow:hidden}
 
 /* v217 — Secretary Audit split issue summary / details action columns (scoped) */
 .secretary-audit-table-wrap table{min-width:1400px}
+.secretary-audit-pagination{display:flex;align-items:center;justify-content:center;gap:10px;margin:12px 0 2px;padding:8px 10px;border:1px solid var(--border-color);border-radius:11px;background:var(--bg-soft)}
+.secretary-audit-pagination.hidden{display:none!important}
+.secretary-audit-pagination button{min-width:88px;height:34px;padding:0 14px;border:1px solid rgba(34,211,238,.34);border-radius:9px;background:var(--bg-card);color:var(--text-primary);font:900 10px Cairo,sans-serif;cursor:pointer}
+.secretary-audit-pagination button:hover:not(:disabled){border-color:#22d3ee;background:rgba(34,211,238,.10)}
+.secretary-audit-pagination button:disabled{opacity:.42;cursor:not-allowed}
+.secretary-audit-pagination span{min-width:160px;text-align:center;color:var(--text-muted);font:900 10px Cairo,sans-serif}
+@media(max-width:700px){.secretary-audit-pagination{gap:7px}.secretary-audit-pagination button{min-width:72px;padding:0 10px}.secretary-audit-pagination span{min-width:120px;font-size:9px}}
 .secretary-audit-table-wrap .secretary-audit-issue-head{min-width:190px}
 .secretary-audit-table-wrap .secretary-audit-details-head{width:122px;min-width:122px}
 .secretary-audit-table-wrap .secretary-audit-action-head{width:122px;min-width:122px}
@@ -3804,4 +3811,144 @@ body.customer-profile-open{overflow:hidden}
     box-sizing:border-box!important;
     overflow-x:hidden!important;
   }
+}
+
+
+/* ===== v235 — Dashboard/Branch product selector: Allocate-style on desktop only ===== */
+@media (min-width:769px){
+  .smart-add-grid .product-allocate-filter .order-search-input{
+    min-height:40px!important;height:40px!important;
+    border-color:rgba(168,85,247,.26)!important;border-radius:10px!important;
+    background:linear-gradient(145deg,rgba(23,32,51,.94),rgba(13,20,34,.96))!important;
+    color:#f8fafc!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+    text-overflow:ellipsis;white-space:nowrap;overflow:hidden;
+  }
+  .smart-add-grid .product-allocate-filter .order-search-input:focus{
+    border-color:#c084fc!important;
+    box-shadow:0 0 0 3px rgba(168,85,247,.10),0 0 15px rgba(168,85,247,.08)!important;
+  }
+  .product-allocate-filter .order-search-arrow{color:#94a3b8}
+  .product-allocate-filter.open .order-search-arrow{color:#c084fc}
+  .product-allocate-filter .order-search-input{padding-right:42px!important}
+  .product-allocate-filter .order-search-arrow.allocate-filter-arrow{
+    width:28px;height:28px;right:7px;top:50%;display:grid;place-items:center;
+    border:1px solid rgba(148,163,184,.24);border-radius:9px;
+    background:linear-gradient(145deg,rgba(30,41,59,.92),rgba(15,23,42,.94));color:#cbd5e1;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 4px 12px rgba(0,0,0,.16);
+    transform:translateY(-50%);
+    transition:transform .16s ease,color .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease;
+  }
+  .product-allocate-filter .order-search-arrow.allocate-filter-arrow svg{
+    width:15px;height:15px;display:block;fill:none;stroke:currentColor;stroke-width:2.35;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;
+  }
+  .product-allocate-filter .order-search-arrow.allocate-filter-arrow:hover{
+    color:#f3e8ff;border-color:rgba(192,132,252,.72);
+    background:linear-gradient(145deg,rgba(88,28,135,.42),rgba(15,23,42,.96));
+    box-shadow:0 0 14px rgba(168,85,247,.18),inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .product-allocate-filter.open .order-search-arrow.allocate-filter-arrow{
+    color:#f3e8ff;border-color:#c084fc;
+    background:linear-gradient(145deg,rgba(107,33,168,.48),rgba(15,23,42,.96));
+    box-shadow:0 0 16px rgba(168,85,247,.22),inset 0 1px 0 rgba(255,255,255,.05);
+    transform:translateY(-50%) rotate(180deg);
+  }
+  .product-allocate-filter .order-search-options{
+    right:0;left:auto;width:360px;min-width:100%;max-width:min(360px,calc(100vw - 24px));max-height:360px;
+    padding:7px;display:none;border:1px solid rgba(168,85,247,.30);border-radius:14px;
+    background:linear-gradient(145deg,#172033,#0d1422);
+    box-shadow:0 22px 55px rgba(0,0,0,.52),0 0 24px rgba(168,85,247,.08);
+  }
+  .product-allocate-filter.open .order-search-options{display:grid;gap:6px}
+  .product-allocate-filter .dashboard-allocate-option{
+    display:flex;align-items:center;gap:9px;min-height:50px;padding:8px 9px;
+    border:1px solid rgba(148,163,184,.14);border-radius:11px;
+    background:rgba(15,23,42,.72);color:#f8fafc;text-align:right;transition:.16s ease;
+  }
+  .product-allocate-filter .dashboard-allocate-option:hover,
+  .product-allocate-filter .dashboard-allocate-option.active{
+    transform:translateY(-1px);border-color:rgba(168,85,247,.45);
+    background:rgba(126,34,206,.10);color:#fff;
+  }
+  .product-allocate-filter .dashboard-allocate-option.selected{
+    border-color:#c084fc;background:linear-gradient(135deg,rgba(126,34,206,.19),rgba(8,145,178,.11));
+    box-shadow:0 0 14px rgba(168,85,247,.10);color:#fff;
+  }
+  .product-allocate-filter .dashboard-allocate-option.selected .dashboard-filter-option-check{
+    border-color:#c084fc;background:#7e22ce;color:#fff;
+  }
+  .product-allocate-filter .order-search-empty{padding:22px 10px;color:#94a3b8;font-size:10px}
+}
+
+
+/* ===== v237 — Hard Cache + Customer Profile note layer fix ===== */
+.branch-note-modal.customer-profile-note-modal{z-index:18150!important}
+.hard-cache-sync-btn{white-space:nowrap}
+@media screen and (max-width:768px){
+  /* Mobile exposes Hard Cache from More; keep operational page headers compact. */
+  .page-user-refresh .hard-cache-sync-btn{display:none!important}
+}
+
+
+/* ===== v238 — Activity Log desktop layering + Mobile Chat head actions =====
+   UI-only. Keeps Activity filters above their rows but below the sticky app header menus. */
+@media screen and (min-width:769px){
+  #activityLogPage .activity-log-toolbar{
+    position:relative;
+    z-index:20!important;
+    overflow:visible;
+  }
+  #activityLogPage .activity-log-toolbar .order-search-select.dashboard-allocate-filter{
+    z-index:21!important;
+  }
+  #activityLogPage .activity-log-toolbar .order-search-select.dashboard-allocate-filter.open{
+    z-index:22!important;
+  }
+  #activityLogPage .activity-log-list,
+  #activityLogPage .activity-log-stats,
+  #activityLogPage .activity-log-head,
+  #activityLogPage .activity-log-pagination{
+    z-index:1!important;
+  }
+}
+
+.mobile-chat-head-actions{display:none}
+@media screen and (max-width:768px){
+  #chatPage .mobile-chat-head-actions{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-right:auto;
+    flex:0 0 auto;
+  }
+  #chatPage .mobile-chat-head-actions .mobile-chat-back-to-list,
+  #chatPage .mobile-chat-head-actions .mobile-chat-back-home{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:86px;
+    height:36px;
+    margin:0;
+    padding:0 10px;
+    border:1px solid rgba(13,148,136,.34);
+    border-radius:10px;
+    background:#0D9488;
+    color:#fff;
+    font:900 9px/1.2 Cairo,Arial,sans-serif;
+    white-space:nowrap;
+    box-shadow:0 6px 16px rgba(13,148,136,.18);
+  }
+  #chatPage .mobile-chat-head-actions .mobile-chat-back-to-list:active,
+  #chatPage .mobile-chat-head-actions .mobile-chat-back-home:active{
+    transform:scale(.97);
+    background:#0F766E;
+  }
+}
+
+
+/* ===== v240 — Branch Khazna Signed freeze for non-admin ===== */
+#khaznaFilterStatus[data-khazna-status-locked="true"]{
+  cursor:not-allowed!important;
+  opacity:.78;
+  border-color:rgba(16,185,129,.38)!important;
+  background:linear-gradient(145deg,rgba(16,185,129,.08),var(--bg-card))!important;
 }
