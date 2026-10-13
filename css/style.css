@@ -3952,3 +3952,48 @@ body.customer-profile-open{overflow:hidden}
   border-color:rgba(16,185,129,.38)!important;
   background:linear-gradient(145deg,rgba(16,185,129,.08),var(--bg-card))!important;
 }
+
+/* v246: clickable customer name in allocated Chat message only */
+.chat-allocate-customer-link{background:transparent;border:0;padding:0;margin:0;color:#67e8f9;font:inherit;font-weight:800;cursor:pointer;text-decoration:underline;text-underline-offset:3px;direction:inherit}.chat-allocate-customer-link:hover,.chat-allocate-customer-link:focus-visible{color:#a5f3fc}
+
+/* v261 Customer Profile: combined contact dates and latest order note card. */
+.customer-profile-date-pair{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 10px;align-items:center}
+.customer-profile-date-pair span{font-size:11px;color:#94a3b8}
+.customer-profile-date-pair strong{font-size:12px;color:#e2e8f0}
+.customer-profile-last-notes strong{white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow-y:auto;line-height:1.6}
+@media(max-width:700px){.customer-profile-last-notes{grid-column:1/-1}}
+
+/* v263 Customer Profile card typography and note space — scoped styles only */
+.customer-profile-header h2 .customer-profile-name-label{font:inherit;color:#67e8f9;}
+.customer-order-main strong .customer-profile-doctor-label{font:inherit;color:#67e8f9;}
+.customer-profile-info>.customer-profile-last-notes{grid-column:auto;min-height:100px;justify-content:flex-start;}
+.customer-profile-last-notes strong{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;min-height:90px;overflow-y:auto;line-height:1.75;}
+@media(max-width:700px){.customer-profile-info>.customer-profile-last-notes{min-height:150px;}.customer-profile-last-notes strong{max-height:320px;}}
+
+/* v264: Customer Profile overview — exactly two balanced rows on desktop (2x2) */
+.customer-profile-info{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;}
+.customer-profile-info>.customer-profile-contact-dates,
+.customer-profile-info>.customer-profile-last-notes{grid-column:auto;min-width:0;}
+.customer-profile-info>.customer-profile-last-notes{min-height:100px;}
+.customer-profile-last-notes strong{min-height:0;max-height:135px;overflow-y:auto;line-height:1.65;}
+@media(max-width:700px){
+ .customer-profile-info{grid-template-columns:repeat(2,minmax(0,1fr));}
+ .customer-profile-info>.customer-profile-last-notes{grid-column:auto;min-height:100px;}
+ .customer-profile-last-notes strong{max-height:135px;}
+}
+@media(max-width:480px){
+ .customer-profile-info{grid-template-columns:1fr;}
+ .customer-profile-info>.customer-profile-contact-dates,
+ .customer-profile-info>.customer-profile-last-notes{grid-column:1/-1;}
+}
+
+/* v265: Customer Profile — show only dates + latest-order notes; no inner scrollbar/arrows. */
+.customer-profile-info{grid-template-columns:repeat(2,minmax(0,1fr));}
+.customer-profile-info>.customer-profile-contact-dates,
+.customer-profile-info>.customer-profile-last-notes{grid-column:auto;min-width:0;}
+.customer-profile-last-notes strong{max-height:none;min-height:0;overflow:visible;overflow-y:visible;white-space:pre-wrap;overflow-wrap:anywhere;}
+@media(max-width:480px){
+  .customer-profile-info{grid-template-columns:1fr;}
+  .customer-profile-info>.customer-profile-contact-dates,
+  .customer-profile-info>.customer-profile-last-notes{grid-column:1/-1;}
+}

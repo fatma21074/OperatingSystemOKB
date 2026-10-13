@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20261006-doctor-allocate-khazna-signed-v240">
+  <link rel="stylesheet" href="css/style.css?v=20261013-customer-profile-notes-v265">
  
 <style>
 /* ===== Login Falling Stars Overlay — preserves original login layout ===== */
@@ -1856,7 +1856,7 @@
   <div class="pending-shell stores-report-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Abnormal</h1><p>متابعة Returned وGroup Cancel والأوردرات التي تم إنقاذها من الحالتين في فروع OKB</p></div></div>
-      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(false)">Refresh</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(true)">Refresh</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المرتجعات</span><strong id="storesReportTotalCount">0</strong></div>
@@ -2426,6 +2426,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v240.js?v=20261006-doctor-allocate-khazna-signed-v240"></script>
+<script src="js/main.v265.js?v=20261013-customer-profile-notes-v265"></script>
 </body>
 </html>
