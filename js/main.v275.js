@@ -1492,10 +1492,16 @@ async function loadBranchInventory(branch){
     await loadOKBItems();
     let result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
     if(result.error){branchStockSchemaError(result.error);return;}
-    const synced=await syncOKBItemsToBranchInventory(branch,result.data||[]);if(!synced)return;
-    result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
-    if(result.error){branchStockSchemaError(result.error);return;}
-    const receiptsResult=await supabaseClient.from('branch_stock_receipts').select('*').eq('branch',branch).order('updated_at',{ascending:false});
+    // Read-only Egress improvement: refetch inventory only when product sync created new rows.
+    const inventoryItemIds=new Set((result.data||[]).map(row=>String(row.item_id)));
+    const missingInventoryItems=okbItems.some(item=>!inventoryItemIds.has(String(item.id)));
+    if(missingInventoryItems){
+      const synced=await syncOKBItemsToBranchInventory(branch,result.data||[]);if(!synced)return;
+      result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
+      if(result.error){branchStockSchemaError(result.error);return;}
+    }
+    // Keep the original full receipt history and newest-per-item selection; transfer only UI-used fields.
+    const receiptsResult=await supabaseClient.from('branch_stock_receipts').select('id,branch,item_id,item_name,added_qty,received_qty,damaged_qty,actual_qty,request_reason,receipt_reason,status,requested_by,requested_at,received_by,received_at,updated_at,settlement_confirmed_at,settlement_confirmed_by').eq('branch',branch).order('updated_at',{ascending:false});
     if(receiptsResult.error){branchStockSchemaError(receiptsResult.error);return;}
     branchStockPendingReceipts=new Map();branchStockLatestReceipts=new Map();branchStockSelectedItems.clear();
     (receiptsResult.data||[]).forEach(receipt=>{
@@ -1688,7 +1694,7 @@ async function submitBranchStockReceipt(){
   const decision=modal.dataset.decision,received=Math.floor(Number($('stockControlReceivedQty')?.value||0)),damaged=Math.floor(Number($('stockControlDamagedQty')?.value||0)),reason=String($('stockControlReason')?.value||'').trim();
   if(received<0||damaged<0||damaged>received){alert('راجع الرصيد المستلم والهالك');return;}if(decision==='accepted'&&(received!==Number(receipt.added_qty)||damaged!==0)){alert('علامة ✅ للاستلام المطابق فقط. استخدم ❌ عند وجود فرق أو هالك.');return;}if(decision==='discrepancy'&&!reason){alert('سبب الاختلاف أو الهالك مطلوب');$('stockControlReason')?.focus();return;}
   const btn=$('stockControlSaveBtn');btn.disabled=true;btn.textContent='جاري الحفظ...';
-  try{const {data,error}=await supabaseClient.rpc('okb_receive_branch_stock',{p_receipt_id:Number(receipt.id),p_decision:decision,p_received_qty:received,p_damaged_qty:damaged,p_reason:reason||null,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;const actual=received-damaged,now=new Date().toISOString(),actor=currentUser?.name||currentUser?.username||'User';row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)+actual);row.updated_at=now;row.updated_by=actor;row.pending_receipt=null;row.last_receipt={...receipt,received_qty:received,damaged_qty:damaged,actual_qty:actual,receipt_reason:reason||null,status:decision,received_by:actor,received_at:now,updated_at:now,settlement_confirmed_at:null};branchStockPendingReceipts.delete(String(row.item_id));branchStockLatestReceipts.set(String(row.item_id),row.last_receipt);closeBranchStockControlModal();renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge(currentStockTakeRows);alert(`✅ تم استلام الجرد وإضافة ${num(actual)} قطعة صالحة إلى الرصيد`);}
+  try{const {data,error}=await supabaseClient.rpc('okb_receive_branch_stock',{p_receipt_id:Number(receipt.id),p_decision:decision,p_received_qty:received,p_damaged_qty:damaged,p_reason:reason||null,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;const actual=received-damaged,now=new Date().toISOString(),actor=currentUser?.name||currentUser?.username||'User';row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)+actual);row.updated_at=now;row.updated_by=actor;row.pending_receipt=null;row.last_receipt={...receipt,received_qty:received,damaged_qty:damaged,actual_qty:actual,receipt_reason:reason||null,status:decision,received_by:actor,received_at:now,updated_at:now,settlement_confirmed_at:null};branchStockPendingReceipts.delete(String(row.item_id));branchStockLatestReceipts.set(String(row.item_id),row.last_receipt);closeBranchStockControlModal();renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge();alert(`✅ تم استلام الجرد وإضافة ${num(actual)} قطعة صالحة إلى الرصيد`);}
   catch(error){alert('تعذر استلام الجرد: '+error.message);}finally{btn.disabled=false;}
 }
 
@@ -1717,7 +1723,7 @@ async function resendBranchStockReceipt(receiptId){
       row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)-oldActual);row.updated_at=pending.updated_at;row.updated_by=currentUser?.name||currentUser?.username||'User';row.pending_receipt=pending;row.last_receipt=null;
       branchStockLatestReceipts.delete(String(row.item_id));branchStockPendingReceipts.set(String(row.item_id),pending);
     }
-    renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge(currentStockTakeRows);
+    renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge();
     alert('✅ تم إرسال الجرد مرة أخرى، وسيظهر لمدير الفرع بعلامتي ✅ و❌');
   }catch(error){alert('تعذر إعادة إرسال الجرد: '+error.message);}
 }
@@ -2495,6 +2501,253 @@ async function createCustomRole(){
   alert(`تم إنشاء ${label} بنجاح. افتح Permission وحدد صلاحياتها.`);
 }
 
+/* v267 — admin-only presentation configuration. Zero writes to orders or accounting tables. */
+const OKB_UI_DEFAULTS=Object.freeze({dashboardLabel:'Dashboard',chatLabel:'Chat',doctorRankLabel:'Doctor Rank',dailyReportLabel:'Daily Report',showDoctorRank:true,showDailyReport:true});
+let okbUIConfig={...OKB_UI_DEFAULTS,buttonLabels:{},fields:{}};
+let okbUIConfigRequested=false;
+const okbCustomButtonNodes=new Map();
+const okbCustomFieldNodes=new Map();
+const OKB_CUSTOM_PAGES=Object.freeze({ordersPage:'Dashboard',branchPage:'صفحة الفرع',khaznaPage:'خزنة الفرع',branchesTreasuryPage:'خزنة الفروع'});
+const OKB_CRITICAL_FIELD_ID=/(price|deposit|discount|total|paid|fee|cost|amount|remaining|balance|treasury|collection|qty|quantity|product|stock|status|customername|phone$|employee|doctorname|shippingcompany|ordername|ordernumber|area|customer)/i;
+function validOKBUILabel(value,fallback){const s=String(value??'').trim();return s?s.slice(0,70):fallback;}
+function escapeOKBEditor(value){return escapeHTML(String(value??''));}
+function normalizeOKBUIConfiguration(config){
+ const raw=(config&&typeof config==='object'&&!Array.isArray(config))?config:{};
+ const out={};
+ for(const key of ['dashboardLabel','chatLabel','doctorRankLabel','dailyReportLabel'])out[key]=validOKBUILabel(raw[key],OKB_UI_DEFAULTS[key]);
+ for(const key of ['showDoctorRank','showDailyReport'])out[key]=typeof raw[key]==='boolean'?raw[key]:OKB_UI_DEFAULTS[key];
+ out.buttonLabels={};
+ if(raw.buttonLabels&&typeof raw.buttonLabels==='object'&&!Array.isArray(raw.buttonLabels))for(const [key,label] of Object.entries(raw.buttonLabels)){
+   if(/^b\d+$/.test(key)&&typeof label==='string'&&label.trim())out.buttonLabels[key]=validOKBUILabel(label,'');
+ }
+ out.fields={};
+ if(raw.fields&&typeof raw.fields==='object'&&!Array.isArray(raw.fields))for(const [id,row] of Object.entries(raw.fields)){
+   if(!/^[a-zA-Z][\w-]{0,90}$/.test(id)||!row||typeof row!=='object'||Array.isArray(row))continue;
+   out.fields[id]={label:typeof row.label==='string'?row.label.trim().slice(0,70):'',visible:row.visible!==false};
+ }
+ return out;
+}
+function getOKBTextNode(el){
+ // Prefer the existing dedicated text container, leaving icons and unread counters intact.
+ const named=el.querySelector('.dashboard-header-label,.logout-header-label,.header-settings-item > span:not(.chat-menu-unread),.okb-stores-report-btn > span,.okb-chat-header-btn .logout-header-label');
+ if(named)return {node:named,kind:'element'};
+ let texts=[];
+ function collect(parent){for(const n of parent.childNodes){if(n.nodeType===3&&n.textContent.trim())texts.push(n);else if(n.nodeType===1&&n.matches('span:not([id]):not([class]),b:not([id]):not([class])'))collect(n);}}
+ collect(el);const node=texts.sort((a,b)=>b.textContent.trim().length-a.textContent.trim().length)[0];return node?{node,kind:'text'}:null;
+}
+function initializeOKBButtonCatalog(){
+ if(okbCustomButtonNodes.size)return;
+ document.querySelectorAll('button[data-okb-custom-button]').forEach(btn=>{
+   const key=btn.getAttribute('data-okb-custom-button');
+   const slot=getOKBTextNode(btn);if(!slot)return;
+   const original=slot.node.textContent;
+   const title=original.trim().replace(/\s+/g,' ');
+   if(!title||title.length>120)return;
+   const page=btn.closest('section[id],.header-settings-dropdown,.okb-stores-menu,.shipping-rank-header-menu')?.id||btn.closest('section[id]')?.id||'General / Header';
+   okbCustomButtonNodes.set(key,{btn,slot,original,title,page});
+ });
+}
+// v268: clean field catalog. IDs are internal only, never surfaced as labels.
+const OKB_FIELD_EXCLUDE_IDS=new Set(['adminOrderDate','adminBranchOrderDate','selectPageOrders','selectBranchPageOrders','khaznaSelectAll','existingPaymentImage']);
+const OKB_FIELD_LABELS=Object.freeze({
+ employeeName:'اسم الموظف',doctorName:'اسم الدكتور',orderNumber:'رقم الأوردر',customerName:'اسم العميل',phone:'رقم الموبايل',phone2:'رقم موبايل إضافي',shippingCompany:'شركة الشحن',area:'المنطقة',productNames:'المنتجات',status:'حالة الأوردر',dashUrgentOrder:'أوردر مستعجل',dashReplacementOrder:'أوردر استبدال',dashErrorOrder:'أوردر خطأ',dashProductNameInput:'اختيار المنتج',dashProductPriceInput:'سعر المنتج',dashProductQtyInput:'كمية المنتج',dashDiscountInput:'الخصم',dashDepositInput:'العربون',dashGrandTotal:'إجمالي الأوردر',orderNotes:'ملاحظات الأوردر',fromDate:'من تاريخ',toDate:'إلى تاريخ',searchInput:'البحث في الأوردرات',filterStatus:'فلتر الحالة',filterEmployee:'فلتر الموظف',filterShippingCompany:'فلتر شركة الشحن',filterDoctor:'فلتر الدكتور',
+ bEmployeeName:'اسم الموظف',bDoctorName:'اسم الدكتور',bOrderNumber:'رقم الأوردر',bCustomerName:'اسم العميل',bPhone:'رقم الموبايل',bPhone2:'رقم موبايل إضافي',bShippingCompany:'شركة الشحن',bArea:'المنطقة',bProductNames:'المنتجات',bStatus:'حالة الأوردر',branchUrgentOrder:'أوردر مستعجل',branchReplacementOrder:'أوردر استبدال',branchErrorOrder:'أوردر خطأ',branchProductNameInput:'اختيار المنتج',branchProductPriceInput:'سعر المنتج',branchProductQtyInput:'كمية المنتج',branchDeliveryInput:'مصاريف الشحن',branchDiscountInput:'الخصم',branchDepositInput:'العربون',branchGrandTotal:'إجمالي الأوردر',bOrderNotes:'ملاحظات الأوردر',bFromDate:'من تاريخ',bToDate:'إلى تاريخ',bSearchInput:'البحث في أوردرات الفرع',bFilterStatus:'فلتر الحالة',bFilterEmployee:'فلتر الموظف',bFilterDoctor:'فلتر الدكتور',
+ khaznaFromDate:'من تاريخ',khaznaToDate:'إلى تاريخ',khaznaBarcodeSearch:'البحث بالباركود أو رقم الأوردر',khaznaFilterStatus:'فلتر حالة التحصيل',
+ btFromDate:'من تاريخ',btToDate:'إلى تاريخ',btBranchFilter:'فلتر الفرع',btStatusFilter:'فلتر الحالة',btSearch:'البحث في خزنة الفروع'
+});
+const OKB_FIELD_KIND_LABEL=Object.freeze({'Text Box':'حقل كتابة','Text Area':'ملاحظات','List Box':'قائمة اختيار','Check Box':'مربع اختيار'});
+function okbFieldHumanLabel(el){
+ // Read the *actual* user-facing text, not legacy hard-coded synonyms.
+ const id=el.id;
+ const label=el.closest('label')||document.querySelector(`label[for="${id}"]`);
+ if(el.type==='checkbox'&&label){
+   const text=String(label.textContent||'').trim().replace(/\s+/g,' ');
+   if(text&&text.length<=75)return text;
+ }
+ const placeholder=el.getAttribute('placeholder');
+ if(placeholder&&placeholder.trim()&&placeholder.trim().length<=75)return placeholder.trim();
+ if(el.tagName==='SELECT'){
+   const option=el.querySelector('option[value=""]');
+   const text=String(option?.textContent||'').trim();
+   if(text&&text.length<=75)return text;
+ }
+ const candidate=String(label?.textContent||el.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ');
+ if(candidate&&candidate.length<=75)return candidate;
+ // Exact control ID fallback only where the existing UI has no text to read.
+ return OKB_FIELD_LABELS[id]||null;
+}
+function okbVisibleTextTarget(node){
+ // Preserve nested icons and checkbox markup when renaming.
+ if(!node)return null;
+ const textNode=Array.from(node.childNodes).find(n=>n.nodeType===3&&String(n.textContent||'').trim());
+ return textNode?{node:textNode,kind:'text'}:{node,kind:'text'};
+}
+function okbFieldGroup(el){
+ const form=el.closest('form');if(form)return {name:'نموذج الأوردر',order:0};
+ const toolbar=el.closest('.toolbar,.date-filter-group');if(toolbar)return {name:'البحث والفلاتر',order:1};
+ return {name:'خيارات الصفحة',order:2};
+}
+function initOKBFieldsCatalog(){
+ // Re-scan to include controls which become available after rendering; keep original labels.
+ for(const [pageId,pageLabel] of Object.entries(OKB_CUSTOM_PAGES)){
+  const page=document.getElementById(pageId);if(!page)continue;
+  page.querySelectorAll('input[id],select[id],textarea[id]').forEach(el=>{
+   const id=el.id;
+   if(!id||OKB_FIELD_EXCLUDE_IDS.has(id)||['hidden','button','submit','file','datetime-local','time'].includes(el.type))return;
+   if(el.closest('#okbFieldsCustomizationPanel,#okbSystemCustomizationPanel,#okbRolePermissionsPanel'))return;
+   const readable=okbFieldHumanLabel(el);
+   if(!readable)return; // No guessed control names in the Admin editor.
+   const previous=okbCustomFieldNodes.get(id);
+   if(previous&&previous.el===el&&el.isConnected)return;
+   const ownLabel=page.querySelector(`label[for="${id}"]`);
+   const wrappingLabel=el.closest('label');
+   const inlineLabel=wrappingLabel?.querySelector('span');
+   const labelNode=ownLabel||inlineLabel||null;
+   const firstOption=el.tagName==='SELECT'?el.querySelector('option[value=""]'):null;
+   // Target the SAME existing field. The editor never creates business form controls.
+   const labelTarget=labelNode?okbVisibleTextTarget(labelNode):el.hasAttribute('placeholder')?{node:el,kind:'placeholder'}:firstOption?{node:firstOption,kind:'text'}:null;
+   const protectedField=el.required||el.disabled||el.readOnly||OKB_CRITICAL_FIELD_ID.test(id);
+   const group=el.closest('.form-grid,.smart-add-grid,.smart-summary-grid');
+   const wrapper=group?(el.parentElement===group?el:(el.parentElement?.parentElement===group?el.parentElement:null)):null;
+   const reason=el.disabled?'قائمة مقفولة بالنظام':el.readOnly?'حقل للعرض فقط':el.required?'حقل إجباري لحفظ البيانات':OKB_CRITICAL_FIELD_ID.test(id)?'حقل أساسي مرتبط بالتشغيل أو الحسابات':'';
+   const type=el.type==='checkbox'?'Check Box':el.tagName==='SELECT'?'List Box':el.tagName==='TEXTAREA'?'Text Area':'Text Box';
+   const location=okbFieldGroup(el);
+   okbCustomFieldNodes.set(id,{el,id,pageId,pageLabel,type,labelTarget,originalLabel:previous?.originalLabel||readable,protectedField,reason,wrapper,location});
+  });
+ }
+}
+function applyOKBButtonLabels(){
+ initializeOKBButtonCatalog();
+ for(const [key,item] of okbCustomButtonNodes){
+   const text=okbUIConfig.buttonLabels[key];
+   if(item.slot.node.isConnected)item.slot.node.textContent=text||item.original;
+ }
+ // Backwards-compatible v266 keys still function on their named header slots.
+ const setText=(selector,text)=>document.querySelectorAll(selector).forEach(el=>{if(el.textContent!==text)el.textContent=text;});
+ setText('#dashboardHeaderBtn .dashboard-header-label',okbUIConfig.dashboardLabel);
+ setText('#okbChatHeaderLabel',okbUIConfig.chatLabel);
+ setText('#doctorRankStoresMenuBtn span',`👨‍⚕️ ${okbUIConfig.doctorRankLabel}`);
+ setText('#dailyReportStoresMenuBtn span',`📋 ${okbUIConfig.dailyReportLabel}`);
+ const doctorBtn=document.getElementById('doctorRankStoresMenuBtn');if(doctorBtn)doctorBtn.classList.toggle('okb-ui-option-hidden',!okbUIConfig.showDoctorRank);
+ const dailyBtn=document.getElementById('dailyReportStoresMenuBtn');if(dailyBtn)dailyBtn.classList.toggle('okb-ui-option-hidden',!okbUIConfig.showDailyReport);
+ // Prefer the new catalog names when explicitly overridden.
+ for(const [key,item] of okbCustomButtonNodes){
+  const v=okbUIConfig.buttonLabels[key];if(v&&item.slot.node.isConnected)item.slot.node.textContent=v;
+ }
+}
+function applyOKBFieldConfig(){
+ initOKBFieldsCatalog();
+ for(const item of okbCustomFieldNodes.values()){
+  const value=okbUIConfig.fields[item.id]||{};
+  const label=value.label||item.originalLabel;
+  const target=item.labelTarget;
+  if(target&&target.node.isConnected){
+   if(target.kind==='placeholder')target.node.setAttribute('placeholder',label);
+   else if(target.node.textContent!==label)target.node.textContent=label;
+  }
+  const host=item.wrapper||item.el.closest('label')||item.el;
+  if(!item.protectedField){host.classList.toggle('okb-ui-option-hidden',value.visible===false);}
+  else host.classList.remove('okb-ui-option-hidden');
+ }
+}
+// v271: Field ordering is retired. Saved legacy `order` values are discarded
+// during normalization and no layout styles are changed by customization.
+function applyOKBUIConfiguration(){applyOKBButtonLabels();applyOKBFieldConfig();}
+function switchOKBPermissionTab(tab){
+ if(!isAdmin())return;
+ const map={roles:'okbRolePermissionsPanel',customization:'okbSystemCustomizationPanel',fields:'okbFieldsCustomizationPanel'};
+ const buttonIds={roles:'okbPermissionsTab',customization:'okbCustomizationTab',fields:'okbFieldsTab'};
+ if(!map[tab])tab='roles';
+ for(const [name,id] of Object.entries(map))document.getElementById(id)?.classList.toggle('hidden',name!==tab);
+ for(const [name,id] of Object.entries(buttonIds)){
+  const button=document.getElementById(id);if(!button)continue;
+  button.classList.toggle('active',name===tab);button.setAttribute('aria-selected',String(name===tab));
+ }
+ if(tab==='customization')renderOKBButtonEditor();
+ if(tab==='fields')renderOKBFieldsEditor();
+}
+function renderOKBButtonEditor(){
+ if(!isAdmin())return;
+ initializeOKBButtonCatalog();
+ const panel=document.getElementById('okbCustomButtonsCatalog');if(!panel)return;
+ const pages=document.getElementById('okbCustomButtonPage');
+ if(pages&&pages.options.length===1){
+  const distinct=[...new Set([...okbCustomButtonNodes.values()].map(x=>x.page))].sort();
+  distinct.forEach(p=>pages.add(new Option(p,p)));
+ }
+ const q=(document.getElementById('okbCustomButtonSearch')?.value||'').trim().toLowerCase();
+ const page=pages?.value||'';
+ const rows=[...okbCustomButtonNodes.entries()].filter(([k,item])=>(!page||item.page===page)&&(!q||(item.title+' '+item.page).toLowerCase().includes(q)));
+ panel.innerHTML=rows.map(([key,item])=>`<div class="okb-customization-entry"><div class="okb-customization-entry-head"><b>${escapeOKBEditor(item.title)}</b><small>${escapeOKBEditor(item.page)}</small></div><label>الاسم الجديد<input type="text" maxlength="70" data-okb-button-label="${key}" value="${escapeOKBEditor(okbUIConfig.buttonLabels[key]||'') }" placeholder="${escapeOKBEditor(item.title)}" onchange="stageOKBButtonLabel(this)"/></label><small>زر ${escapeOKBEditor(key)} — اسم العرض فقط</small></div>`).join('')||'<p>لا توجد أزرار مطابقة</p>';
+}
+function stageOKBButtonLabel(input){
+ if(!isAdmin())return;
+ const key=input.dataset.okbButtonLabel;
+ if(!okbCustomButtonNodes.has(key))return;
+ const value=input.value.trim().slice(0,70);
+ if(value)okbUIConfig.buttonLabels[key]=value;else delete okbUIConfig.buttonLabels[key];
+}
+function renderOKBFieldsEditor(){
+ if(!isAdmin())return;
+ initOKBFieldsCatalog();
+ const panel=document.getElementById('okbCustomFieldsCatalog');if(!panel)return;
+ const page=document.getElementById('okbCustomFieldsPage')?.value||'ordersPage';
+ const q=(document.getElementById('okbCustomFieldsSearch')?.value||'').trim().toLowerCase();
+ const rows=[...okbCustomFieldNodes.values()].filter(item=>item.pageId===page&&(!q||(item.originalLabel+' '+item.type+' '+OKB_FIELD_KIND_LABEL[item.type]).toLowerCase().includes(q))).sort((x,y)=>x.location.order-y.location.order);
+ const heading=rows.length?`<p class="okb-customization-note">${rows.length} حقلًا موجودًا بالفعل في الصفحة — إعادة التسمية والإظهار والإخفاء فقط، بدون تغيير ترتيب الصفحة أو بيانات الأوردر.</p>`:'';
+ panel.innerHTML=heading+rows.map(item=>{
+  const saved=okbUIConfig.fields[item.id]||{};const safeId=escapeOKBEditor(item.id);
+  return `<div class="okb-customization-entry ${item.protectedField?'okb-customization-disabled':''}">
+    <div class="okb-customization-entry-head"><b>${escapeOKBEditor(item.originalLabel)}</b><small>${escapeOKBEditor(item.location.name)} • ${escapeOKBEditor(OKB_FIELD_KIND_LABEL[item.type])}</small></div>
+    <label>تعديل اسم الحقل الموجود<input type="text" maxlength="70" data-okb-field-name="${safeId}" value="${escapeOKBEditor(saved.label||'')}" placeholder="${escapeOKBEditor(item.originalLabel)}" onchange="stageOKBField(this)"/></label>
+    <div class="okb-customization-options"><label><input type="checkbox" data-okb-field-visible="${safeId}" ${saved.visible===false&&!item.protectedField?'':'checked'} ${item.protectedField?'disabled':''} onchange="stageOKBField(this)"/> إظهار</label>
+    </div>
+    ${item.reason?`<small>🔒 ${escapeOKBEditor(item.reason)} — يمكن تغيير الاسم فقط.</small>`:''}
+   </div>`;
+ }).join('')||'<p>مفيش حقول مطابقة. جرب تمسح كلمة البحث.</p>';
+}
+function stageOKBField(input){
+ if(!isAdmin())return;
+ const id=input.dataset.okbFieldName||input.dataset.okbFieldVisible;
+ const item=okbCustomFieldNodes.get(id);if(!item)return;
+ const row=okbUIConfig.fields[id]||{label:'',visible:true};
+ if(input.hasAttribute('data-okb-field-name'))row.label=input.value.trim().slice(0,70);
+ if(input.hasAttribute('data-okb-field-visible')&&!item.protectedField)row.visible=input.checked;
+ okbUIConfig.fields[id]=row;
+}
+async function loadOKBUIConfiguration(force=false){
+ if(!currentUser||!supabaseClient)return;
+ if(okbUIConfigRequested&&!force)return;
+ okbUIConfigRequested=true;
+ try{
+  const {data,error}=await supabaseClient.from('okb_ui_customization').select('config').eq('id','main').maybeSingle();
+  if(error)throw error;
+  okbUIConfig=normalizeOKBUIConfiguration(data?.config||OKB_UI_DEFAULTS);applyOKBUIConfiguration();
+ }catch(err){console.warn('Optional UI customization unavailable:',err?.message||err);const status=document.getElementById('okbCustomizationSaveStatus');if(status)status.textContent='لحفظ التخصيصات شغّل SQL رقم 027 مرة واحدة على بيئة التطوير.';}
+}
+function showOKBCustomSaveStatus(message){
+ const main=document.getElementById('okbCustomizationSaveStatus');if(main)main.textContent=message;
+ document.querySelectorAll('.okbCustomizationSaveStatusMirror').forEach(el=>el.textContent=message);
+}
+async function saveOKBUIConfiguration(){
+ if(!isAdmin())return;
+ const next=normalizeOKBUIConfiguration(okbUIConfig);
+ showOKBCustomSaveStatus('جاري الحفظ...');
+ try{
+  const {error}=await supabaseClient.from('okb_ui_customization').upsert({id:'main',config:next,updated_at:new Date().toISOString()},{onConflict:'id'});
+  if(error)throw error;
+  okbUIConfig=next;applyOKBUIConfiguration();
+  showOKBCustomSaveStatus('تم حفظ التخصيص ✓ (التغييرات تظهر للموظفين عند إعادة الدخول)');
+  await logActivity('permissions_updated','تخصيص واجهة النظام','تم حفظ أسماء الأزرار وإعدادات الحقول');
+ }catch(err){showOKBCustomSaveStatus('فشل الحفظ: '+(err?.message||err));}
+}
+function resetOKBUIConfiguration(){
+ if(!isAdmin())return;
+ okbUIConfig=normalizeOKBUIConfiguration(OKB_UI_DEFAULTS);
+ renderOKBButtonEditor();renderOKBFieldsEditor();
+ showOKBCustomSaveStatus('تمت استعادة الافتراضي في النموذج؛ اضغط حفظ للتطبيق.');
+}
+
 function renderRolePermissionMatrix() {
   if (!isAdmin()) return;
   const role = document.getElementById('permissionRoleSelect')?.value || ROLE_PERMISSION_ROLES[0].key;
@@ -2538,6 +2791,8 @@ async function showPermissionPage() {
   setActiveMenu('permissionPage');
   populatePermissionRoleSelect();
   renderRolePermissionMatrix();
+  switchOKBPermissionTab('roles');
+  loadOKBUIConfiguration(true);
 }
 
 function selectAllRolePermissions(checked) {
@@ -4188,6 +4443,7 @@ function toggleUserAccountMenu(event) {
 }
 
 function setupUserView() {
+  void loadOKBUIConfiguration();
   document.body.classList.toggle('doctor-readonly', isDoctorRole() && !hasButtonPermission('btn_dashboard_edit') && !hasButtonPermission('btn_branch_edit'));
   $("userNameHere").textContent = currentUser.name;
   $("userRoleHere").textContent = getRoleDisplayName(currentUser.role);
@@ -4204,8 +4460,8 @@ const productReportsBtn = document.getElementById('productReportsHeaderBtn');
 if (productReportsBtn) productReportsBtn.style.display = canViewProductReports() ? 'inline-flex' : 'none';
 const secretaryAuditBtn = document.getElementById('secretaryAuditHeaderBtn');
 if (secretaryAuditBtn) secretaryAuditBtn.style.display = hasRoleFeature('secretary_audit') ? 'inline-flex' : 'none';
-const financialAuditBtn = document.getElementById('financialAuditHeaderBtn');
-if (financialAuditBtn) financialAuditBtn.style.display = hasButtonPermission('btn_financial_audit_main') ? 'inline-flex' : 'none';
+const chatHeaderBtn = document.getElementById('chatHeaderBtn');
+if (chatHeaderBtn) chatHeaderBtn.classList.toggle('hidden', !hasRoleFeature('chat'));
 const dashboardBtn = document.getElementById('dashboardHeaderBtn');
 if (dashboardBtn) dashboardBtn.style.display = hasRoleFeature('dashboard') ? 'inline-flex' : 'none';
 const storesBtn = document.getElementById('okbStoresHeaderBtn');
@@ -4222,9 +4478,10 @@ if(hasRoleFeature('branch_stock'))updateBranchStockLowStockBadge();
 const pendingBtn = document.getElementById('pendingHeaderBtn');
 if (pendingBtn) pendingBtn.style.display = hasRoleFeature('pending') ? 'inline-flex' : 'none';
 const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
-if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = (canViewShippingRank() || hasRoleFeature('doctor_rank_stores')) ? 'inline-flex' : 'none';
 const shippingRankHeaderWrap = document.getElementById('shippingRankHeaderWrap');
-if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = (canViewShippingRank() || hasRoleFeature('doctor_rank_stores')) ? 'inline-flex' : 'none';
+ document.querySelectorAll('.shipping-rank-branch-menu-item').forEach(el=>el.classList.toggle('hidden',!canViewShippingRank()));
 document.querySelectorAll('.company-rank-menu-item').forEach(el => {
   el.classList.toggle('hidden', !hasRoleFeature('company_rank'));
 });
@@ -5457,6 +5714,7 @@ async function showOrdersPage(options={}) {
   if(!exactOrder)clearExactOrderView();
   hideAllPages();
   $("ordersPage").classList.remove("hidden");
+  syncAdminManualTicketVisibility();
   renderBranchFloatingSticky();
   setActiveMenu("ordersPage");
   if(filterStatus)filterStatus.value='الكل';
@@ -5536,6 +5794,7 @@ async function showShippingRankPage(mode = 'branch') {
 async function showDoctorRankPage() {
   if (!hasRoleFeature('doctor_rank_stores')) { alert('Doctor Rank غير مضاف لصلاحيات حسابك'); return; }
   closeOKBStoresMenu();
+  closeShippingRankMenu();
   hideAllPages();
   $("doctorRankPage").classList.remove("hidden");
   setActiveMenu("doctorRankPage");
@@ -5654,7 +5913,7 @@ function closeShippingRankMenu() {
 
 function toggleShippingRankMenu(event) {
   event?.stopPropagation();
-  if (!canViewShippingRank()) return;
+  if (!canViewShippingRank() && !hasRoleFeature('doctor_rank_stores')) return;
   const menu = document.getElementById('shippingRankHeaderMenu');
   const button = document.getElementById('shippingRankHeaderBtn');
   if (!menu || !button) return;
@@ -5727,6 +5986,29 @@ document.addEventListener('click', event => {
   if (!event.target.closest('#shippingRankHeaderWrap')) closeShippingRankMenu();
 });
 
+// v273: dashboard-only emergency Ticket ID; no change to the regular generator.
+function syncAdminManualTicketVisibility() {
+  const wrap=document.getElementById('adminManualTicketWrap');
+  const enabled=document.getElementById('adminManualTicketEnabled');
+  const field=document.getElementById('adminManualTicketId');
+  const fields=document.getElementById('adminManualTicketFields');
+  if (!wrap || !enabled || !field || !fields) return;
+  const allowed=Boolean(isAdmin() && !editId);
+  wrap.style.display=allowed?'block':'none';
+  if(!allowed){enabled.checked=false;field.value='';}
+  fields.style.display=allowed&&enabled.checked?'block':'none';
+}
+function toggleAdminManualTicketMode() { syncAdminManualTicketVisibility(); }
+function getAdminManualTicketRequest() {
+  const enabled=document.getElementById('adminManualTicketEnabled');
+  if (!isAdmin() || editId || !enabled?.checked) return null;
+  const raw=String(document.getElementById('adminManualTicketId')?.value||'').trim();
+  if (!/^[0-9]{1,10}$/.test(raw) || Number(raw)<1 || !Number.isSafeInteger(Number(raw))) {
+    throw new Error('اكتب Ticket ID رقمي صحيح للطوارئ.');
+  }
+  return formatSequentialTicketId(raw);
+}
+
 function resetForm() { 
   orderForm.reset(); 
   editId = null; 
@@ -5736,6 +6018,7 @@ function resetForm() {
   const adminDateInput = document.getElementById('adminOrderDate');
   if (adminDateWrap) adminDateWrap.style.display = 'none';
   if (adminDateInput) adminDateInput.value = '';
+  syncAdminManualTicketVisibility();
   if (!isAdmin()) { 
     employeeName.value = currentUser.name; 
     employeeName.readOnly = true; 
@@ -6953,8 +7236,22 @@ orderForm.addEventListener("submit", async (e) => {
       if (result.error) throw result.error;
       orderId = editId;
     } else {
-      Object.assign(orderData, await reserveNextOrderIdentifiers());
-      result = await supabaseClient.from("orders").insert([orderData]).select();
+      const emergencyTicket=getAdminManualTicketRequest();
+      if (emergencyTicket) {
+        const approved=confirm(`تأكيد إضافة أوردر طوارئ برقم Ticket ${emergencyTicket}؟\nالعملية لا تستعيد الأوردر المحذوف تلقائيًا ولا تعدّل عداد الترقيم.`);
+        if (!approved) { releaseDashboardSubmit(); return; }
+        // Admin verification and collision protection are enforced by the dedicated database RPC.
+        const payload={...orderData,ticket_id:emergencyTicket,order_barcode:generateOrderBarcode(emergencyTicket)};
+        payload.notes=buildNotesWithOrderMeta(payload.notes,{
+          ...getOrderMeta({notes:payload.notes}),ticket_seq_v2:false,
+          manual_ticket_recovery:true,manual_ticket_recovery_at:new Date().toISOString()
+        });
+        const response=await supabaseClient.rpc('okb_admin_create_emergency_ticket',{p_order:payload});
+        result={data:response.data?[response.data]:[],error:response.error};
+      } else {
+        Object.assign(orderData, await reserveNextOrderIdentifiers());
+        result = await supabaseClient.from("orders").insert([orderData]).select();
+      }
       if (result.error) throw result.error;
       
       if (result.data && result.data.length > 0) {
@@ -7200,6 +7497,7 @@ window.editOrder = function (id) {
   const adminDateInput = document.getElementById('adminOrderDate');
   if (adminDateWrap) adminDateWrap.style.display = isAdmin() ? 'block' : 'none';
   if (adminDateInput) adminDateInput.value = isAdmin() ? toLocalDateTimeInputValue(o.created_at) : '';
+  syncAdminManualTicketVisibility();
 
   setProductCartFromOrder('dash', o);
 

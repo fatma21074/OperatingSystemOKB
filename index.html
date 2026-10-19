@@ -472,7 +472,7 @@
 <span class="eye-icon" onclick="togglePassword()">👁</span>
 </div>
 </div>
-<button class="signin-btn" id="loginSubmitBtn" onclick="login()">Sign In</button>
+<button data-okb-custom-button="b1" class="signin-btn" id="loginSubmitBtn" onclick="login()">Sign In</button>
 <div class="login-error-new" id="loginError">
       Username أو Password غلط أو الحساب غير مفعل
     </div>
@@ -487,7 +487,7 @@
 <!-- ===== Top Header ===== -->
 <header class="app-header">
 <div class="app-brand">
-<button class="mobile-smart-back" id="mobileSmartBackBtn" type="button" onclick="mobileSmartBack()" aria-label="الرجوع إلى الصفحة السابقة">←</button>
+<button data-okb-custom-button="b2" class="mobile-smart-back" id="mobileSmartBackBtn" type="button" onclick="mobileSmartBack()" aria-label="الرجوع إلى الصفحة السابقة">←</button>
 <div class="brand-badge">OKB</div>
 <div class="mobile-brand-copy" aria-live="polite">
   <strong>OKB</strong>
@@ -504,13 +504,13 @@
 </div>
 <span class="user-account-arrow">▾</span>
 <div class="user-account-menu" id="userAccountMenu">
-  <button type="button" class="user-account-myaccount" onclick="event.stopPropagation();closeUserAccountMenu();openMyAccountModal()">👤 My Account</button>
-  <button type="button" class="user-account-logout" onclick="event.stopPropagation();closeUserAccountMenu();logout()">🚪 Log out</button>
+  <button data-okb-custom-button="b3" type="button" class="user-account-myaccount" onclick="event.stopPropagation();closeUserAccountMenu();openMyAccountModal()">👤 My Account</button>
+  <button data-okb-custom-button="b4" type="button" class="user-account-logout" onclick="event.stopPropagation();closeUserAccountMenu();logout()">🚪 Log out</button>
 </div>
 </div>
 <div class="notif-wrap" title="Notifications">
 </div>
-<button class="dashboard-header-btn" id="dashboardHeaderBtn" type="button" onclick="showOrdersPage()" title="Dashboard">
+<button data-okb-custom-button="b5" class="dashboard-header-btn" id="dashboardHeaderBtn" type="button" onclick="showOrdersPage()" title="Dashboard">
   <span class="dashboard-header-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="3" width="7" height="7" rx="1"></rect>
@@ -522,18 +522,19 @@
   <span class="dashboard-header-label">Dashboard</span>
 </button>
 <div class="header-settings-wrap shipping-rank-header-wrap" id="shippingRankHeaderWrap">
-  <button class="shipping-rank-header-btn" id="shippingRankHeaderBtn" type="button" onclick="toggleShippingRankMenu(event)" title="Shipping Rank">
+  <button data-okb-custom-button="b6" class="shipping-rank-header-btn" id="shippingRankHeaderBtn" type="button" onclick="toggleShippingRankMenu(event)" title="Shipping Rank">
     <span class="shipping-rank-header-icon" aria-hidden="true">🚚</span>
     <span class="shipping-rank-header-label">Shipping Rank</span>
     <span class="settings-header-arrow">▾</span>
   </button>
   <div class="header-settings-menu shipping-rank-header-menu" id="shippingRankHeaderMenu">
-    <button class="header-settings-item" type="button" onclick="openShippingRankMode('branch')">🏪 <span>Branch Rank</span></button>
-    <button class="header-settings-item company-rank-menu-item" type="button" onclick="openShippingRankMode('company')">🚚 <span>Company Rank</span></button>
+    <button data-okb-custom-button="b7" class="header-settings-item shipping-rank-branch-menu-item" type="button" onclick="openShippingRankMode('branch')">🏪 <span>Branch Rank</span></button>
+    <button data-okb-custom-button="b8" class="header-settings-item company-rank-menu-item" type="button" onclick="openShippingRankMode('company')">🚚 <span>Company Rank</span></button>
+    <button data-okb-custom-button="b9" class="header-settings-item doctor-rank-page-item hidden" id="doctorRankStoresMenuBtn" type="button" onclick="closeShippingRankMenu();showDoctorRankPage()">👨‍⚕️ <span>Doctor Rank</span></button>
   </div>
 </div>
 <div class="header-okb-stores-wrap">
-  <button class="header-okb-stores-btn" id="okbStoresHeaderBtn" type="button" onclick="toggleOKBStores(this)" title="OKB Stores">
+  <button data-okb-custom-button="b10" class="header-okb-stores-btn" id="okbStoresHeaderBtn" type="button" onclick="toggleOKBStores(this)" title="OKB Stores">
     <span class="header-okb-stores-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path><path d="M9 11v4M15 11v4"></path></svg>
     </span>
@@ -541,17 +542,17 @@
     <span class="okb-arrow">▾</span>
   </button>
   <div class="okb-branches header-okb-branches" id="okbBranchesMenu" style="display:none;">
-    <button class="okb-branch-btn" data-branch="مدينة نصر" onclick="openBranchPage('مدينة نصر')">فرع مدينة نصر</button>
-    <button class="okb-branch-btn" data-branch="اسكندرية" onclick="openBranchPage('اسكندرية')">فرع اسكندرية</button>
-    <button class="okb-branch-btn" data-branch="طنطا" onclick="openBranchPage('طنطا')">فرع طنطا</button>
-    <button class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
-    <button class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Abnormal</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
-    <button class="okb-stores-report-btn doctor-rank-page-item hidden" id="doctorRankStoresMenuBtn" type="button" onclick="showDoctorRankPage()"><span>👨‍⚕️ Doctor Rank</span></button>
-    <button class="okb-stores-report-btn branches-treasury-page-item hidden" id="branchesTreasuryMenuBtn" type="button" onclick="showBranchesTreasuryPage()"><span>🏦 خزنة الفروع</span></button>
-    <button class="okb-stores-report-btn commission-page-item hidden" id="commissionMenuBtn" type="button" onclick="showCommissionPage()"><span>Commission 🚩</span></button>
+    <button data-okb-custom-button="b11" class="okb-branch-btn" data-branch="مدينة نصر" onclick="openBranchPage('مدينة نصر')">فرع مدينة نصر</button>
+    <button data-okb-custom-button="b12" class="okb-branch-btn" data-branch="اسكندرية" onclick="openBranchPage('اسكندرية')">فرع اسكندرية</button>
+    <button data-okb-custom-button="b13" class="okb-branch-btn" data-branch="طنطا" onclick="openBranchPage('طنطا')">فرع طنطا</button>
+    <button data-okb-custom-button="b14" class="okb-branch-btn" data-branch="المنصورة" onclick="openBranchPage('المنصورة')">فرع المنصورة</button>
+    <button data-okb-custom-button="b15" class="okb-stores-report-btn" id="okbStoresReportMenuBtn" type="button" onclick="showOKBStoresReportPage()"><span>OKB Abnormal</span><b class="hidden" id="okbStoresReportBadge">0</b></button>
+    <button data-okb-custom-button="b16" class="okb-stores-report-btn daily-report-page-item hidden" id="dailyReportStoresMenuBtn" type="button" onclick="closeOKBStoresMenu();showBranchRankPage()"><span>📋 Daily Report</span></button>
+    <button data-okb-custom-button="b17" class="okb-stores-report-btn branches-treasury-page-item hidden" id="branchesTreasuryMenuBtn" type="button" onclick="showBranchesTreasuryPage()"><span>🏦 خزنة الفروع</span></button>
+    <button data-okb-custom-button="b18" class="okb-stores-report-btn commission-page-item hidden" id="commissionMenuBtn" type="button" onclick="showCommissionPage()"><span>Commission 🚩</span></button>
   </div>
 </div>
-<button class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
+<button data-okb-custom-button="b19" class="pending-header-btn" id="pendingHeaderBtn" type="button" onclick="showPendingPage()" title="Pending Orders">
   <span class="pending-header-icon" aria-hidden="true">
     <span class="pending-header-notification hidden" id="pendingHeaderNotification" aria-label="Pending orders count">0</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -562,7 +563,7 @@
   </span>
   <span class="pending-header-label">Pending</span>
 </button>
-<button class="branch-stock-btn" id="branchStockHeaderBtn" type="button" onclick="showBranchStockPage()" title="Branch Stock">
+<button data-okb-custom-button="b20" class="branch-stock-btn" id="branchStockHeaderBtn" type="button" onclick="showBranchStockPage()" title="Branch Stock">
   <span class="branch-stock-icon" aria-hidden="true">
     <span class="branch-stock-notification hidden" id="branchStockNotification" aria-label="Low stock products count">0</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 12h-13z"></path><path d="M8 7a4 4 0 0 1 8 0"></path><path d="M9 11v4M15 11v4"></path></svg>
@@ -570,45 +571,45 @@
   <span class="branch-stock-label">Branch Stock</span>
 </button>
 <div class="header-settings-wrap" id="headerSettingsWrap">
-  <button class="settings-header-btn" id="settingsHeaderBtn" type="button" onclick="toggleHeaderSettingsMenu(event)" title="Settings">
+  <button data-okb-custom-button="b21" class="settings-header-btn" id="settingsHeaderBtn" type="button" onclick="toggleHeaderSettingsMenu(event)" title="Settings">
     <span class="settings-header-icon" aria-hidden="true">⚙️</span>
     <span class="settings-header-label">Settings</span>
     <span class="chat-settings-unread hidden" id="settingsChatUnreadBadge">0</span>
     <span class="settings-header-arrow">▾</span>
   </button>
   <div class="header-settings-menu" id="headerSettingsMenu">
-    <button class="header-settings-item settings-page-item" type="button" onclick="openHeaderSettingsPage('settings')">⚙️ <span>Settings</span></button>
-    <button class="header-settings-item users-page-item" type="button" onclick="openHeaderSettingsPage('users')">👥 <span>Users</span></button>
-    <button class="header-settings-item daily-report-page-item" type="button" onclick="openHeaderSettingsPage('daily')">📋 <span>Daily Report</span></button>
-    <button class="header-settings-item permission-page-item hidden" type="button" onclick="openHeaderSettingsPage('permission')">🔐 <span>Permission</span></button>
-    <button class="header-settings-item chat-page-item" type="button" onclick="openHeaderSettingsPage('chat')">💬 <span>Chat</span><span class="chat-menu-unread hidden" id="chatUnreadBadge">0</span></button>
+    <button data-okb-custom-button="b22" class="header-settings-item settings-page-item" type="button" onclick="openHeaderSettingsPage('settings')">⚙️ <span>Settings</span></button>
+    <button data-okb-custom-button="b23" class="header-settings-item users-page-item" type="button" onclick="openHeaderSettingsPage('users')">👥 <span>Users</span></button>
+    <button data-okb-custom-button="b24" class="header-settings-item permission-page-item hidden" type="button" onclick="openHeaderSettingsPage('permission')">🔐 <span>Permission</span></button>
   </div>
 </div>
-<button class="activity-log-btn" id="activityLogHeaderBtn" type="button" onclick="showActivityLogPage()" title="Activity Log">
+<button data-okb-custom-button="b25" class="activity-log-btn" id="activityLogHeaderBtn" type="button" onclick="showActivityLogPage()" title="Activity Log">
   <span class="activity-log-icon" aria-hidden="true">
     <span class="activity-log-notification hidden" id="activityLogNotification" aria-label="New activities">0</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"></path><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg>
   </span>
   <span class="activity-log-label">Activity Log</span>
 </button>
-<button class="product-reports-btn" id="productReportsHeaderBtn" type="button" onclick="showProductReportsPage()" title="Product Reports">
+<button data-okb-custom-button="b26" class="product-reports-btn" id="productReportsHeaderBtn" type="button" onclick="showProductReportsPage()" title="Product Reports">
   <span class="product-reports-icon" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="M6.5 10.5 12 5l5.5 5.5"></path><path d="M5 19h14"></path></svg>
   </span>
   <span class="product-reports-label">Product Reports</span>
 </button>
-<button class="theme-toggle" onclick="toggleTheme()" title="تبديل الوضع الليلي">
+<button data-okb-custom-button="b27" class="theme-toggle" onclick="toggleTheme()" title="تبديل الوضع الليلي">
 <span class="icon-moon">🌙</span>
 <span class="icon-sun">☀️</span>
 </button>
-<button class="secretary-audit-header-btn" id="secretaryAuditHeaderBtn" type="button" onclick="openSecretaryAudit()" title="Secretary Audit">
+<button data-okb-custom-button="b28" class="secretary-audit-header-btn" id="secretaryAuditHeaderBtn" type="button" onclick="openSecretaryAudit()" title="Secretary Audit">
   <span class="secretary-audit-icon" aria-hidden="true">🛡️<span id="secretaryAuditNotification" class="secretary-audit-notification hidden">0</span></span>
   <span>Secretary Audit</span>
 </button>
-<button class="logout-header-btn financial-audit-header-btn" id="financialAuditHeaderBtn" type="button" onclick="openFinancialAudit('branches','main')" title="Financial Audit">
-  <span class="logout-header-icon" aria-hidden="true">🛡️<b id="financialAuditNotification" class="secretary-audit-notification hidden">0</b></span>
-  <span class="logout-header-label">Financial Audit</span>
+<button data-okb-custom-button="b29" class="logout-header-btn okb-chat-header-btn chat-page-item hidden" id="chatHeaderBtn" type="button" onclick="showChatPage()" title="Chat">
+  <span class="logout-header-icon" aria-hidden="true">💬<b id="chatUnreadBadge" class="secretary-audit-notification hidden">0</b></span>
+  <span class="logout-header-label" id="okbChatHeaderLabel">Chat</span>
 </button>
+<!-- Preserve the Financial Audit notification target without exposing its old header button. -->
+<span id="financialAuditNotification" class="hidden" style="display:none" aria-hidden="true">0</span>
 </div>
 </header>
 
@@ -621,24 +622,24 @@
       <strong id="mobileFoundationSheetTitle">القائمة</strong>
       <span id="mobileFoundationSheetSubtitle">اختر الوجهة</span>
     </div>
-    <button class="mobile-foundation-sheet-close" type="button" onclick="closeMobileFoundationSheet()" aria-label="إغلاق">×</button>
+    <button data-okb-custom-button="b30" class="mobile-foundation-sheet-close" type="button" onclick="closeMobileFoundationSheet()" aria-label="إغلاق">×</button>
   </div>
   <div class="mobile-foundation-sheet-body" id="mobileFoundationSheetBody"></div>
 </section>
 <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="التنقل الرئيسي على الموبايل">
-  <button type="button" class="mobile-bottom-nav-item" id="mobileNavDashboard" data-mobile-nav="dashboard" onclick="mobileFoundationNavigate('dashboard')">
+  <button data-okb-custom-button="b31" type="button" class="mobile-bottom-nav-item" id="mobileNavDashboard" data-mobile-nav="dashboard" onclick="mobileFoundationNavigate('dashboard')">
     <span class="mobile-bottom-nav-icon">⌂</span><span>Dashboard</span>
   </button>
-  <button type="button" class="mobile-bottom-nav-item" id="mobileNavBranches" data-mobile-nav="branches" onclick="mobileFoundationNavigate('branches')">
+  <button data-okb-custom-button="b32" type="button" class="mobile-bottom-nav-item" id="mobileNavBranches" data-mobile-nav="branches" onclick="mobileFoundationNavigate('branches')">
     <span class="mobile-bottom-nav-icon">🏪</span><span>Branches</span>
   </button>
-  <button type="button" class="mobile-bottom-nav-item" id="mobileNavPending" data-mobile-nav="pending" onclick="mobileFoundationNavigate('pending')">
+  <button data-okb-custom-button="b33" type="button" class="mobile-bottom-nav-item" id="mobileNavPending" data-mobile-nav="pending" onclick="mobileFoundationNavigate('pending')">
     <span class="mobile-bottom-nav-icon">△</span><span>Pending</span><b class="mobile-nav-badge hidden" id="mobilePendingBadge">0</b>
   </button>
-  <button type="button" class="mobile-bottom-nav-item" id="mobileNavChat" data-mobile-nav="quick" data-mobile-target="chat" onclick="mobileFoundationNavigate(this.dataset.mobileTarget || 'chat')">
+  <button data-okb-custom-button="b34" type="button" class="mobile-bottom-nav-item" id="mobileNavChat" data-mobile-nav="quick" data-mobile-target="chat" onclick="mobileFoundationNavigate(this.dataset.mobileTarget || 'chat')">
     <span class="mobile-bottom-nav-icon" id="mobileQuickIcon">◌</span><span id="mobileQuickLabel">Chat</span><b class="mobile-nav-badge hidden" id="mobileChatBadge">0</b>
   </button>
-  <button type="button" class="mobile-bottom-nav-item" id="mobileNavMore" data-mobile-nav="more" onclick="mobileFoundationNavigate('more')">
+  <button data-okb-custom-button="b35" type="button" class="mobile-bottom-nav-item" id="mobileNavMore" data-mobile-nav="more" onclick="mobileFoundationNavigate('more')">
     <span class="mobile-bottom-nav-icon mobile-more-dots">•••</span><span>More</span><b class="mobile-nav-badge hidden" id="mobileMoreBadge">0</b>
   </button>
 </nav>
@@ -651,7 +652,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1>إضافة أوردر جديد</h1>
-<div class="page-user-refresh"><button id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><button class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+<div class="page-user-refresh"><button data-okb-custom-button="b36" id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><button data-okb-custom-button="b37" class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button data-okb-custom-button="b38" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 </div>
 <form id="orderForm">
 <div class="form-grid">
@@ -677,6 +678,7 @@
 <input id="quantity" type="hidden" value="1"/>
 <input id="deliveryFee" type="hidden"/>
 <textarea id="productNames" class="hidden"></textarea>
+<div class="dash-order-status-ticket-row">
 <select id="status" required="">
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
@@ -689,9 +691,20 @@
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
 </select>
+<div id="adminManualTicketFields" class="dash-manual-ticket-field" style="display:none;">
+  <label for="adminManualTicketId">رقم Ticket ID الأصلي</label>
+  <input id="adminManualTicketId" inputmode="numeric" maxlength="10" pattern="[0-9]+" placeholder="مثال: 17068" autocomplete="off" />
+</div>
+</div>
+<div class="dash-order-flags">
 <label class="order-flag-check"><input id="dashUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
 <label class="order-flag-check"><input id="dashReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
 <label class="order-flag-check error-order-flag-check"><input id="dashErrorOrder" type="checkbox"/><span class="error-order-flag-text">أخطاء <b>❌</b></span></label>
+<div id="adminManualTicketWrap" style="display:none;">
+<label class="order-flag-check"><input type="checkbox" id="adminManualTicketEnabled" onchange="toggleAdminManualTicketMode()"/><span>🔐 Ticket ID يدوي — للطوارئ (Admin فقط)</span></label>
+</div>
+</div>
+
 </div>
 <div class="smart-products-box" data-cart="dash">
   <div class="smart-products-head">
@@ -699,13 +712,13 @@
       <div class="smart-products-title">📦 المنتجات</div>
       <div class="smart-products-sub"></div>
     </div>
-    <button class="soft" onclick="clearProductCart('dash')" type="button" style="padding:7px 12px;font-size:11px">تفريغ</button>
+    <button data-okb-custom-button="b39" class="soft" onclick="clearProductCart('dash')" type="button" style="padding:7px 12px;font-size:11px">تفريغ</button>
   </div>
   <div class="smart-add-grid">
     <div><label>اسم المنتج</label><select id="dashProductNameInput" onchange="onProductSelectionChange('dash')"><option value="">جاري تحميل المنتجات...</option></select></div>
     <div><label>سعر القطعة</label><input id="dashProductPriceInput" type="number" min="0" step="0.01" placeholder="يظهر تلقائيًا" readonly title="السعر محدد من Settings ولا يمكن تعديله"/></div>
     <div><label>الكمية</label><input id="dashProductQtyInput" type="number" min="1" value="1"/></div>
-    <button class="smart-add-btn" onclick="addProductItem('dash')" type="button">+ أضف</button>
+    <button data-okb-custom-button="b40" class="smart-add-btn" onclick="addProductItem('dash')" type="button">+ أضف</button>
   </div>
   <div class="smart-cart-list" id="dashProductCartList"></div>
   <div class="smart-summary-grid">
@@ -725,7 +738,7 @@
 <input accept="image/*" id="paymentImage" onchange="previewPaymentImage(this)" style="padding:8px;background:var(--bg-input);" type="file"/>
 <div id="paymentImagePreview" style="margin-top:8px;display:none;">
 <img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)"/>
-<button onclick="clearPaymentImage()" style="background:#EF4444;padding:4px 8px;font-size:11px;margin-top:4px" type="button">🗑 إزالة</button>
+<button data-okb-custom-button="b41" onclick="clearPaymentImage()" style="background:#EF4444;padding:4px 8px;font-size:11px;margin-top:4px" type="button">🗑 إزالة</button>
 </div>
 <input id="existingPaymentImage" type="hidden"/>
 </div>
@@ -733,7 +746,7 @@
 <textarea id="orderNotes" placeholder="ملاحظات العميل (اختياري)..." rows="2"></textarea>
 </div>
 <div class="order-actions">
-<button class="primary wide-btn" id="submitBtn" type="submit">إضافة الأوردر</button>
+<button data-okb-custom-button="b42" class="primary wide-btn" id="submitBtn" type="submit">إضافة الأوردر</button>
 </div>
 </form>
 </div>
@@ -761,8 +774,8 @@
 <label>إلى</label>
 <input id="toDate" type="date"/>
 </div>
-<button class="btn-filter" onclick="applyDateFilter()">🔍 Filter</button>
-<button class="btn-reset-date" onclick="resetDateFilter()">✕ Reset</button>
+<button data-okb-custom-button="b43" class="btn-filter" onclick="applyDateFilter()">🔍 Filter</button>
+<button data-okb-custom-button="b44" class="btn-reset-date" onclick="resetDateFilter()">✕ Reset</button>
 <span class="active-filter-badge" id="activeDateBadge">📅 فيلتر تاريخ مفعّل</span>
 <input id="searchInput" placeholder="ابحث بالاسم أو الموبايل أو Ticket ID أو Barcode..."/>
 <select id="filterStatus" data-okb-unified-filter="dashboard">
@@ -771,14 +784,14 @@
 <select id="filterEmployee"></select>
 <select id="filterShippingCompany"><option value="الكل">كل شركات الشحن</option></select>
 <select id="filterDoctor"><option value="الكل">كل الدكاترة</option></select>
-<button class="success" id="exportBtn">⬇ Export</button>
-<button id="importBtn" onclick="openImportModal()">📥 Import Excel</button>
+<button data-okb-custom-button="b45" class="success" id="exportBtn">⬇ Export</button>
+<button data-okb-custom-button="b46" id="importBtn" onclick="openImportModal()">📥 Import Excel</button>
 </div>
 <div class="bulk-actions admin-only hidden" id="bulkDeleteBar">
 <span id="selectedOrdersCount">0 عميل محدد</span>
-<button class="danger" onclick="deleteSelectedOrders()" type="button">🗑 حذف العملاء المحددين</button>
-<button class="doctor-weekly-btn doctor-rank-smart-export-btn" id="dashboardAllocateBtn" onclick="openAllocateModal('dashboard')" type="button">Allocate</button>
-<button class="soft" onclick="clearSelectedOrders()" type="button">إلغاء التحديد</button>
+<button data-okb-custom-button="b47" class="danger" onclick="deleteSelectedOrders()" type="button">🗑 حذف العملاء المحددين</button>
+<button data-okb-custom-button="b48" class="doctor-weekly-btn doctor-rank-smart-export-btn" id="dashboardAllocateBtn" onclick="openAllocateModal('dashboard')" type="button">Allocate</button>
+<button data-okb-custom-button="b49" class="soft" onclick="clearSelectedOrders()" type="button">إلغاء التحديد</button>
 </div>
 <div class="table-wrap">
 <table>
@@ -807,18 +820,18 @@
         <div><h1>Branch Stock</h1><p>جرد دائم للفروع مرتبط مباشرة بمنتجات OKB Items</p></div>
       </div>
       <div class="branch-stock-header-actions">
-        <button class="stock-action-btn stock-save-btn" id="stockTopSaveBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
-        <button class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
-        <button class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
-        <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+        <button data-okb-custom-button="b50" class="stock-action-btn stock-save-btn" id="stockTopSaveBtn" type="button" onclick="saveBranchInventory()">💾 حفظ الكميات</button>
+        <button data-okb-custom-button="b51" class="stock-action-btn stock-export-btn" type="button" onclick="exportStockVarianceExcel()">⬇ Export Excel</button>
+        <button data-okb-custom-button="b52" class="stock-action-btn stock-print-btn" type="button" onclick="printBranchStock()">🖨️ Print</button>
+        <button data-okb-custom-button="b53" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
 
     <div class="stock-take-start stock-control-bar">
       <div><label>Branch — الفرع</label><select id="stockTakeBranch" onchange="changeBranchStockBranch()"></select></div>
       <div><label>Search Product — بحث</label><input id="stockProductSearchTop" type="search" placeholder="ابحث باسم المنتج..." oninput="syncBranchStockSearch(this.value)"></div>
-      <button class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock(this)">↻ Refresh</button>
-      <button class="stock-action-btn stock-bulk-add-btn" id="stockBulkAddBtn" type="button" onclick="openBranchStockBulkAdd()" disabled>＋ إضافة جماعية (0)</button>
+      <button data-okb-custom-button="b54" class="stock-action-btn stock-refresh-btn" type="button" onclick="refreshBranchStock(this)">↻ Refresh</button>
+      <button data-okb-custom-button="b55" class="stock-action-btn stock-bulk-add-btn" id="stockBulkAddBtn" type="button" onclick="openBranchStockBulkAdd()" disabled>＋ إضافة جماعية (0)</button>
     </div>
 
     <div class="stock-signed-bypass-banner hidden" id="stockSignedBypassBanner"></div>
@@ -863,8 +876,8 @@
           <div><label>تاريخ الصلاحية</label><input id="manualStockExpiry" type="date"></div>
           <div class="stock-wide"><label>ملاحظات</label><input id="manualStockNotes" type="text" placeholder="ملاحظات الصنف أو حالة العبوة"></div>
           <div class="stock-add-product-actions">
-            <button class="stock-add-primary" type="button" onclick="addManualStockProduct()">إضافة للجرد</button>
-            <button class="stock-add-secondary" type="button" onclick="clearManualStockProductForm()">تفريغ</button>
+            <button data-okb-custom-button="b56" class="stock-add-primary" type="button" onclick="addManualStockProduct()">إضافة للجرد</button>
+            <button data-okb-custom-button="b57" class="stock-add-secondary" type="button" onclick="clearManualStockProductForm()">تفريغ</button>
           </div>
         </div>
       </div>
@@ -873,7 +886,7 @@
         <div class="stock-scanner-wrap"><label>Barcode Scanner — امسح الباركود</label><input id="stockBarcodeScanner" type="text" placeholder="Scan barcode ثم Enter" onkeydown="handleStockBarcodeScan(event)"></div>
         <div><label>Search Product</label><input id="stockProductSearch" type="text" placeholder="اسم المنتج أو الباركود..." oninput="renderStockTakeTable()"></div>
         <div><label>Category</label><select id="stockCategoryFilter" onchange="renderStockTakeTable()"><option value="all">كل التصنيفات</option></select></div>
-        <button class="btn-reset-date" type="button" onclick="clearStockFilters()">Reset</button>
+        <button data-okb-custom-button="b58" class="btn-reset-date" type="button" onclick="clearStockFilters()">Reset</button>
       </div>
 
       <div class="table-wrap">
@@ -886,7 +899,7 @@
     </div>
 
     <div class="stock-signed-control hidden" id="stockSignedControl">
-      <button class="stock-signed-toggle enabled" id="stockSignedToggleBtn" type="button" onclick="toggleBranchSignedDeduction()">🔴 إيقاف خصم Signed</button>
+      <button data-okb-custom-button="b59" class="stock-signed-toggle enabled" id="stockSignedToggleBtn" type="button" onclick="toggleBranchSignedDeduction()">🔴 إيقاف خصم Signed</button>
       <small id="stockSignedControlNote">التحكم يخص الفرع المحدد فقط ويظهر للـAdmin.</small>
     </div>
   </div>
@@ -897,7 +910,7 @@
   <div class="product-reports-shell">
     <div class="product-reports-head">
       <div class="product-reports-title"><div class="product-reports-title-badge">📦</div><div><h1>Product Reports</h1><p>تحليل مبيعات ومرتجعات وحركة المنتجات المضافة من Settings</p></div></div>
-      <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+      <button data-okb-custom-button="b60" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
     </div>
 
     <div class="product-report-filters">
@@ -906,8 +919,8 @@
       <div><label>Branch</label><select id="productReportBranch"><option value="all">كل الفروع</option></select></div>
       <div><label>Doctor — الدكتور</label><select id="productReportDoctor"><option value="all">كل الدكاترة</option></select></div>
       <div><label>Search — المنتج</label><input id="productReportSearch" type="search" placeholder="ابحث باسم المنتج..." oninput="applyProductReportFilters()"></div>
-      <button class="btn-filter" type="button" onclick="applyProductReportFilters()">🔍 Filter</button>
-      <button class="btn-reset-date" type="button" onclick="resetProductReportFilters()">✕ Reset</button>
+      <button data-okb-custom-button="b61" class="btn-filter" type="button" onclick="applyProductReportFilters()">🔍 Filter</button>
+      <button data-okb-custom-button="b62" class="btn-reset-date" type="button" onclick="resetProductReportFilters()">✕ Reset</button>
     </div>
 
     <div class="product-kpis">
@@ -918,11 +931,11 @@
     </div>
 
     <div class="product-report-tabs">
-      <button class="product-report-tab active" id="productTabTop" type="button" onclick="setProductReportTab('top')">Top Selling</button>
-      <button class="product-report-tab" id="productTabReturned" type="button" onclick="setProductReportTab('returned')">Most Returned</button>
-      <button class="product-report-tab" id="productTabDead" type="button" onclick="setProductReportTab('dead')">Dead Stock</button>
-      <button class="product-report-tab" id="productTabTotal" type="button" onclick="setProductReportTab('total')">Total Products Sold</button>
-      <button class="product-report-tab" id="productTabSigned" type="button" onclick="setProductReportTab('signed')">Total Signed Products</button>
+      <button data-okb-custom-button="b63" class="product-report-tab active" id="productTabTop" type="button" onclick="setProductReportTab('top')">Top Selling</button>
+      <button data-okb-custom-button="b64" class="product-report-tab" id="productTabReturned" type="button" onclick="setProductReportTab('returned')">Most Returned</button>
+      <button data-okb-custom-button="b65" class="product-report-tab" id="productTabDead" type="button" onclick="setProductReportTab('dead')">Dead Stock</button>
+      <button data-okb-custom-button="b66" class="product-report-tab" id="productTabTotal" type="button" onclick="setProductReportTab('total')">Total Products Sold</button>
+      <button data-okb-custom-button="b67" class="product-report-tab" id="productTabSigned" type="button" onclick="setProductReportTab('signed')">Total Signed Products</button>
     </div>
 
     <div class="product-report-panel">
@@ -939,9 +952,9 @@
     </div>
 
     <div class="product-report-actions">
-      <button class="product-action-btn product-action-excel" type="button" onclick="exportProductReportExcel()">⬇ Export Excel</button>
-      <button class="product-action-btn product-action-print" type="button" onclick="printProductReports()">🖨️ Print</button>
-      <button class="product-action-btn product-action-refresh" type="button" onclick="refreshProductReports(event)">↻ Refresh</button>
+      <button data-okb-custom-button="b68" class="product-action-btn product-action-excel" type="button" onclick="exportProductReportExcel()">⬇ Export Excel</button>
+      <button data-okb-custom-button="b69" class="product-action-btn product-action-print" type="button" onclick="printProductReports()">🖨️ Print</button>
+      <button data-okb-custom-button="b70" class="product-action-btn product-action-refresh" type="button" onclick="refreshProductReports(event)">↻ Refresh</button>
     </div>
   </div>
 </section>
@@ -952,8 +965,8 @@
     <div class="activity-log-head">
       <div class="activity-log-title"><div class="activity-log-title-badge">⚡</div><div><h1>Activity Log</h1><p>سجل مركزي لكل الحركات المهمة داخل السيستم — متاح للأدمن فقط</p></div></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button class="soft" type="button" onclick="refreshActivityLogPage(this)">Refresh</button>
-        <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+        <button data-okb-custom-button="b71" class="soft" type="button" onclick="refreshActivityLogPage(this)">Refresh</button>
+        <button data-okb-custom-button="b72" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
     <div class="activity-log-stats">
@@ -968,8 +981,8 @@
       <div><label>بحث</label><input id="activityLogSearch" type="text" placeholder="اسم المستخدم، Ticket ID، العميل أو تفاصيل الحركة..."></div>
       <div><label>الموظف</label><select id="activityLogEmployee"><option value="all">كل الموظفين</option></select></div>
       <div><label>نوع الحركة</label><select id="activityLogType"><option value="all">كل الحركات</option><option value="order_created">إضافة أوردر</option><option value="order_updated">تعديل أوردر</option><option value="order_cancelled">إلغاء أوردر</option><option value="order_collected">تحصيل أوردر</option><option value="order_deleted">حذف أوردر</option><option value="stock_balance_add">إضافة رصيد الجرد</option><option value="stock_receipt">استلام الجرد</option><option value="stock_signed_deduction">خصم رصيد عند Signed</option><option value="stock_take_count">تعديل كمية الجرد</option><option value="stock_take_draft">حفظ جرد الفرع</option><option value="stock_take_refresh">تحديث بيانات الجرد</option><option value="commission_approved">اعتماد العمولة</option><option value="commission_unlocked">فتح اعتماد العمولة</option><option value="daily_locked">قفل يومية</option><option value="daily_unlocked">فتح يومية</option><option value="password_changed">تغيير كلمة مرور</option><option value="user_management">إدارة مستخدم</option><option value="login">تسجيل دخول</option><option value="logout">تسجيل خروج</option><option value="data_exported">تصدير بيانات</option><option value="chat_message">رسالة Chat</option><option value="chat_attachment">مرفق Chat</option></select></div>
-      <button class="btn-filter" type="button" onclick="loadActivityLogs()">🔍 Filter</button>
-      <button class="btn-reset-date" type="button" onclick="resetActivityLogFilters()">✕ Reset</button>
+      <button data-okb-custom-button="b73" class="btn-filter" type="button" onclick="loadActivityLogs()">🔍 Filter</button>
+      <button data-okb-custom-button="b74" class="btn-reset-date" type="button" onclick="resetActivityLogFilters()">✕ Reset</button>
     </div>
     <div class="activity-log-list" id="activityLogList"><div class="activity-log-loading">جاري تحميل سجل النشاط...</div></div>
     <div class="activity-log-pagination" id="activityLogPagination"></div>
@@ -989,14 +1002,14 @@
 <input id="analyticsFromDate" onchange="applyAnalyticsFilter()" type="date"/>
 <label>إلى</label>
 <input id="analyticsToDate" onchange="applyAnalyticsFilter()" type="date"/>
-<button class="btn-filter" onclick="applyAnalyticsFilter()">🔍 Filter</button>
-<button class="btn-reset-date" onclick="resetAnalyticsFilter()">✕ Reset</button>
+<button data-okb-custom-button="b75" class="btn-filter" onclick="applyAnalyticsFilter()">🔍 Filter</button>
+<button data-okb-custom-button="b76" class="btn-reset-date" onclick="resetAnalyticsFilter()">✕ Reset</button>
 <span class="active-filter-badge" id="analyticsFilterBadge"></span>
 </div>
 </div>
 </div>
 <div class="card">
-<div class="section-head"><h2>🚚 تحليل شركات الشحن</h2><button class="success" onclick="exportShippingAnalysis()">Export Shipping Analysis</button></div>
+<div class="section-head"><h2>🚚 تحليل شركات الشحن</h2><button data-okb-custom-button="b77" class="success" onclick="exportShippingAnalysis()">Export Shipping Analysis</button></div>
 <div class="table-wrap"> <table><thead><tr>
 <th>شركة الشحن</th>
 <th>Total Order</th>
@@ -1014,7 +1027,7 @@
 <div class="section-head">
 <h2>👨‍⚕️ تحليل أداء الدكاترة</h2>
 <input class="rank-search" id="doctorsAnalysisSearch" placeholder="Search doctor..."/>
-<button class="success" onclick="exportDoctorsAnalysis()">Export Doctors Analysis</button>
+<button data-okb-custom-button="b78" class="success" onclick="exportDoctorsAnalysis()">Export Doctors Analysis</button>
 </div>
 <div class="table-wrap"><table><thead><tr>
 <th>اسم الدكتور</th><th>Total Order</th><th>Signed</th><th>Transit</th><th>Returned</th><th>Fake Doctor</th><th>إجمالي المبيعات</th><th>Conversion Rate</th><th>نسبة الفيك</th><th>نسبة الراجع</th>
@@ -1034,13 +1047,13 @@
       <div class="analytics-date-bar" style="margin:0;background:rgba(15,23,42,.58);border-color:rgba(148,163,184,.22)">
         <label>من</label><input id="shippingFromDate" type="date"/>
         <label>إلى</label><input id="shippingToDate" type="date"/>
-        <button class="btn-filter" onclick="applyShippingDateFilter()">🔍 Filter</button>
-        <button class="btn-reset-date" onclick="resetShippingDateFilter()">✕ Reset</button>
+        <button data-okb-custom-button="b79" class="btn-filter" onclick="applyShippingDateFilter()">🔍 Filter</button>
+        <button data-okb-custom-button="b80" class="btn-reset-date" onclick="resetShippingDateFilter()">✕ Reset</button>
         <span class="active-filter-badge" id="shippingDateBadge"></span>
       </div>
-      <button id="branchShippingBackBtn" class="soft hidden" onclick="closeBranchShippingRankToBranch()" style="background:#64748B;color:#fff;border:none;">← رجوع للفرع</button>
-      <button class="success" onclick="exportShippingRank()">⬇ Export</button>
-      <div class="app-refresh-back"><button class="soft" id="refreshShippingRankBtn" onclick="refreshShippingRankData(event)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <button data-okb-custom-button="b81" id="branchShippingBackBtn" class="soft hidden" onclick="closeBranchShippingRankToBranch()" style="background:#64748B;color:#fff;border:none;">← رجوع للفرع</button>
+      <button data-okb-custom-button="b82" class="success" onclick="exportShippingRank()">⬇ Export</button>
+      <div class="app-refresh-back"><button data-okb-custom-button="b83" class="soft" id="refreshShippingRankBtn" onclick="refreshShippingRankData(event)">Refresh</button><button data-okb-custom-button="b84" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
   <div id="globalShippingRankSections" style="margin-top:18px;">
@@ -1051,9 +1064,9 @@
           <span id="branchPerformanceRankingSubtitle" style="font-size:12px;color:#94A3B8;">بيانات الأداء القياسية للفترة المحددة</span>
         </div>
         <div class="branch-performance-tabs" role="tablist" aria-label="نوع ترتيب الفروع">
-          <button class="branch-performance-tab active" id="branchDetailsRankingBtn" type="button" onclick="setBranchPerformanceRanking('details')">تفاصيل الأداء الحالي</button>
-          <button class="branch-performance-tab" id="branchDeliveryRankingBtn" type="button" onclick="setBranchPerformanceRanking('delivery')">🏆 ترتيب الأداء</button>
-          <button class="branch-performance-tab" id="branchReturnsRankingBtn" type="button" onclick="setBranchPerformanceRanking('returns')">📉 الأكثر تقليلًا للمرتجعات</button>
+          <button data-okb-custom-button="b85" class="branch-performance-tab active" id="branchDetailsRankingBtn" type="button" onclick="setBranchPerformanceRanking('details')">تفاصيل الأداء الحالي</button>
+          <button data-okb-custom-button="b86" class="branch-performance-tab" id="branchDeliveryRankingBtn" type="button" onclick="setBranchPerformanceRanking('delivery')">🏆 ترتيب الأداء</button>
+          <button data-okb-custom-button="b87" class="branch-performance-tab" id="branchReturnsRankingBtn" type="button" onclick="setBranchPerformanceRanking('returns')">📉 الأكثر تقليلًا للمرتجعات</button>
         </div>
         <div id="branchRankingView" class="hidden">
           <div class="branch-ranking-period" id="branchRankingPeriod">—</div>
@@ -1063,8 +1076,8 @@
           <div class="branch-performance-mobile-nav" aria-label="التنقل داخل جدول تفاصيل الأداء">
             <span>اسحب يمين / شمال لعرض باقي الأعمدة</span>
             <div>
-              <button type="button" onclick="scrollBranchPerformanceTable(-1)" aria-label="تحريك الجدول لليسار">←</button>
-              <button type="button" onclick="scrollBranchPerformanceTable(1)" aria-label="تحريك الجدول لليمين">→</button>
+              <button data-okb-custom-button="b88" type="button" onclick="scrollBranchPerformanceTable(-1)" aria-label="تحريك الجدول لليسار">←</button>
+              <button data-okb-custom-button="b89" type="button" onclick="scrollBranchPerformanceTable(1)" aria-label="تحريك الجدول لليمين">→</button>
             </div>
           </div>
           <div class="table-wrap branch-performance-mobile-scroll" id="branchPerformanceTableWrap" style="background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.18);">
@@ -1116,7 +1129,7 @@
   </div>
   <div class="shipping-note-card"><div class="shipping-note-icon">i</div><div>ملاحظة: تارجت التسليمات 90% — تارجت المرتجعات لا يتجاوز 10%، ويتم حساب النسب بناءً على إجمالي الأوردرات في الفترة المحددة.</div></div>
   <div class="operation-manager-report-wrap">
-    <button class="operation-manager-report-btn hidden" id="operationManagerReportBtn" type="button" onclick="exportOperationManagerReport(this)">📈 Operation Manager Report</button>
+    <button data-okb-custom-button="b90" class="operation-manager-report-btn hidden" id="operationManagerReportBtn" type="button" onclick="exportOperationManagerReport(this)">📈 Operation Manager Report</button>
   </div>
 
 </div>
@@ -1127,8 +1140,8 @@
   <div class="card doctor-rank-head">
     <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p><small class="doctor-rank-load-state" id="doctorRankLoadState" aria-live="polite"></small></div>
     <div class="doctor-rank-head-actions">
-      <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
-      <button class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
+      <button data-okb-custom-button="b91" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+      <button data-okb-custom-button="b92" class="soft" id="doctorRankRefreshBtn" type="button" onclick="refreshDoctorRankData(this)">↻ Refresh</button>
     </div>
   </div>
   <div class="card doctor-rank-toolbar">
@@ -1136,15 +1149,15 @@
     <label>إلى <input id="doctorRankToDate" type="date"></label>
     <label>الفرع <select id="doctorRankBranchFilter"><option value="all">كل الفروع</option><option value="nasr-city">مدينة نصر</option><option value="alexandria">اسكندرية</option><option value="tanta">طنطا</option><option value="mansoura">المنصورة</option></select></label>
     <input class="rank-search" id="doctorRankSearch" placeholder="بحث باسم الدكتور أو الكود...">
-    <button class="success" id="doctorRankFilterBtn" type="button" onclick="applyDoctorRankFilters()">Filter 🔍</button>
-    <button class="doctor-weekly-btn doctor-rank-smart-export-btn" type="button" onclick="exportDoctorRank()">⬇ Smart Export</button>
-    <button class="soft" id="doctorRankResetBtn" type="button" onclick="resetDoctorRankFilters()">Reset ✕</button>
-    <button class="doctor-weekly-btn" type="button" onclick="toggleDoctorWeeklyComparison(true)">📊 Weekly Comparison</button>
+    <button data-okb-custom-button="b93" class="success" id="doctorRankFilterBtn" type="button" onclick="applyDoctorRankFilters()">Filter 🔍</button>
+    <button data-okb-custom-button="b94" class="doctor-weekly-btn doctor-rank-smart-export-btn" type="button" onclick="exportDoctorRank()">⬇ Smart Export</button>
+    <button data-okb-custom-button="b95" class="soft" id="doctorRankResetBtn" type="button" onclick="resetDoctorRankFilters()">Reset ✕</button>
+    <button data-okb-custom-button="b96" class="doctor-weekly-btn" type="button" onclick="toggleDoctorWeeklyComparison(true)">📊 Weekly Comparison</button>
   </div>
   <section class="doctor-weekly-panel hidden" id="doctorWeeklyPanel">
     <div class="doctor-weekly-head">
       <div><h2>📊 Weekly Doctor Comparison</h2><p>مقارنة أداء الدكتور بين أسبوعين باستخدام بيانات الأوردرات الفعلية.</p></div>
-      <button class="soft" type="button" onclick="toggleDoctorWeeklyComparison(false)">✕ إغلاق</button>
+      <button data-okb-custom-button="b97" class="soft" type="button" onclick="toggleDoctorWeeklyComparison(false)">✕ إغلاق</button>
     </div>
     <div class="doctor-weekly-controls">
       <div class="doctor-weekly-selected-box"><span>الدكاترة المحددون</span><strong id="doctorWeeklySelectedDoctors">لم يتم تحديد دكاترة</strong></div>
@@ -1153,9 +1166,9 @@
       <label>الأسبوع الأول إلى<input id="doctorWeek1To" type="date"></label>
       <label>الأسبوع الثاني من<input id="doctorWeek2From" type="date"></label>
       <label>الأسبوع الثاني إلى<input id="doctorWeek2To" type="date"></label>
-      <button class="success" type="button" onclick="compareDoctorWeeks()">Compare 🔍</button>
-      <button class="soft" type="button" onclick="resetDoctorWeeklyComparison()">Reset ✕</button>
-      <button class="soft" id="doctorWeeklyExportBtn" type="button" onclick="exportDoctorWeeklyComparison()" disabled>⬇ Export Comparison</button>
+      <button data-okb-custom-button="b98" class="success" type="button" onclick="compareDoctorWeeks()">Compare 🔍</button>
+      <button data-okb-custom-button="b99" class="soft" type="button" onclick="resetDoctorWeeklyComparison()">Reset ✕</button>
+      <button data-okb-custom-button="b100" class="soft" id="doctorWeeklyExportBtn" type="button" onclick="exportDoctorWeeklyComparison()" disabled>⬇ Export Comparison</button>
     </div>
     <div class="doctor-weekly-empty" id="doctorWeeklyEmpty">اختر الدكتور ثم اضغط Compare لعرض المقارنة الأسبوعية.</div>
     <div class="doctor-weekly-results hidden" id="doctorWeeklyResults">
@@ -1176,7 +1189,7 @@
   </div>
   <div class="card doctor-rank-table-card">
     <div class="section-head"><h2>Doctor Performance</h2><span id="doctorRankScopeLabel">كل الفروع</span></div>
-    <div class="doctor-rank-bulk hidden" id="doctorRankBulkActions"><strong id="doctorRankSelectedCount">0 دكتور محدد</strong><button class="doctor-weekly-btn" type="button" onclick="openSelectedDoctorsWeeklyComparison()">📊 مقارنة أسبوعية</button><button class="soft" type="button" onclick="clearDoctorRankSelection()">إلغاء التحديد</button></div>
+    <div class="doctor-rank-bulk hidden" id="doctorRankBulkActions"><strong id="doctorRankSelectedCount">0 دكتور محدد</strong><button data-okb-custom-button="b101" class="doctor-weekly-btn" type="button" onclick="openSelectedDoctorsWeeklyComparison()">📊 مقارنة أسبوعية</button><button data-okb-custom-button="b102" class="soft" type="button" onclick="clearDoctorRankSelection()">إلغاء التحديد</button></div>
     <div class="table-wrap"><table class="doctor-rank-table"><thead><tr>
       <th><span class="doctor-rank-select-head"><input id="doctorRankSelectAll" type="checkbox" onchange="toggleAllVisibleDoctorRanks(this.checked)"> Ticket ID</span></th><th>Doctor</th><th>Code</th><th>Total Orders</th><th>Signed</th><th>Delivering</th><th>Returned</th><th>Fake Doctor</th><th>Cancel Group</th><th>Conversion Rate</th><th>Return Rate</th><th>Cancel Group Rate</th>
     </tr></thead><tbody id="doctorRankBody"></tbody></table></div>
@@ -1197,16 +1210,16 @@
 <input id="reportFromDate" type="date"/>
 <label>إلى</label>
 <input id="reportToDate" type="date"/>
-<button class="btn-filter" onclick="applyReportFilter()">🔍 Filter</button>
-<button class="btn-reset-date" onclick="resetReportFilter()">✕ Reset</button>
-<div class="app-refresh-back"><button class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
-<button class="success" onclick="exportCurrentReport()">⬇ Export</button>
+<button data-okb-custom-button="b103" class="btn-filter" onclick="applyReportFilter()">🔍 Filter</button>
+<button data-okb-custom-button="b104" class="btn-reset-date" onclick="resetReportFilter()">✕ Reset</button>
+<div class="app-refresh-back"><button data-okb-custom-button="b105" class="soft" id="refreshCurrentReportBtn" onclick="refreshCurrentReport(event)">Refresh</button><button data-okb-custom-button="b106" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+<button data-okb-custom-button="b107" class="success" onclick="exportCurrentReport()">⬇ Export</button>
 </div>
 </div>
 <div class="report-tabs">
-<button id="dailyReportBtn" onclick="setReportMode('daily')">اليوم</button>
-<button id="weeklyReportBtn" onclick="setReportMode('weekly')">آخر 7 أيام</button>
-<button id="monthlyReportBtn" onclick="setReportMode('monthly')">الشهر الحالي</button>
+<button data-okb-custom-button="b108" id="dailyReportBtn" onclick="setReportMode('daily')">اليوم</button>
+<button data-okb-custom-button="b109" id="weeklyReportBtn" onclick="setReportMode('weekly')">آخر 7 أيام</button>
+<button data-okb-custom-button="b110" id="monthlyReportBtn" onclick="setReportMode('monthly')">الشهر الحالي</button>
 </div>
 </div>
 <div class="card daily-report-body-card">
@@ -1218,22 +1231,22 @@
 
 <h3 class="daily-report-section-title">ملخص التسجيل والحالات</h3>
 <div class="report-grid daily-report-status-grid">
-<button class="report-card daily-report-filter-card" type="button" data-report-category="all" onclick="clearDailyReportFilters()"><span>📦 إجمالي الأوردرات المسجلة</span><strong id="reportTotalOrders">0</strong></button>
-<button class="report-card daily-report-filter-card daily-report-zero-card" type="button" data-report-category="ZeroOrders" onclick="setDailyReportCategoryFilter('ZeroOrders')"><span>🔴 أوردرات صفر</span><strong id="reportZeroOrders">0</strong></button>
-<button class="report-card daily-report-filter-card daily-report-error-card" type="button" data-report-category="ErrorOrder" onclick="setDailyReportCategoryFilter('ErrorOrder')"><span>أخطاء❌</span><strong id="reportErrorOrders">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-category="Signed" onclick="setDailyReportCategoryFilter('Signed')"><span>Signed</span><strong id="reportSigned">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-category="Delivering" onclick="setDailyReportCategoryFilter('Delivering')"><span>Delivering</span><strong id="reportDelivering">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-category="Returned" onclick="setDailyReportCategoryFilter('Returned')"><span>Returned</span><strong id="reportReturned">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-category="Cancel" onclick="setDailyReportCategoryFilter('Cancel')"><span>Cancel</span><strong id="reportCancel">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-category="Other" onclick="setDailyReportCategoryFilter('Other')"><span>حالات أخرى</span><strong id="reportOther">0</strong></button>
+<button data-okb-custom-button="b111" class="report-card daily-report-filter-card" type="button" data-report-category="all" onclick="clearDailyReportFilters()"><span>📦 إجمالي الأوردرات المسجلة</span><strong id="reportTotalOrders">0</strong></button>
+<button data-okb-custom-button="b112" class="report-card daily-report-filter-card daily-report-zero-card" type="button" data-report-category="ZeroOrders" onclick="setDailyReportCategoryFilter('ZeroOrders')"><span>🔴 أوردرات صفر</span><strong id="reportZeroOrders">0</strong></button>
+<button data-okb-custom-button="b113" class="report-card daily-report-filter-card daily-report-error-card" type="button" data-report-category="ErrorOrder" onclick="setDailyReportCategoryFilter('ErrorOrder')"><span>أخطاء❌</span><strong id="reportErrorOrders">0</strong></button>
+<button data-okb-custom-button="b114" class="report-card daily-report-filter-card" type="button" data-report-category="Signed" onclick="setDailyReportCategoryFilter('Signed')"><span>Signed</span><strong id="reportSigned">0</strong></button>
+<button data-okb-custom-button="b115" class="report-card daily-report-filter-card" type="button" data-report-category="Delivering" onclick="setDailyReportCategoryFilter('Delivering')"><span>Delivering</span><strong id="reportDelivering">0</strong></button>
+<button data-okb-custom-button="b116" class="report-card daily-report-filter-card" type="button" data-report-category="Returned" onclick="setDailyReportCategoryFilter('Returned')"><span>Returned</span><strong id="reportReturned">0</strong></button>
+<button data-okb-custom-button="b117" class="report-card daily-report-filter-card" type="button" data-report-category="Cancel" onclick="setDailyReportCategoryFilter('Cancel')"><span>Cancel</span><strong id="reportCancel">0</strong></button>
+<button data-okb-custom-button="b118" class="report-card daily-report-filter-card" type="button" data-report-category="Other" onclick="setDailyReportCategoryFilter('Other')"><span>حالات أخرى</span><strong id="reportOther">0</strong></button>
 </div>
 
 <h3 class="daily-report-section-title">أوردرات الفروع</h3>
 <div class="report-grid daily-report-branch-grid">
-<button class="report-card daily-report-filter-card" type="button" data-report-branch="nasr-city" onclick="setDailyReportBranchFilter('nasr-city')"><span>فرع مدينة نصر</span><strong id="reportNasrCity">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-branch="alexandria" onclick="setDailyReportBranchFilter('alexandria')"><span>فرع اسكندرية</span><strong id="reportAlexandria">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-branch="tanta" onclick="setDailyReportBranchFilter('tanta')"><span>فرع طنطا</span><strong id="reportTanta">0</strong></button>
-<button class="report-card daily-report-filter-card" type="button" data-report-branch="mansoura" onclick="setDailyReportBranchFilter('mansoura')"><span>فرع المنصورة</span><strong id="reportMansoura">0</strong></button>
+<button data-okb-custom-button="b119" class="report-card daily-report-filter-card" type="button" data-report-branch="nasr-city" onclick="setDailyReportBranchFilter('nasr-city')"><span>فرع مدينة نصر</span><strong id="reportNasrCity">0</strong></button>
+<button data-okb-custom-button="b120" class="report-card daily-report-filter-card" type="button" data-report-branch="alexandria" onclick="setDailyReportBranchFilter('alexandria')"><span>فرع اسكندرية</span><strong id="reportAlexandria">0</strong></button>
+<button data-okb-custom-button="b121" class="report-card daily-report-filter-card" type="button" data-report-branch="tanta" onclick="setDailyReportBranchFilter('tanta')"><span>فرع طنطا</span><strong id="reportTanta">0</strong></button>
+<button data-okb-custom-button="b122" class="report-card daily-report-filter-card" type="button" data-report-branch="mansoura" onclick="setDailyReportBranchFilter('mansoura')"><span>فرع المنصورة</span><strong id="reportMansoura">0</strong></button>
 </div>
 
 <h3 class="daily-report-section-title">المحرك المالي المركزي</h3>
@@ -1248,7 +1261,7 @@
   <div><strong id="dailyReportResultCount">0 أوردر</strong><span id="dailyReportActiveFilters">كل الفروع · كل الحالات</span></div>
   <div class="daily-report-search-wrap">
     <input id="dailyReportSearch" type="search" autocomplete="off" placeholder="بحث بـ Ticket ID أو العميل أو الموظف..." oninput="onDailyReportSearch()"/>
-    <button class="soft" type="button" onclick="clearDailyReportFilters()">مسح الفلاتر</button>
+    <button data-okb-custom-button="b123" class="soft" type="button" onclick="clearDailyReportFilters()">مسح الفلاتر</button>
   </div>
 </div>
 <div class="table-wrap daily-report-table-wrap">
@@ -1268,13 +1281,13 @@
       <div class="users-role-copy"><h2 style="margin:0 0 5px;">＋ Create New Role</h2><p style="margin:0;color:var(--text-muted);font-size:12px;">أنشئ Role جديدة ثم حدد صلاحياتها من صفحة Permission.</p></div>
       <div class="users-role-create-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <input id="customRoleNameInput" type="text" placeholder="اسم الـ Role الجديدة" style="min-width:260px;"/>
-        <button class="success" type="button" onclick="createCustomRole()">＋ إضافة Role</button>
+        <button data-okb-custom-button="b124" class="success" type="button" onclick="createCustomRole()">＋ إضافة Role</button>
       </div>
     </div>
   </div>
   <div class="app-page-actions users-role-nav-actions">
     <span id="usersRefreshStatus" role="status" style="font-size:12px;color:var(--text-muted);"></span>
-    <div class="app-refresh-back users-role-nav-buttons"><button class="soft" id="usersRefreshBtn" type="button" onclick="refreshUsersPage(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+    <div class="app-refresh-back users-role-nav-buttons"><button data-okb-custom-button="b125" class="soft" id="usersRefreshBtn" type="button" onclick="refreshUsersPage(this)">Refresh</button><button data-okb-custom-button="b126" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
   </div>
 </div>
 <div class="card">
@@ -1306,7 +1319,7 @@
 <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" class="new-user-branch-cb" value="المنصورة"/> فرع المنصورة</label>
 </div>
 </div>
-<div class="actions"><button class="success" type="submit">Add User</button><button class="soft" onclick="userForm.reset(); $('newUserBranchesWrap').classList.add('hidden');" type="button">Clear</button></div>
+<div class="actions"><button data-okb-custom-button="b127" class="success" type="submit">Add User</button><button data-okb-custom-button="b128" class="soft" onclick="userForm.reset(); $('newUserBranchesWrap').classList.add('hidden');" type="button">Clear</button></div>
 </form>
 </div>
 <div class="card"><div class="current-users-header"><h2>Current Users</h2><input id="usersSearch" type="search" dir="auto" aria-label="بحث بالاسم أو Username أو Role" placeholder="بحث بالاسم أو Username أو Role..." oninput="renderUsers()" autocomplete="off"><select id="usersRoleFilter" class="users-filter-select" aria-label="Role Search" onchange="renderUsers()"><option value="all">Role Search — All</option></select><select id="usersLastSeenFilter" class="users-filter-select" aria-label="Last Seen" onchange="renderUsers()"><option value="all">Last Seen — All</option><option value="online">Online</option><option value="offline">Offline</option><option value="last_seen">Last Seen</option></select></div>
@@ -1330,8 +1343,8 @@
     <label for="editUsername">Username</label>
     <input id="editUsername" type="text" autocomplete="off"/>
     <div class="users-edit-actions">
-      <button type="button" class="soft" onclick="closeEditUserModal()">إلغاء</button>
-      <button type="button" class="users-edit-save" id="editUserSaveBtn" onclick="saveEditedUser()">حفظ التعديل</button>
+      <button data-okb-custom-button="b129" type="button" class="soft" onclick="closeEditUserModal()">إلغاء</button>
+      <button data-okb-custom-button="b130" type="button" class="users-edit-save" id="editUserSaveBtn" onclick="saveEditedUser()">حفظ التعديل</button>
     </div>
   </div>
 </div>
@@ -1365,8 +1378,8 @@
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button onclick="closeEditRoleModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">إلغاء</button>
-      <button onclick="saveEditedRole()" style="padding:8px 18px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ حفظ</button>
+      <button data-okb-custom-button="b131" onclick="closeEditRoleModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">إلغاء</button>
+      <button data-okb-custom-button="b132" onclick="saveEditedRole()" style="padding:8px 18px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ حفظ</button>
     </div>
   </div>
 </div>
@@ -1377,14 +1390,14 @@
       <h1>💬 Chat</h1>
       <p>محادثات مباشرة بين مستخدمي النظام وإرسال صور إثبات الدفع.</p>
     </div>
-    <div class="app-refresh-back"><button class="soft" type="button" onclick="refreshChatPage(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+    <div class="app-refresh-back"><button data-okb-custom-button="b133" class="soft" type="button" onclick="refreshChatPage(this)">Refresh</button><button data-okb-custom-button="b134" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
   </div>
   <div class="chat-shell">
     <aside class="chat-users-panel">
       <div class="chat-users-title">المستخدمون</div>
       <input id="chatUserSearch" type="search" placeholder="🔎 ابحث عن مستخدم..." oninput="renderChatUsers()"/>
       <div class="chat-user-filters">
-        <button id="chatUnreadFilterBtn" class="chat-unread-filter" type="button" onclick="toggleChatUnreadFilter()">
+        <button data-okb-custom-button="b135" id="chatUnreadFilterBtn" class="chat-unread-filter" type="button" onclick="toggleChatUnreadFilter()">
           <span>Unread</span><span id="chatUnreadFilterCount" class="chat-unread-filter-count">0</span>
         </button>
       </div>
@@ -1405,7 +1418,7 @@
           <textarea id="chatMessageInput" rows="2" placeholder="اكتب رسالة..." onkeydown="handleChatMessageKeydown(event)" disabled></textarea>
           <div id="chatAttachmentPreview" class="chat-attachment-preview hidden"></div>
         </div>
-        <button class="chat-send-btn" id="chatSendBtn" type="submit" disabled>إرسال ➤</button>
+        <button data-okb-custom-button="b136" class="chat-send-btn" id="chatSendBtn" type="submit" disabled>إرسال ➤</button>
       </form>
     </main>
   </div>
@@ -1416,7 +1429,7 @@
 <div class="card">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
   <div><h1>⚙️ Settings</h1><p style="margin-bottom:0;">إعدادات النظام: المنتجات، الدكاترة، وشركات الشحن.</p></div>
-  <div class="app-refresh-back"><button class="soft" id="settingsRefreshBtn" type="button" onclick="refreshSettingsPage(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+  <div class="app-refresh-back"><button data-okb-custom-button="b137" class="soft" id="settingsRefreshBtn" type="button" onclick="refreshSettingsPage(this)">Refresh</button><button data-okb-custom-button="b138" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 </div>
 </div>
 <div class="card admin-only" id="okbItemsCard">
@@ -1426,7 +1439,7 @@
 <p style="margin:6px 0 0;">إدارة منتجات OKB وبياناتها.</p>
 </div>
 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-  <button class="success" type="button" onclick="exportOKBItems()">⬇ Export Products</button>
+  <button data-okb-custom-button="b139" class="success" type="button" onclick="exportOKBItems()">⬇ Export Products</button>
 </div>
 </div>
 
@@ -1437,8 +1450,8 @@
 <input id="itemPrice" placeholder="السعر" required type="number" min="0" step="0.01"/>
 </div>
 <div class="actions">
-<button class="success" id="itemSubmitBtn" type="submit">➕ إضافة صنف</button>
-<button class="soft" onclick="resetItemForm()" type="button">تفريغ</button>
+<button data-okb-custom-button="b140" class="success" id="itemSubmitBtn" type="submit">➕ إضافة صنف</button>
+<button data-okb-custom-button="b141" class="soft" onclick="resetItemForm()" type="button">تفريغ</button>
 <input id="settingItemSearch" type="search" placeholder="🔎 بحث باسم الصنف..." oninput="filterOKBItemsSettings()" style="min-height:38px;min-width:210px;padding:8px 11px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-input);color:var(--text-primary);"/>
 </div>
 </form>
@@ -1461,15 +1474,15 @@
 <div class="form-grid" style="grid-template-columns:2fr 1fr auto; align-items:center; gap:12px">
 <input id="settingDoctorName" placeholder="اسم الدكتور" required=""/>
 <input id="settingCodeDoctor" placeholder="Code Doctor" />
-<button class="success" id="doctorSettingsSubmitBtn" type="submit">➕ إضافة دكتور</button>
+<button data-okb-custom-button="b142" class="success" id="doctorSettingsSubmitBtn" type="submit">➕ إضافة دكتور</button>
 <div class="doctors-actions-row">
   <input id="settingDoctorSearch" type="search" placeholder="🔎 بحث باسم الدكتور أو Code Doctor..." oninput="filterDoctorsSettings()" />
-  <button class="danger" id="cleanAllDoctorsBtn" type="button" onclick="cleanAllDoctors()">🗑️ مسح كل الدكاترة</button>
+  <button data-okb-custom-button="b143" class="danger" id="cleanAllDoctorsBtn" type="button" onclick="cleanAllDoctors()">🗑️ مسح كل الدكاترة</button>
   <label style="background:#2563eb;color:#fff;">
     📥 Import Excel
     <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importDoctorsFromExcel(event)">
   </label>
-  <button class="success" type="button" onclick="exportDoctorsSettings()">⬇ Export</button>
+  <button data-okb-custom-button="b144" class="success" type="button" onclick="exportDoctorsSettings()">⬇ Export</button>
 </div>
 <input type="file" id="doctorImportInput" accept=".xlsx,.xls,.csv" 
   style="display:none" onchange="importDoctorsFromExcel(event)">
@@ -1493,8 +1506,8 @@
 <input id="shippingPhone" placeholder="رقم التلفون" required=""/>
 </div>
 <div class="actions">
-<button class="success" type="submit">➕ إضافة شركة شحن</button>
-<button class="soft" onclick="shippingSettingsForm.reset()" type="button">تفريغ</button>
+<button data-okb-custom-button="b145" class="success" type="submit">➕ إضافة شركة شحن</button>
+<button data-okb-custom-button="b146" class="soft" onclick="shippingSettingsForm.reset()" type="button">تفريغ</button>
 </div>
 </form>
 <div class="table-wrap" style="margin-top:18px">
@@ -1539,8 +1552,8 @@
       </div>
     </div>
     <div class="actions sticky-note-settings-actions">
-      <button class="success" id="saveStickyNoteBtn" type="submit">💾 حفظ Sticky Note</button>
-      <button class="danger" id="disableStickyNoteBtn" type="button" onclick="disableStickyNote()">إيقاف العرض</button>
+      <button data-okb-custom-button="b147" class="success" id="saveStickyNoteBtn" type="submit">💾 حفظ Sticky Note</button>
+      <button data-okb-custom-button="b148" class="danger" id="disableStickyNoteBtn" type="button" onclick="disableStickyNote()">إيقاف العرض</button>
       <span id="stickyNoteSettingsStatus" role="status"></span>
     </div>
   </form>
@@ -1556,7 +1569,7 @@
   </div>
   <form id="okbFilterSettingsForm" class="okb-filter-add-row">
     <input id="okbFilterNameInput" maxlength="80" placeholder="اسم الحالة الجديدة" required />
-    <button class="success" id="okbFilterAddBtn" type="submit">＋ إضافة حالة</button>
+    <button data-okb-custom-button="b149" class="success" id="okbFilterAddBtn" type="submit">＋ إضافة حالة</button>
     <span id="okbFilterSettingsStatus" role="status"></span>
   </form>
   <div class="okb-filter-note">أي حالة جديدة تعمل كفلتر يطابق قيمة حالة الأوردر فقط. تعديل الاسم يغيّر اسم العرض ولا يغيّر بيانات الأوردرات.</div>
@@ -1607,7 +1620,7 @@
     <div class="commission-settings-save-row">
       <label class="commission-settings-effective">تطبيق من شهر<input id="commissionSettingsEffectiveMonth" type="month" required /></label>
       <div class="commission-settings-last-update"><span>آخر تعديل</span><strong id="commissionSettingsLastUpdate">—</strong></div>
-      <button class="success" id="commissionSettingsSaveBtn" type="submit">💾 حفظ الإعدادات</button>
+      <button data-okb-custom-button="b150" class="success" id="commissionSettingsSaveBtn" type="submit">💾 حفظ الإعدادات</button>
       <span id="commissionSettingsStatus" role="status"></span>
     </div>
   </form>
@@ -1621,9 +1634,17 @@
         <h1>🔐 Permission</h1>
         <p>حدد الأزرار والصفحات التي تظهر لكل Role. الأدمن يحتفظ دائمًا بكامل الصلاحيات.</p>
       </div>
-      <div class="app-refresh-back"><button class="soft" type="button" onclick="refreshRolePermissions(this)">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="app-refresh-back"><button data-okb-custom-button="b151" class="soft" type="button" onclick="refreshRolePermissions(this)">Refresh</button><button data-okb-custom-button="b152" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
+  <div class="card okb-permission-tabs-card">
+    <div class="okb-permission-tabs" role="tablist" aria-label="Permission Sections">
+      <button data-okb-custom-button="b153" class="okb-permission-tab active" type="button" id="okbPermissionsTab" role="tab" aria-selected="true" onclick="switchOKBPermissionTab('roles')">🔐 Role Permissions</button>
+      <button data-okb-custom-button="b154" class="okb-permission-tab" type="button" id="okbCustomizationTab" role="tab" aria-selected="false" onclick="switchOKBPermissionTab('customization')">🎨 System Customization</button>
+      <button class="okb-permission-tab" id="okbFieldsTab" type="button" role="tab" aria-selected="false" onclick="switchOKBPermissionTab('fields')">🎨 Button Customization</button>
+    </div>
+  </div>
+  <div id="okbRolePermissionsPanel">
   <div class="card">
     <div class="permission-role-picker">
       <label for="permissionRoleSelect">Role</label>
@@ -1631,10 +1652,48 @@
     </div>
     <div class="permission-features-grid" id="permissionFeaturesGrid"></div>
     <div class="permission-actions">
-      <div class="permission-save-zone"><span id="permissionSaveStatus" role="status"></span><button class="success" type="button" onclick="saveRolePermissions()">💾 حفظ الصلاحيات</button></div>
-      <button class="soft" type="button" onclick="selectAllRolePermissions(true)">تحديد الكل</button>
-      <button class="soft" type="button" onclick="selectAllRolePermissions(false)">إلغاء تحديد الكل</button>
-      <button class="danger" type="button" onclick="resetSelectedRolePermissions()">إرجاع الصلاحيات الافتراضية</button>
+      <div class="permission-save-zone"><span id="permissionSaveStatus" role="status"></span><button data-okb-custom-button="b155" class="success" type="button" onclick="saveRolePermissions()">💾 حفظ الصلاحيات</button></div>
+      <button data-okb-custom-button="b156" class="soft" type="button" onclick="selectAllRolePermissions(true)">تحديد الكل</button>
+      <button data-okb-custom-button="b157" class="soft" type="button" onclick="selectAllRolePermissions(false)">إلغاء تحديد الكل</button>
+      <button data-okb-custom-button="b158" class="danger" type="button" onclick="resetSelectedRolePermissions()">إرجاع الصلاحيات الافتراضية</button>
+    </div>
+  </div>
+  </div>
+  <div id="okbSystemCustomizationPanel" class="hidden">
+    <div class="card okb-customization-card">
+      <h2>🎨 System Customization</h2>
+      <p>إعدادات عرض قابلة للتخصيص بدون تعديل الأكواد. أسماء الأزرار والعناصر الاختيارية فقط؛ الحقول المطلوبة للحفظ لا تُخفى.</p>
+      <div class="okb-customization-toolbar">
+        <label>البحث عن زر<input id="okbCustomButtonSearch" type="search" placeholder="بحث باسم الزر أو الصفحة" oninput="renderOKBButtonEditor()"/></label>
+        <label>الصفحة<select id="okbCustomButtonPage" onchange="renderOKBButtonEditor()"><option value="">كل الصفحات</option></select></label>
+      </div>
+      <div class="okb-customization-note">تغيير أسماء أزرار الواجهة الثابتة فقط، مع الاحتفاظ بالأيقونات والعدادات والصلاحيات والأوامر البرمجية. الأزرار المنشأة ديناميكيًا أثناء التشغيل ليست ضمن هذا السجل بعد.</div>
+      <div id="okbCustomButtonsCatalog" class="okb-customization-list"></div>
+      <p class="okb-customization-note">إخفاء العنصر هنا يخفي اختصار القائمة فقط، ولا يسحب صلاحية الموظف أو يحذف البيانات. إعدادات حقول الحفظ الإلزامية ستضاف لاحقًا بعد فصلها عن منطق الأوردر.</p>
+      <div class="okb-customization-actions">
+        <button data-okb-custom-button="b159" class="success" type="button" onclick="saveOKBUIConfiguration()">💾 حفظ التخصيص</button>
+        <button data-okb-custom-button="b160" class="soft" type="button" onclick="resetOKBUIConfiguration()">استرجاع الأسماء الافتراضية</button>
+        <span id="okbCustomizationSaveStatus" role="status"></span>
+      </div>
+    </div>
+  </div>
+  <div id="okbFieldsCustomizationPanel" class="hidden">
+    <div class="card okb-customization-card">
+      <h2>🎨 Button Customization — Fields & Controls</h2>
+      <p>تعديل أسماء وإظهار أو إخفاء Text Box / List Box / Check Box في Dashboard وصفحة الفرع وخزنة الفرع وخزنة الفروع. القوائم المجمّدة والحقول الأساسية يتم توضيحها وحمايتها.</p>
+      <div class="okb-customization-toolbar">
+        <label>الصفحة<select id="okbCustomFieldsPage" onchange="renderOKBFieldsEditor()">
+          <option value="ordersPage">Dashboard</option><option value="branchPage">صفحة الفرع</option><option value="khaznaPage">خزنة الفرع</option><option value="branchesTreasuryPage">خزنة الفروع</option>
+        </select></label>
+        <label>بحث<input id="okbCustomFieldsSearch" type="search" placeholder="ابحث عن حقل" oninput="renderOKBFieldsEditor()"/></label>
+      </div>
+      <div id="okbCustomFieldsCatalog" class="okb-customization-list"></div>
+      <p class="okb-customization-note">إعادة الترتيب غير متاحة للحفاظ على التخطيط الأصلي. لا يمكن إخفاء أو تغيير حالة Read-only / Frozen / Required للحقول المحمية. الإخفاء خاص بالعرض ولا يحذف بيانات.</p>
+      <div class="okb-customization-actions">
+        <button class="success" type="button" onclick="saveOKBUIConfiguration()">💾 حفظ تخصيص الحقول</button>
+        <button class="soft" type="button" onclick="resetOKBUIConfiguration()">استرجاع الإعدادات الافتراضية</button>
+        <span class="okbCustomizationSaveStatusMirror" role="status"></span>
+      </div>
     </div>
   </div>
 </section>
@@ -1643,7 +1702,7 @@
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1 id="branchPageTitle">📦 Dashboard — فرع</h1>
-<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
+<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button data-okb-custom-button="b161" class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button data-okb-custom-button="b162" class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><button data-okb-custom-button="b163" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
 </div>
 <form id="branchOrderForm">
 <div class="form-grid">
@@ -1677,9 +1736,11 @@
 <option value="Returning">Returning</option>
 <option value="Signed">Signed</option>
 </select>
+<div class="branch-order-flags">
 <label class="order-flag-check"><input id="branchUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
 <label class="order-flag-check"><input id="branchReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
 <label class="order-flag-check error-order-flag-check"><input id="branchErrorOrder" type="checkbox"/><span class="error-order-flag-text">أخطاء <b>❌</b></span></label>
+</div>
 </div>
 <div class="smart-products-box" data-cart="branch">
   <div class="smart-products-head">
@@ -1687,13 +1748,13 @@
       <div class="smart-products-title">📦 المنتجات</div>
       <div class="smart-products-sub"></div>
     </div>
-    <button class="soft" onclick="clearProductCart('branch')" type="button" style="padding:7px 12px;font-size:11px">تفريغ</button>
+    <button data-okb-custom-button="b164" class="soft" onclick="clearProductCart('branch')" type="button" style="padding:7px 12px;font-size:11px">تفريغ</button>
   </div>
   <div class="smart-add-grid">
     <div><label>اسم المنتج</label><select id="branchProductNameInput" onchange="onProductSelectionChange('branch')"><option value="">جاري تحميل المنتجات...</option></select></div>
     <div><label>سعر القطعة</label><input id="branchProductPriceInput" type="number" min="0" step="0.01" placeholder="يظهر تلقائيًا" readonly title="السعر محدد من Settings ولا يمكن تعديله"/></div>
     <div><label>الكمية</label><input id="branchProductQtyInput" type="number" min="1" value="1"/></div>
-    <button class="smart-add-btn" onclick="addProductItem('branch')" type="button">+ أضف</button>
+    <button data-okb-custom-button="b165" class="smart-add-btn" onclick="addProductItem('branch')" type="button">+ أضف</button>
   </div>
   <div class="smart-cart-list" id="branchProductCartList"></div>
   <div class="smart-cart-fixed-totals" aria-label="ملخص المنتجات الثابت">
@@ -1723,11 +1784,11 @@
 <input accept="image/*" id="bPaymentImage" onchange="previewBranchPaymentImage(this);checkBranchDepositImageRequirement();" style="padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;width:100%;font-size:13px;" type="file"/>
 <div id="bPaymentImagePreview" style="margin-top:8px;display:none;align-items:center;gap:10px;">
 <img id="bPaymentPreviewImg" style="max-width:80px;max-height:80px;border-radius:8px;border:1px solid var(--border-color);"/>
-<button onclick="clearBranchPaymentImage()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
+<button data-okb-custom-button="b166" onclick="clearBranchPaymentImage()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
 </div>
 </div>
 <div class="order-actions">
-<button class="primary wide-btn" type="submit">إضافة الأوردر</button>
+<button data-okb-custom-button="b167" class="primary wide-btn" type="submit">إضافة الأوردر</button>
 </div>
 </form>
 </div>
@@ -1750,8 +1811,8 @@
 <label>إلى</label>
 <input id="bToDate" type="date"/>
 </div>
-<button class="btn-filter" onclick="applyBranchDateFilter()">🔍 Filter</button>
-<button class="btn-reset-date" onclick="resetBranchDateFilter()">✕ Reset</button>
+<button data-okb-custom-button="b168" class="btn-filter" onclick="applyBranchDateFilter()">🔍 Filter</button>
+<button data-okb-custom-button="b169" class="btn-reset-date" onclick="resetBranchDateFilter()">✕ Reset</button>
 <span class="active-filter-badge" id="bActiveDateBadge">📅 فيلتر تاريخ مفعّل</span>
 <input id="bSearchInput" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..."/>
 <select id="bFilterStatus" data-okb-unified-filter="branch">
@@ -1759,19 +1820,19 @@
 </select>
 <select id="bFilterEmployee"></select>
 <select id="bFilterDoctor"><option value="الكل">كل الدكاترة</option></select>
-<button class="success" id="bExportBtn" onclick="openOrdersExportMenu('branch', event)">⬇ Export</button>
-<button class="okb-stores-btn accounting-only" id="branchKhaznaBtn" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
+<button data-okb-custom-button="b170" class="success" id="bExportBtn" onclick="openOrdersExportMenu('branch', event)">⬇ Export</button>
+<button data-okb-custom-button="b171" class="okb-stores-btn accounting-only" id="branchKhaznaBtn" onclick="openKhaznaPage()" style="width:auto;padding:8px 16px;font-size:13px;">🏦 الخزنة</button>
 </div>
 <div class="branch-bulk-actions hidden" id="branchBulkActions">
   <strong id="branchSelectedCount">0 عميل محدد</strong>
-  <button class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
-  <button class="doctor-weekly-btn doctor-rank-smart-export-btn" id="branchAllocateBtn" type="button" onclick="openAllocateModal('branch')">Allocate</button>
-  <button class="branch-bulk-delete hidden" id="branchBulkDeleteBtn" type="button" onclick="deleteSelectedBranchOrders()">🗑️ حذف المحدد</button>
-  <button class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
-  <button class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف إثبات السكرتارية</button>
-  <button class="branch-bulk-transfer hidden" id="branchBulkTransferBtn" type="button" onclick="transferSelectedBranchOrders()">🔄 تحويل</button>
-  <button class="branch-bulk-note" id="branchBulkNoteBtn" type="button" onclick="openSelectedBranchNoteModal()">📝 إضافة ملاحظة</button>
-  <button class="soft" type="button" onclick="clearBranchOrderSelection()">إلغاء التحديد</button>
+  <button data-okb-custom-button="b172" class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
+  <button data-okb-custom-button="b173" class="doctor-weekly-btn doctor-rank-smart-export-btn" id="branchAllocateBtn" type="button" onclick="openAllocateModal('branch')">Allocate</button>
+  <button data-okb-custom-button="b174" class="branch-bulk-delete hidden" id="branchBulkDeleteBtn" type="button" onclick="deleteSelectedBranchOrders()">🗑️ حذف المحدد</button>
+  <button data-okb-custom-button="b175" class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
+  <button data-okb-custom-button="b176" class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف إثبات السكرتارية</button>
+  <button data-okb-custom-button="b177" class="branch-bulk-transfer hidden" id="branchBulkTransferBtn" type="button" onclick="transferSelectedBranchOrders()">🔄 تحويل</button>
+  <button data-okb-custom-button="b178" class="branch-bulk-note" id="branchBulkNoteBtn" type="button" onclick="openSelectedBranchNoteModal()">📝 إضافة ملاحظة</button>
+  <button data-okb-custom-button="b179" class="soft" type="button" onclick="clearBranchOrderSelection()">إلغاء التحديد</button>
 </div>
 <div class="table-wrap">
 <table>
@@ -1800,21 +1861,21 @@
           <label class="commission-date-field commission-compare-date-field"><span>إلى</span><input id="commissionCompareToDate" type="date" disabled onchange="scheduleCommissionComparisonRefresh()"></label>
         </div>
         <div class="commission-primary-actions">
-          <button class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
-          <button class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
-          <button class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button>
-          <button class="commission-nav-action app-back-btn app-back-btn--gold" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+          <button data-okb-custom-button="b180" class="commission-nav-action" type="button" onclick="applyCommissionDateRange()">Filter</button>
+          <button data-okb-custom-button="b181" class="commission-nav-action" type="button" onclick="resetCommissionDateRange()">Reset</button>
+          <button data-okb-custom-button="b182" class="commission-nav-action commission-refresh-action" type="button" onclick="refreshCommissionDashboard(this)">Refresh</button>
+          <button data-okb-custom-button="b183" class="commission-nav-action app-back-btn app-back-btn--gold" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
         </div>
         <select id="commissionBranchFilter" onchange="renderCommissionDashboard()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
         <div class="commission-report-tabs" role="tablist" aria-label="تقارير العمولات">
-          <button data-commission-view="dashboard" type="button" onclick="setCommissionView('dashboard',this)">Overview</button>
-          <button class="active" data-commission-view="total" type="button" onclick="setCommissionView('total',this)">Total Commission</button>
-          <button data-commission-view="comparison" type="button" onclick="setCommissionView('comparison',this)">المقارنة الشهرية</button>
-          <button data-commission-view="rtd" type="button" onclick="setCommissionView('rtd',this)">مكافأة الـ RTD</button>
-          <button data-commission-view="development" type="button" onclick="setCommissionView('development',this)">مكافأة التطوير</button>
-          <button data-commission-view="annual" type="button" onclick="setCommissionView('annual',this)">المقارنة السنوية</button>
-          <button class="commission-export commission-nav-action" type="button" onclick="exportCommissionWorkbook()">Export Monthly Commission 🚩</button>
-          <button id="commissionApproveBtn" class="commission-approve-btn hidden" type="button" onclick="openCommissionApprovalModal()">اعتماد العمولة 🔒</button>
+          <button data-okb-custom-button="b184" data-commission-view="dashboard" type="button" onclick="setCommissionView('dashboard',this)">Overview</button>
+          <button data-okb-custom-button="b185" class="active" data-commission-view="total" type="button" onclick="setCommissionView('total',this)">Total Commission</button>
+          <button data-okb-custom-button="b186" data-commission-view="comparison" type="button" onclick="setCommissionView('comparison',this)">المقارنة الشهرية</button>
+          <button data-okb-custom-button="b187" data-commission-view="rtd" type="button" onclick="setCommissionView('rtd',this)">مكافأة الـ RTD</button>
+          <button data-okb-custom-button="b188" data-commission-view="development" type="button" onclick="setCommissionView('development',this)">مكافأة التطوير</button>
+          <button data-okb-custom-button="b189" data-commission-view="annual" type="button" onclick="setCommissionView('annual',this)">المقارنة السنوية</button>
+          <button data-okb-custom-button="b190" class="commission-export commission-nav-action" type="button" onclick="exportCommissionWorkbook()">Export Monthly Commission 🚩</button>
+          <button data-okb-custom-button="b191" id="commissionApproveBtn" class="commission-approve-btn hidden" type="button" onclick="openCommissionApprovalModal()">اعتماد العمولة 🔒</button>
         </div>
       </div>
     </div>
@@ -1832,7 +1893,7 @@
       <article class="commission-panel"><h2>توزيع صافي العمولات</h2><div class="commission-chart-box commission-donut-box"><canvas id="commissionDistributionChart"></canvas></div><div id="commissionDistributionLegend" class="commission-legend"></div></article>
     </div>
     <article class="commission-panel commission-table-panel">
-      <div class="commission-table-title"><div><span id="commissionReportPeriod" class="commission-period-label"></span><h2 id="commissionTableTitle">لوحة العرض</h2></div><button type="button" onclick="toggleCommissionRules()">تفاصيل طريقة الاحتساب ‹</button></div>
+      <div class="commission-table-title"><div><span id="commissionReportPeriod" class="commission-period-label"></span><h2 id="commissionTableTitle">لوحة العرض</h2></div><button data-okb-custom-button="b192" type="button" onclick="toggleCommissionRules()">تفاصيل طريقة الاحتساب ‹</button></div>
       <div id="commissionReportSummary" class="commission-report-summary"></div>
       <div class="table-wrap"><table class="commission-table"><thead><tr id="commissionTableHead"></tr></thead><tbody id="commissionTableBody"></tbody></table></div>
       <div id="commissionRules" class="commission-rules hidden"></div>
@@ -1842,12 +1903,12 @@
 
 <div id="commissionApprovalModal" class="commission-approval-modal" role="dialog" aria-modal="true" aria-labelledby="commissionApprovalTitle">
   <div class="commission-approval-dialog">
-    <div class="commission-approval-head"><div><span>إقفال الفترة</span><h2 id="commissionApprovalTitle">اعتماد العمولة 🔒</h2></div><button type="button" onclick="closeCommissionApprovalModal()">✕</button></div>
+    <div class="commission-approval-head"><div><span>إقفال الفترة</span><h2 id="commissionApprovalTitle">اعتماد العمولة 🔒</h2></div><button data-okb-custom-button="b193" type="button" onclick="closeCommissionApprovalModal()">✕</button></div>
     <div id="commissionApprovalSummary" class="commission-approval-summary"></div>
     <label class="commission-approval-note"><span>ملاحظة الاعتماد (اختياري)</span><textarea id="commissionApprovalNote" rows="3" placeholder="اكتب أي ملاحظة إدارية على الاعتماد"></textarea></label>
     <label id="commissionPendingOverrideWrap" class="commission-pending-override hidden"><input id="commissionPendingOverride" type="checkbox" onchange="toggleCommissionPendingOverride()"><span>اعتماد استثنائي رغم وجود Pending</span></label>
     <label id="commissionOverrideReasonWrap" class="commission-approval-note hidden"><span>سبب الاعتماد الاستثنائي (إجباري)</span><textarea id="commissionOverrideReason" rows="2"></textarea></label>
-    <div class="commission-approval-actions"><button class="commission-approval-cancel" type="button" onclick="closeCommissionApprovalModal()">إلغاء</button><button id="commissionApprovalConfirmBtn" class="commission-approve-confirm" type="button" onclick="confirmCommissionApproval()">تأكيد الاعتماد 🔒</button></div>
+    <div class="commission-approval-actions"><button data-okb-custom-button="b194" class="commission-approval-cancel" type="button" onclick="closeCommissionApprovalModal()">إلغاء</button><button data-okb-custom-button="b195" id="commissionApprovalConfirmBtn" class="commission-approve-confirm" type="button" onclick="confirmCommissionApproval()">تأكيد الاعتماد 🔒</button></div>
   </div>
 </div>
 
@@ -1856,7 +1917,7 @@
   <div class="pending-shell stores-report-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">↩</div><div><h1>OKB Abnormal</h1><p>متابعة Returned وGroup Cancel والأوردرات التي تم إنقاذها من الحالتين في فروع OKB</p></div></div>
-      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(true)">Refresh</button><button class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="pending-head-actions stores-report-head-actions"><div class="stores-report-date-filter"><label>من</label><input id="storesReportFromDate" type="date"><label>إلى</label><input id="storesReportToDate" type="date"><button data-okb-custom-button="b196" class="btn-filter" type="button" onclick="applyOKBStoresReportDateFilter()">Filter 🔍</button><button data-okb-custom-button="b197" class="btn-reset-date" type="button" onclick="resetOKBStoresReportDateFilter()">Reset ✕</button></div><button data-okb-custom-button="b198" class="pending-refresh-btn" type="button" onclick="loadOKBStoresReport(true)">Refresh</button><button data-okb-custom-button="b199" class="soft" type="button" onclick="exportOKBStoresReportExcel()">⬇ Export</button><button data-okb-custom-button="b200" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المرتجعات</span><strong id="storesReportTotalCount">0</strong></div>
@@ -1886,7 +1947,7 @@
   <div class="pending-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>كل أوردرات Delivering التي مرّ عليها 3 أيام أو أكثر بدون تحديث، بغض النظر عن تاريخ إنشائها</p></div></div>
-      <div class="pending-head-actions"><button class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">Refresh</button><button class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="pending-head-actions"><button data-okb-custom-button="b201" class="pending-refresh-btn" type="button" onclick="loadPendingOrders(false)">Refresh</button><button data-okb-custom-button="b202" class="pending-refresh-btn" id="pendingExportBtn" type="button" onclick="exportPendingOrders(this)">Export</button><button data-okb-custom-button="b203" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="pending-summary pending-summary-compact">
       <div class="pending-summary-card pending-summary-main"><span>إجمالي المتأخر</span><strong id="pendingTotalCount">0</strong></div>
@@ -1912,7 +1973,7 @@
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <div><h1 style="margin:0;font-size:20px;">🏦 خزنة الفروع</h1><p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">مراجعة مالية موحدة ودقيقة للفروع الأربعة</p></div>
-      <div class="branches-treasury-header-actions"><button type="button" onclick="refreshBranchesTreasury(this)" class="soft">Refresh</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="branches-treasury-header-actions"><button data-okb-custom-button="b204" type="button" onclick="refreshBranchesTreasury(this)" class="soft">Refresh</button><button data-okb-custom-button="b205" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
@@ -1922,11 +1983,11 @@
       <select id="btBranchFilter" class="bt-compact-select" onchange="loadBranchesTreasury()"><option value="الكل">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
       <select id="btStatusFilter" class="bt-compact-select" data-okb-unified-filter="branches-treasury" onchange="loadBranchesTreasury()"><option value="Signed">Signed</option></select>
       <input id="btSearch" class="barcode-search-input bt-treasury-search" placeholder="بحث بالعميل، الموبايل، الدكتور، الموظف، Ticket ID، رقم الأوردر أو Barcode..." type="text" oninput="renderBranchesTreasury()">
-      <button class="btn-filter" type="button" onclick="loadBranchesTreasury()">Filter 🔍</button>
-      <button class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
-      <button id="btSummaryBtn" type="button" onclick="printBranchesTreasurySummary()" style="padding:8px 14px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;font-weight:900;cursor:pointer;">📊 Summary Report</button>
-      <button id="btPrintBtn" type="button" onclick="printBranchesTreasuryReport()" style="padding:8px 14px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:800;cursor:pointer;">🖨️ طباعة التقرير</button>
-      <button type="button" onclick="openFinancialAudit('branches','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
+      <button data-okb-custom-button="b206" class="btn-filter" type="button" onclick="loadBranchesTreasury()">Filter 🔍</button>
+      <button data-okb-custom-button="b207" class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
+      <button data-okb-custom-button="b208" id="btSummaryBtn" type="button" onclick="printBranchesTreasurySummary()" style="padding:8px 14px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;font-weight:900;cursor:pointer;">📊 Summary Report</button>
+      <button data-okb-custom-button="b209" id="btPrintBtn" type="button" onclick="printBranchesTreasuryReport()" style="padding:8px 14px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:800;cursor:pointer;">🖨️ طباعة التقرير</button>
+      <button data-okb-custom-button="b210" type="button" onclick="openFinancialAudit('branches','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
     </div>
   </div>
   <div class="branches-treasury-stats">
@@ -1952,8 +2013,8 @@
 <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">تقفيل اليومية ومطابقة الخزينة</p>
 </div>
 <div class="app-refresh-back khazna-header-nav">
-  <button class="soft" type="button" onclick="refreshKhaznaPage(this)">Refresh</button>
-  <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+  <button data-okb-custom-button="b211" class="soft" type="button" onclick="refreshKhaznaPage(this)">Refresh</button>
+  <button data-okb-custom-button="b212" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
 </div>
 </div>
 </div>
@@ -1962,17 +2023,17 @@
 <div class="toolbar" style="margin-bottom:0;">
 <div class="date-filter-group"><label>من</label><input id="khaznaFromDate" type="date"/></div>
 <div class="date-filter-group"><label>إلى</label><input id="khaznaToDate" type="date"/></div>
-<button class="btn-filter" onclick="loadKhaznaData()">Filter 🔍</button>
-<button class="btn-reset-date" onclick="resetKhaznaFilter()">Reset ✕</button>
+<button data-okb-custom-button="b213" class="btn-filter" onclick="loadKhaznaData()">Filter 🔍</button>
+<button data-okb-custom-button="b214" class="btn-reset-date" onclick="resetKhaznaFilter()">Reset ✕</button>
 <input id="khaznaBarcodeSearch" class="barcode-search-input" placeholder="Scan / Search Barcode أو Ticket ID أو الاسم أو الموبايل..." type="text"/>
 <select id="khaznaFilterStatus" data-okb-unified-filter="khazna" style="flex:0 0 auto;min-width:160px;max-width:200px;min-height:40px;padding:8px 12px;font-size:13px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;color:var(--text-primary);">
 <option value="Signed">Signed</option>
 </select>
-<button id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
-<button id="khaznaPrintReportBtn" onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
-<button type="button" onclick="openFinancialAudit('branch','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
-<button id="lockDailyBtn" onclick="lockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔒 قفل اليومية</button>
-<button id="unlockDailyBtn" onclick="unlockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#10b981;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔓 فتح القفل</button>
+<button data-okb-custom-button="b215" id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
+<button data-okb-custom-button="b216" id="khaznaPrintReportBtn" onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
+<button data-okb-custom-button="b217" type="button" onclick="openFinancialAudit('branch','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
+<button data-okb-custom-button="b218" id="lockDailyBtn" onclick="lockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔒 قفل اليومية</button>
+<button data-okb-custom-button="b219" id="unlockDailyBtn" onclick="unlockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#10b981;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔓 فتح القفل</button>
 <span id="khaznaBadge" style="display:none;background:#6366f1;color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;"></span>
 </div>
 </div>
@@ -2017,9 +2078,9 @@
 <h3 style="margin:0;font-size:15px;">📋 أوردرات الفترة المحددة</h3>
 <div class="hidden" id="khaznaBulkActions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;border:1px solid rgba(99,102,241,.28);border-radius:11px;background:rgba(99,102,241,.07);">
   <span id="khaznaSelectedCount" style="font-size:11px;font-weight:900;color:var(--text-primary);">0 محدد</span>
-  <button type="button" onclick="printSelectedOrders()" style="padding:7px 12px;border:0;border-radius:8px;background:#0D9488;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🖨️ طباعة الكل</button>
-  <button class="hidden" id="khaznaBulkDeleteBtn" type="button" onclick="deleteSelectedKhaznaOrders()" style="padding:7px 12px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🗑️ حذف المحدد</button>
-  <button class="hidden" id="khaznaDeleteCollectionProofBtn" type="button" onclick="deleteSelectedKhaznaCollectionProof()" style="padding:7px 12px;border:0;border-radius:8px;background:#7c3aed;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🖼️ حذف إثبات التحصيل</button>
+  <button data-okb-custom-button="b220" type="button" onclick="printSelectedOrders()" style="padding:7px 12px;border:0;border-radius:8px;background:#0D9488;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🖨️ طباعة الكل</button>
+  <button data-okb-custom-button="b221" class="hidden" id="khaznaBulkDeleteBtn" type="button" onclick="deleteSelectedKhaznaOrders()" style="padding:7px 12px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🗑️ حذف المحدد</button>
+  <button data-okb-custom-button="b222" class="hidden" id="khaznaDeleteCollectionProofBtn" type="button" onclick="deleteSelectedKhaznaCollectionProof()" style="padding:7px 12px;border:0;border-radius:8px;background:#7c3aed;color:#fff;font-size:11px;font-weight:900;cursor:pointer;">🖼️ حذف إثبات التحصيل</button>
 </div>
 </div>
 <div id="khaznaLockBadge" class="daily-lock-badge"></div>
@@ -2038,14 +2099,14 @@
   <div class="secretary-audit-page-panel">
     <div class="financial-audit-head">
       <div><h2 id="financialAuditTitle">🛡️ Financial Audit — المراجعة المالية</h2><p id="financialAuditMeta"></p></div>
-      <div class="secretary-audit-head-actions"><input id="financialAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." oninput="renderFinancialAudit()"><button type="button" class="secretary-audit-head-reset" onclick="resetFinancialAuditFilters()">Reset ✕</button><button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+      <div class="secretary-audit-head-actions"><input id="financialAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو العميل..." oninput="renderFinancialAudit()"><button data-okb-custom-button="b223" type="button" class="secretary-audit-head-reset" onclick="resetFinancialAuditFilters()">Reset ✕</button><button data-okb-custom-button="b224" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
     </div>
     <div class="financial-audit-tools secretary-audit-filters">
       <div class="date-filter-group"><label>من</label><input id="financialAuditFrom" type="date"></div><div class="date-filter-group"><label>إلى</label><input id="financialAuditTo" type="date"></div>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshFinancialAudit(true)">Filter 🔍</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="printFinancialAudit()">🖨️ طباعة</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAuditManagementReport()">📊 Report</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAudit()">⬇ Export Excel</button>
+      <button data-okb-custom-button="b225" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshFinancialAudit(true)">Filter 🔍</button>
+      <button data-okb-custom-button="b226" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="printFinancialAudit()">🖨️ طباعة</button>
+      <button data-okb-custom-button="b227" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAuditManagementReport()">📊 Report</button>
+      <button data-okb-custom-button="b228" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportFinancialAudit()">⬇ Export Excel</button>
       <select id="financialAuditBranchFilter" class="secretary-audit-select" onchange="applyFinancialAuditClientFilters()"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
       <select id="financialAuditEmployeeFilter" class="secretary-audit-select" onchange="applyFinancialAuditClientFilters()"><option value="all">كل الموظفين</option></select>
       <select id="financialAuditSeverityFilter" class="secretary-audit-select" onchange="renderFinancialAudit()"><option value="all">كل الحالات</option><option value="error">خطأ</option><option value="warning">تنبيه</option></select>
@@ -2062,17 +2123,17 @@
       <div><h2 id="secretaryAuditTitle">🛡️ Secretary Audit — مراجعة أخطاء إدخال الأوردرات</h2><p id="secretaryAuditMeta"></p></div>
       <div class="secretary-audit-head-actions">
         <input id="secretaryAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو الموبايل أو العميل..." autocomplete="off" oninput="scheduleSecretaryAuditSearch()">
-        <button type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
-        <button class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
+        <button data-okb-custom-button="b229" type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
+        <button data-okb-custom-button="b230" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
     <div class="financial-audit-tools secretary-audit-filters">
       <div class="date-filter-group"><label>من</label><input id="secretaryAuditFrom" type="date"></div>
       <div class="date-filter-group"><label>إلى</label><input id="secretaryAuditTo" type="date"></div>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">Filter 🔍</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAuditManagementReport()">📊 Report</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">↻ Refresh</button>
-      <button type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAudit()">⬇ Export Excel</button>
+      <button data-okb-custom-button="b231" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">Filter 🔍</button>
+      <button data-okb-custom-button="b232" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAuditManagementReport()">📊 Report</button>
+      <button data-okb-custom-button="b233" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="refreshSecretaryAudit()">↻ Refresh</button>
+      <button data-okb-custom-button="b234" type="button" class="financial-audit-btn secretary-audit-action-btn" onclick="exportSecretaryAudit()">⬇ Export Excel</button>
       <select id="secretaryAuditBranchFilter" class="secretary-audit-select" onchange="renderSecretaryAudit(true)"><option value="all">كل الفروع</option><option value="مدينة نصر">مدينة نصر</option><option value="اسكندرية">اسكندرية</option><option value="طنطا">طنطا</option><option value="المنصورة">المنصورة</option></select>
       <select id="secretaryAuditEmployeeFilter" class="secretary-audit-select" onchange="renderSecretaryAudit(true)"><option value="all">كل الموظفين</option></select>
       <select id="secretaryAuditSeverityFilter" class="secretary-audit-select" onchange="renderSecretaryAudit(true)"><option value="all">كل الحالات</option><option value="warning">تنبيه</option><option value="error">خطأ</option><option value="resolved">تم التعديل</option></select>
@@ -2081,9 +2142,9 @@
     <div id="secretaryAuditVerdict" class="financial-audit-verdict"></div>
     <div class="table-wrap financial-audit-table-wrap secretary-audit-table-wrap"><table><thead><tr><th>#</th><th>الخطورة</th><th>Ticket ID</th><th>العميل</th><th>المستخدم</th><th>الفرع</th><th>السعر</th><th>Deposit</th><th class="secretary-audit-issue-head">المشكلة المكتشفة</th><th class="secretary-audit-details-head">عرض التفاصيل</th><th>التاريخ</th><th class="secretary-audit-action-head">الإجراء</th></tr></thead><tbody id="secretaryAuditBody"></tbody></table></div>
     <div id="secretaryAuditPagination" class="secretary-audit-pagination hidden" aria-label="Secretary Audit Pagination">
-      <button id="secretaryAuditPrevPage" type="button" onclick="changeSecretaryAuditPage(-1)">السابق</button>
+      <button data-okb-custom-button="b235" id="secretaryAuditPrevPage" type="button" onclick="changeSecretaryAuditPage(-1)">السابق</button>
       <span id="secretaryAuditPaginationText">صفحة 1 من 1</span>
-      <button id="secretaryAuditNextPage" type="button" onclick="changeSecretaryAuditPage(1)">التالي</button>
+      <button data-okb-custom-button="b236" id="secretaryAuditNextPage" type="button" onclick="changeSecretaryAuditPage(1)">التالي</button>
     </div>
   </div>
 </section>
@@ -2095,7 +2156,7 @@
         <h3 id="secretaryAuditChangeTitle">تفاصيل التعديل</h3>
         <p>يتم عرض الحقول التي تغيّرت فقط بدون حذف أي تفاصيل من سجل الـ Audit.</p>
       </div>
-      <button type="button" onclick="closeSecretaryAuditChangeDetails()" aria-label="إغلاق">✕</button>
+      <button data-okb-custom-button="b237" type="button" onclick="closeSecretaryAuditChangeDetails()" aria-label="إغلاق">✕</button>
     </div>
     <div id="secretaryAuditChangeBody" class="secretary-audit-change-body"></div>
   </div>
@@ -2119,7 +2180,7 @@
           <p class="my-account-subtitle">تغيير كلمة المرور للحساب الحالي فقط</p>
         </div>
       </div>
-      <button class="my-account-close" type="button" onclick="closeMyAccountModal()" aria-label="إغلاق">✕</button>
+      <button data-okb-custom-button="b238" class="my-account-close" type="button" onclick="closeMyAccountModal()" aria-label="إغلاق">✕</button>
     </div>
 
     <form class="my-account-form" id="myAccountForm" onsubmit="changeMyAccountPassword(event)">
@@ -2127,7 +2188,7 @@
         <label for="myCurrentPassword">كلمة المرور الحالية</label>
         <div class="my-account-password-wrap">
           <input class="my-account-input" id="myCurrentPassword" type="password" autocomplete="current-password" required>
-          <button class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myCurrentPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
+          <button data-okb-custom-button="b239" class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myCurrentPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
         </div>
       </div>
 
@@ -2135,7 +2196,7 @@
         <label for="myNewPassword">كلمة المرور الجديدة</label>
         <div class="my-account-password-wrap">
           <input class="my-account-input" id="myNewPassword" type="password" autocomplete="new-password" required>
-          <button class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myNewPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
+          <button data-okb-custom-button="b240" class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myNewPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
         </div>
       </div>
 
@@ -2143,7 +2204,7 @@
         <label for="myConfirmPassword">تأكيد كلمة المرور الجديدة</label>
         <div class="my-account-password-wrap">
           <input class="my-account-input" id="myConfirmPassword" type="password" autocomplete="new-password" required>
-          <button class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myConfirmPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
+          <button data-okb-custom-button="b241" class="my-account-eye" type="button" onclick="toggleMyAccountPassword('myConfirmPassword',this)" aria-label="إظهار أو إخفاء كلمة المرور">👁</button>
         </div>
       </div>
 
@@ -2160,8 +2221,8 @@
       <div class="my-account-message" id="myAccountMessage" aria-live="polite"></div>
 
       <div class="my-account-actions">
-        <button class="my-account-cancel" type="button" onclick="closeMyAccountModal()">إلغاء</button>
-        <button class="my-account-save" id="myAccountSaveBtn" type="submit">حفظ كلمة المرور</button>
+        <button data-okb-custom-button="b242" class="my-account-cancel" type="button" onclick="closeMyAccountModal()">إلغاء</button>
+        <button data-okb-custom-button="b243" class="my-account-save" id="myAccountSaveBtn" type="submit">حفظ كلمة المرور</button>
       </div>
     </form>
   </div>
@@ -2172,12 +2233,12 @@
 <div class="card" style="width:100%; max-width:700px; background:#f8f9fa; border:1px solid rgba(255,255,255,.14); border-radius:24px; padding:25px; box-shadow:0 20px 50px rgba(0,0,0,.5); max-height:90vh; overflow-y:auto;">
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
 <h2 style="margin:0; color:#0d9488; font-size:20px;">📥 استيراد أوردرات من ملف إكسيل</h2>
-<button class="danger" onclick="closeImportModal()" style="padding:6px 14px; border-radius:10px; cursor:pointer;">✕ إغلاق</button>
+<button data-okb-custom-button="b244" class="danger" onclick="closeImportModal()" style="padding:6px 14px; border-radius:10px; cursor:pointer;">✕ إغلاق</button>
 </div>
 <div id="importStep1">
 <p style="color:#003a6c; font-size:14px; margin-bottom:12px;">اختر ملف الإكسيل الخاص بشركة الشحن (يدعم صيغ .xlsx أو .xls أو .csv)</p>
 <input accept=".xlsx, .xls, .csv" id="excelFileInput" style="padding:10px; margin-bottom:15px; width:100%;" type="file"/>
-<button class="primary" onclick="processExcelFile()" style="width:100%; padding:12px; cursor:pointer;">تحميل الملف وقراءة الأعمدة 🔍</button>
+<button data-okb-custom-button="b245" class="primary" onclick="processExcelFile()" style="width:100%; padding:12px; cursor:pointer;">تحميل الملف وقراءة الأعمدة 🔍</button>
 </div>
 <div class="hidden" id="importStep2" style="margin-top:15px;">
 <h3 style="color:#facc15; font-size:15px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">طابق أعمدة الملف أو اختر قيم ثابتة للرفع:</h3>
@@ -2186,7 +2247,7 @@
 <div style="background:rgba(21,128,61,0.15); border:1px solid #15803d; padding:12px; border-radius:12px; margin-bottom:15px;">
 <span id="importSummaryText" style="color:#15803d; font-size:13px; font-weight:bold;">تم قراءة الصفوف بنجاح.</span>
 </div>
-<button class="success" id="startImportBtn" onclick="executeBulkImport()" style="width:100%; padding:14px; font-size:16px; cursor:pointer;">ابدأ إدخال البيانات في السيستم فوراً 🚀</button>
+<button data-okb-custom-button="b246" class="success" id="startImportBtn" onclick="executeBulkImport()" style="width:100%; padding:14px; font-size:16px; cursor:pointer;">ابدأ إدخال البيانات في السيستم فوراً 🚀</button>
 <div id="importProgressText" style="text-align:center; margin-top:10px; color:#facc15; font-weight:bold; font-size:14px;"></div>
 </div>
 </div>
@@ -2203,7 +2264,7 @@
 <p id="collectCustomerLabel" style="margin:2px 0 0;font-size:12px;color:var(--text-muted);">تسوية المبلغ المحصّل من المندوب</p>
 </div>
 </div>
-<button onclick="closeCollectModal()" style="background:var(--bg-soft);border:1px solid var(--border-color);color:var(--text-muted);width:34px;height:34px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">✕</button>
+<button data-okb-custom-button="b247" onclick="closeCollectModal()" style="background:var(--bg-soft);border:1px solid var(--border-color);color:var(--text-muted);width:34px;height:34px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">✕</button>
 </div>
 <!-- Summary Fields -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
@@ -2252,7 +2313,7 @@
 </div>
 <div id="collectProofPreview" style="display:none;align-items:center;gap:10px;margin-top:8px;">
 <img id="collectProofImg" style="max-width:85px;max-height:85px;border-radius:8px;border:1px solid var(--border-color);"/>
-<button onclick="clearCollectProof()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
+<button data-okb-custom-button="b248" onclick="clearCollectProof()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
 </div>
 </div>
 </div>
@@ -2274,8 +2335,8 @@
 <label for="collectDateInput" style="font-size:11px;color:var(--text-muted);font-weight:800;">📅 تاريخ التحصيل — للأدمن فقط</label>
 <input id="collectDateInput" type="date" style="height:38px;padding:7px 10px;border-radius:10px;border:1px solid rgba(99,102,241,.42);background:var(--bg-soft);color:var(--text-primary);font-size:12px;font-weight:800;outline:none;color-scheme:dark;"/>
 </div>
-<button onclick="closeCollectModal()" style="padding:10px 18px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إلغاء</button>
-<button id="collectConfirmBtn" type="button" onclick="confirmCollectOrder()" style="padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.22));backdrop-filter:blur(12px);color:#fff;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 14px rgba(100,210,240,0.2);text-shadow:0 1px 2px rgba(0,0,0,0.2);">✅ تحصيل الأوردر</button>
+<button data-okb-custom-button="b249" onclick="closeCollectModal()" style="padding:10px 18px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إلغاء</button>
+<button data-okb-custom-button="b250" id="collectConfirmBtn" type="button" onclick="confirmCollectOrder()" style="padding:10px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,rgba(100,210,240,0.30),rgba(80,190,230,0.22));backdrop-filter:blur(12px);color:#fff;cursor:pointer;font-size:13px;font-weight:700;box-shadow:0 2px 14px rgba(100,210,240,0.2);text-shadow:0 1px 2px rgba(0,0,0,0.2);">✅ تحصيل الأوردر</button>
 </div>
 </div>
 </div>
@@ -2291,7 +2352,7 @@
 <p style="margin:2px 0 0;font-size:12px;color:var(--text-muted);">جرد وتسوية المبالغ المحصّلة من المندوب</p>
 </div>
 </div>
-<button onclick="closeDailyReconciliationModal()" style="background:var(--bg-soft);border:1px solid var(--border-color);color:var(--text-muted);width:34px;height:34px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">✕</button>
+<button data-okb-custom-button="b251" onclick="closeDailyReconciliationModal()" style="background:var(--bg-soft);border:1px solid var(--border-color);color:var(--text-muted);width:34px;height:34px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">✕</button>
 </div>
 <!-- Input Fields -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
@@ -2357,8 +2418,8 @@
 </div>
 <!-- Actions -->
 <div style="display:flex;gap:10px;justify-content:flex-end;">
-<button onclick="closeDailyReconciliationModal()" style="padding:10px 20px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إغلاق</button>
-<button onclick="printReconciliationReport()" style="padding:10px 20px;border-radius:10px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">🖨️ طباعة المطابقة</button>
+<button data-okb-custom-button="b252" onclick="closeDailyReconciliationModal()" style="padding:10px 20px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;">إغلاق</button>
+<button data-okb-custom-button="b253" onclick="printReconciliationReport()" style="padding:10px 20px;border-radius:10px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">🖨️ طباعة المطابقة</button>
 </div>
 </div>
 </div>
@@ -2371,8 +2432,8 @@
 <option value="">اختر شركة الشحن...</option>
 </select>
 <div style="display:flex;gap:10px;justify-content:flex-end;">
-<button onclick="closeTransferModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">إلغاء</button>
-<button id="transferConfirmBtn" onclick="confirmTransfer()" style="padding:8px 18px;border-radius:8px;border:none;background:#f59e0b;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ تأكيد التحويل</button>
+<button data-okb-custom-button="b254" onclick="closeTransferModal()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-main);cursor:pointer;font-size:13px;">إلغاء</button>
+<button data-okb-custom-button="b255" id="transferConfirmBtn" onclick="confirmTransfer()" style="padding:8px 18px;border-radius:8px;border:none;background:#f59e0b;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">✅ تأكيد التحويل</button>
 </div>
 <!-- ===== Footer ===== -->
 <footer class="app-footer">
@@ -2426,6 +2487,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v265.js?v=20261013-customer-profile-notes-v265"></script>
+<script src="js/main.v275.js?v=20261019-branch-flags-layout-v275"></script>
 </body>
 </html>

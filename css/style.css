@@ -3997,3 +3997,52 @@ body.customer-profile-open{overflow:hidden}
   .customer-profile-info>.customer-profile-contact-dates,
   .customer-profile-info>.customer-profile-last-notes{grid-column:1/-1;}
 }
+
+/* v266: additive navigation & admin-only UI customization */
+.okb-chat-header-btn{--header-neon:#22d3ee;--header-neon-soft:#67e8f9}
+.okb-chat-header-btn .logout-header-icon{position:relative}
+.okb-chat-header-btn.hidden{display:none!important}
+.okb-ui-option-hidden{display:none!important}
+.okb-permission-tabs{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.okb-permission-tab{border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-primary);border-radius:10px;padding:10px 16px;font:800 12px Cairo,sans-serif;cursor:pointer}
+.okb-permission-tab.active{border-color:#22d3ee;box-shadow:0 0 0 1px rgba(34,211,238,.2)}
+.okb-customization-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:18px 0}
+.okb-customization-grid label{display:flex;flex-direction:column;gap:7px;font-weight:800;font-size:12px;color:var(--text-primary)}
+.okb-customization-grid input:not([type=checkbox]){min-width:0;width:100%;padding:11px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-soft);color:var(--text-primary)}
+.okb-customization-grid .okb-customization-switch{flex-direction:row;align-items:center;gap:9px}
+.okb-customization-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.okb-customization-note{font-size:12px;color:var(--text-muted)}
+#okbCustomizationSaveStatus{font-size:12px;font-weight:800}
+@media(max-width:700px){.okb-customization-grid{grid-template-columns:1fr}}
+
+/* v267: scoped admin customization interface; presentation only */
+.okb-customization-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+.okb-customization-toolbar label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:800}
+.okb-customization-toolbar input,.okb-customization-toolbar select,.okb-customization-entry input[type=text],.okb-customization-entry input[type=number]{min-width:0;width:100%;padding:9px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-soft);color:var(--text-primary)}
+.okb-customization-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-height:62vh;overflow:auto;padding:3px}
+.okb-customization-entry{border:1px solid var(--border-color);border-radius:11px;padding:12px;display:grid;gap:8px;min-width:0}
+.okb-customization-entry-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.okb-customization-entry small{color:var(--text-muted);overflow-wrap:anywhere}
+.okb-customization-entry label{font-size:11px;font-weight:700;display:grid;gap:4px}
+.okb-customization-options{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.okb-customization-options label{display:flex;gap:6px;align-items:center}
+.okb-customization-disabled{opacity:.62}
+@media(max-width:750px){.okb-customization-toolbar,.okb-customization-list{grid-template-columns:1fr}}
+
+/* v274 — Dashboard new-order controls layout only; branch order forms untouched */
+#orderForm .dash-order-status-ticket-row {grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end;min-width:0;}
+#orderForm .dash-order-status-ticket-row > #status {grid-column:1;min-width:0;width:100%;}
+#orderForm .dash-manual-ticket-field {grid-column:2;min-width:0;}
+#orderForm .dash-manual-ticket-field label {display:block;margin-bottom:5px;font-size:11px;color:var(--text-secondary);font-weight:700;}
+#orderForm .dash-manual-ticket-field input {width:100%;max-width:100%;box-sizing:border-box;}
+#orderForm .dash-order-flags {grid-column:1/-1;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:1px 0 3px;}
+#orderForm .dash-order-flags .order-flag-check {min-height:25px;padding:1px 0;display:inline-flex;gap:8px;font-size:12px;}
+#orderForm .dash-order-flags .order-flag-check input[type="checkbox"] {width:14px!important;height:14px!important;min-width:14px!important;margin:0;flex:none;}
+#orderForm #adminManualTicketWrap {width:auto;max-width:100%;}
+@media(max-width:1100px){#orderForm .dash-order-status-ticket-row {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:600px){#orderForm .dash-order-status-ticket-row {grid-template-columns:1fr;}#orderForm .dash-order-status-ticket-row > #status,#orderForm .dash-manual-ticket-field {grid-column:1;}}
+
+/* v275 — Branch new-order checkboxes: same compact vertical layout as Dashboard. */
+#branchOrderForm .branch-order-flags {grid-column:1/-1;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:1px 0 3px;min-width:0;}
+#branchOrderForm .branch-order-flags .order-flag-check {min-height:25px;padding:1px 0;display:inline-flex;align-items:center;gap:8px;font-size:12px;}
+#branchOrderForm .branch-order-flags .order-flag-check input[type="checkbox"] {width:14px!important;height:14px!important;min-width:14px!important;margin:0;flex:none;}
