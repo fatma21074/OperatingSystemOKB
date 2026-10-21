@@ -2,6 +2,7 @@ const OKB_SUPABASE_URL = "https://nsynylbqrkdftnyqrgkn.supabase.co";
 const OKB_SUPABASE_KEY = "sb_publishable_6YG9WtNG4D_RFplEvv1h6A_aBizgtOv";
 const OKB_LOGIN_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-login`;
 const OKB_PAYMENT_OCR_ENDPOINT = `${OKB_SUPABASE_URL}/functions/v1/okb-payment-ocr`;
+const OKB_PAYMENT_OCR_ENABLED = false; // v239: runtime disabled; screenshots remain stored for manual review.
 let okbSessionRefreshTimer = null;
 let okbSessionRefreshPromise = null;
 let supabaseClient = createOkbSupabaseClient();
@@ -39,6 +40,7 @@ function createOkbSupabaseClient(accessToken = "") {
 }
 
 function setOkbSecureSession(token, expiresAt = 0) {
+  productReportOrders = null; // v252: invalidate user-scoped report rows when session changes.
   const previousClient = supabaseClient;
   const restartRealtime = Boolean(currentUser);
   if (restartRealtime) {
@@ -108,6 +110,7 @@ function handleOkbSessionExpiry(error) {
   sessionStorage.removeItem('okb_current_user');
   if (typeof app !== 'undefined') app?.classList.add('hidden');
   if (typeof loginPage !== 'undefined') loginPage?.classList.remove('hidden');
+  document.documentElement.classList.remove('okb-exact-order-boot');
   if (typeof showLoginMessage === 'function') showLoginMessage('انتهت الجلسة الآمنة. سجل الدخول مرة أخرى للمتابعة.');
 }
 
@@ -197,6 +200,31 @@ let dailyReportCategoryFilter = 'all';
 let dailyReportPage = 1;
 let dailyReportRevision = 0;
 let dailyReportAnalysisCache = new WeakMap();
+// v255: small in-memory history of completed Daily Report periods.
+// No persistent storage; access is checked again using the current user/role scope.
+const DAILY_REPORT_HISTORY_TTL_MS = 60000;
+const DAILY_REPORT_HISTORY_LIMIT = 3;
+const dailyReportHistory = new Map();
+function clearDailyReportHistory() { dailyReportHistory.clear(); }
+function readDailyReportHistory(scope) {
+  const item = dailyReportHistory.get(scope);
+  if (!item) return null;
+  if (Date.now() - item.savedAt >= DAILY_REPORT_HISTORY_TTL_MS) {
+    dailyReportHistory.delete(scope);
+    return null;
+  }
+  dailyReportHistory.delete(scope);
+  dailyReportHistory.set(scope, item);
+  return item;
+}
+function saveDailyReportHistory(scope, orders, loadedAt) {
+  dailyReportHistory.delete(scope);
+  dailyReportHistory.set(scope, { orders, loadedAt, savedAt: Date.now() });
+  while (dailyReportHistory.size > DAILY_REPORT_HISTORY_LIMIT) {
+    dailyReportHistory.delete(dailyReportHistory.keys().next().value);
+  }
+}
+
 let users = [];
 let editId = null;
 let currentUser = null;
@@ -303,6 +331,28 @@ let activityLogPageNumber = 1;
 let activityLogEmployeeOptions = [];
 let activityLogSearchTimer = null;
 let activityLogLoadToken = 0;
+// v257: coalesce bursts of Realtime INSERTs into one read without touching the log writer.
+let activityLogRealtimeRefreshTimer = null;
+const ACTIVITY_LOG_REALTIME_REFRESH_MS = 1200;
+const ACTIVITY_LOG_SELECT_COLUMNS = 'id,username,user_name,user_role,action_type,action_title,action_details,branch_name,ticket_id,customer_name,created_at,action_date';
+function cancelActivityLogRealtimeRefresh(){
+  if(activityLogRealtimeRefreshTimer !== null){
+    clearTimeout(activityLogRealtimeRefreshTimer);
+    activityLogRealtimeRefreshTimer = null;
+  }
+}
+function scheduleActivityLogRealtimeRefresh(){
+  // Fixed-window throttling: sustained activity cannot postpone refresh forever.
+  if(activityLogRealtimeRefreshTimer !== null)return;
+  activityLogRealtimeRefreshTimer=setTimeout(async()=>{
+    activityLogRealtimeRefreshTimer=null;
+    if(!currentUser || !hasRoleFeature('activity_log') || document.getElementById('activityLogPage')?.classList.contains('hidden'))return;
+    try{
+      await loadActivityLogs();
+      await markActivityLogsReadFromServer();
+    }catch(error){console.debug('Activity Log live refresh unavailable:',error?.message||error);}
+  },ACTIVITY_LOG_REALTIME_REFRESH_MS);
+}
 const ACTIVITY_LOG_PAGE_SIZE = 25;
 const ACTIVITY_LOG_HISTORICAL_SEARCH_LIMIT = 300;
 const ACTIVITY_LOG_HISTORICAL_SEARCH_MIN_DIGITS = 3;
@@ -463,6 +513,7 @@ async function markActivityLogsReadFromServer(){
   updateActivityLogBadge(0);
 }
 function stopActivityLogNotifications(){
+  cancelActivityLogRealtimeRefresh();
   if (activityLogRealtimeChannel) {
     supabaseClient.removeChannel(activityLogRealtimeChannel);
     activityLogRealtimeChannel = null;
@@ -490,7 +541,7 @@ function startActivityLogNotifications(){
       if (!isPageOpen && !isCurrentUserActivity && activityId > seenId) {
         updateActivityLogBadge(activityLogUnreadCount + 1);
       }
-      if (isPageOpen) loadActivityLogs().then(markActivityLogsReadFromServer);
+      if (isPageOpen) scheduleActivityLogRealtimeRefresh();
     })
     .subscribe();
   // Polling is a safe fallback when Realtime is not enabled for activity_logs.
@@ -748,6 +799,7 @@ function getActivityLogSearchState(){
 }
 async function loadActivityLogs(){
   if(!hasRoleFeature('activity_log')) return;
+  cancelActivityLogRealtimeRefresh();
   const loadToken=++activityLogLoadToken;
   const list=document.getElementById('activityLogList'); if(list) list.innerHTML='<div class="activity-log-loading">جاري تحميل سجل النشاط...</div>';
   const from=document.getElementById('activityLogFrom')?.value||null;
@@ -758,7 +810,7 @@ async function loadActivityLogs(){
   const queryLimit=historicalNumberSearch?ACTIVITY_LOG_HISTORICAL_SEARCH_LIMIT:1000;
   // Ask PostgREST for the exact number of matching rows while still loading only the lightweight capped page payload.
   // This keeps the Activity Log fast but prevents the Total Activity Log KPI from stopping at the 1000-row fetch cap.
-  let query=supabaseClient.from('activity_logs').select('*',{count:'exact'}).order('id',{ascending:false}).limit(queryLimit);
+  let query=supabaseClient.from('activity_logs').select(ACTIVITY_LOG_SELECT_COLUMNS,{count:'exact'}).order('id',{ascending:false}).limit(queryLimit);
   if(employee!=='all') query=query.eq('username',employee);
   if(type!=='all') query=query.eq('action_type',type);
   // Normal mode stays day/date scoped. A deliberate numeric search (3+ digits)
@@ -875,6 +927,9 @@ function canViewProductReports(){ return hasRoleFeature('product_reports'); }
 let productReportTab = 'top';
 let productReportRows = { top: [], returned: [], cancel: [], dead: [], total: [], signed: [] };
 let productTicketModalRows = [];
+// v252: report-only order projection; never replaces Dashboard's shared orders.
+let productReportOrders = null;
+let productReportLoadPromise = null;
 
 function productItemCategory(item){ return String(item?.category || item?.item_category || item?.category_name || 'غير مصنف').trim() || 'غير مصنف'; }
 function productStockQty(item){
@@ -944,7 +999,7 @@ function productReason(order){ return (cleanVisibleOrderNotes(order?.notes||'').
 function productTicketRef(order,p){ return {ticketId:getTicketId(order),orderId:order.id,orderNumber:order.order_number||'',customer:order.customer_name||'',doctor:getProductReportDoctor(order),branch:order.branch||order.shipping_company||'',status:order.status||'',qty:Number(p.qty||1),date:order.created_at||'',reason:productReason(order)}; }
 function buildProductReportData(){
   const filters=getProductReportFilters(); const map=new Map(); const lastMovement=new Map();
-  const filteredOrders=orders.filter(o=>productOrderMatchesFilters(o,filters));
+  const filteredOrders=(productReportOrders ?? orders).filter(o=>productOrderMatchesFilters(o,filters));
   filteredOrders.forEach(order=>{
     const status=String(order.status||'').trim();
     parseOrderProductsForReports(order).filter(p=>!filters.search||normalizeProductName(p.name).includes(filters.search)).forEach(p=>{
@@ -1114,12 +1169,45 @@ function renderProductReportsChart(){
   else{label='Inactive Days';data=rows.map(x=>x.daysInactive===9999?61:x.daysInactive);if($('productChartTitle'))$('productChartTitle').textContent='Top 10 — المنتجات الراكدة';}
   charts.productReportsChart=new Chart(canvas,{type:'bar',data:{labels:rows.map(x=>x.name),datasets:[{label,data,backgroundColor:'rgba(217,70,239,.55)',borderColor:'#ff4df3',borderWidth:1,borderRadius:7}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:text}}},scales:{x:{beginAtZero:true,ticks:{color:text},grid:{color:isDark?'rgba(148,163,184,.12)':'rgba(15,23,42,.08)'}},y:{ticks:{color:text},grid:{display:false}}}}});
 }
+// v252: fetch only columns referenced by Product Reports and its existing financial helpers.
+// Preserve full historical coverage for dead-stock movement; do not limit to a month here.
+const PRODUCT_REPORT_ORDER_FIELDS = 'id,ticket_id,order_number,customer_name,doctor_name,branch,shipping_company,status,created_at,product_names,quantity,price,deposit,notes';
+async function loadProductReportOrders(force = false){
+  if(!force && productReportOrders !== null) return productReportOrders;
+  if(productReportLoadPromise) return productReportLoadPromise;
+  const request = (async () => {
+    const result = [];
+    const pageSize = 1000;
+    const seen = new Set();
+    for(let offset = 0;; offset += pageSize){
+      const {data,error} = await supabaseClient.from('orders')
+        .select(PRODUCT_REPORT_ORDER_FIELDS)
+        .order('created_at',{ascending:false})
+        .order('id',{ascending:false})
+        .range(offset,offset + pageSize - 1);
+      if(error) throw error;
+      const batch = data || [];
+      for(const order of batch){
+        if(!order?.id || seen.has(order.id)) throw new Error('Product Reports: incomplete or duplicated order page');
+        seen.add(order.id);
+        result.push(order);
+      }
+      if(batch.length < pageSize) break;
+    }
+    const visible = isAccountSupervisor() ? result.filter(o=>isOrderInManagedBranches(o)) : result;
+    productReportOrders = visible;
+    return visible;
+  })();
+  productReportLoadPromise = request;
+  try { return await request; }
+  finally { if(productReportLoadPromise === request) productReportLoadPromise = null; }
+}
 function renderProductReports(){ ensureProductReportEnhancements(); buildProductReportData(); updateProductReportKPIs(); renderProductReportTable(); renderProductReportsChart(); }
-async function showProductReportsPage(){ if(!canViewProductReports()){alert('غير مسموح لك بفتح Product Reports');return;} hideAllPages(); $('productReportsPage')?.classList.remove('hidden'); setActiveMenu('productReportsPage'); ensureProductReportEnhancements(); const range=getCurrentDashboardMonthRange(); $('productReportFrom').value=range.from; $('productReportTo').value=range.to; const loads=[]; if(ordersDataScope!=='all')loads.push(loadOrders()); loads.push(ensureChartLibrary()); await Promise.allSettled(loads); populateProductReportFilters(); renderProductReports(); }
+async function showProductReportsPage(){ if(!canViewProductReports()){alert('غير مسموح لك بفتح Product Reports');return;} hideAllPages(); $('productReportsPage')?.classList.remove('hidden'); setActiveMenu('productReportsPage'); ensureProductReportEnhancements(); const range=getCurrentDashboardMonthRange(); $('productReportFrom').value=range.from; $('productReportTo').value=range.to; try { await loadProductReportOrders(); } catch(error){ console.error('Product Reports load failed',error); alert('تعذر تحميل بيانات Product Reports: '+(error?.message||error)); return; } populateProductReportFilters(); renderProductReports(); }
 function applyProductReportFilters(){ renderProductReports(); }
 function resetProductReportFilters(){ const range=getCurrentDashboardMonthRange(); $('productReportFrom').value=range.from; $('productReportTo').value=range.to; if($('productReportBranch'))$('productReportBranch').value='all'; if($('productReportDoctor'))$('productReportDoctor').value='all'; if($('productReportSearch'))$('productReportSearch').value=''; renderProductReports(); }
 function setProductReportTab(tab){ productReportTab=tab; ['top','returned','cancel','dead','total','signed'].forEach(x=>$('productTab'+(x==='top'?'Top':x==='returned'?'Returned':x==='cancel'?'Cancel':x==='total'?'Total':x==='signed'?'Signed':'Dead'))?.classList.toggle('active',x===tab)); renderProductReportTable(); renderProductReportsChart(); }
-async function refreshProductReports(ev){ const btn=ev?.currentTarget; const old=btn?.innerHTML; if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';} await loadOrders(); await loadOKBItems(); populateProductReportFilters(); renderProductReports(); if(btn){btn.disabled=false;btn.innerHTML=old||'Refresh';} }
+async function refreshProductReports(ev){ const btn=ev?.currentTarget; const old=btn?.innerHTML; if(btn){btn.disabled=true;btn.innerHTML='جاري التحديث...';} try { await loadProductReportOrders(true); await loadOKBItems(); populateProductReportFilters(); renderProductReports(); } catch(error){ console.error('Product Reports refresh failed',error); alert('تعذر تحديث Product Reports: '+(error?.message||error)); } finally { if(btn){btn.disabled=false;btn.innerHTML=old||'Refresh';} } }
 function exportProductReportExcel(){
   const rows=productReportRows[productReportTab]||[]; if(!rows.length){alert('لا توجد بيانات للتصدير');return;} if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة');return;}
   const wb=XLSX.utils.book_new();
@@ -1405,10 +1493,16 @@ async function loadBranchInventory(branch){
     await loadOKBItems();
     let result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
     if(result.error){branchStockSchemaError(result.error);return;}
-    const synced=await syncOKBItemsToBranchInventory(branch,result.data||[]);if(!synced)return;
-    result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
-    if(result.error){branchStockSchemaError(result.error);return;}
-    const receiptsResult=await supabaseClient.from('branch_stock_receipts').select('*').eq('branch',branch).order('updated_at',{ascending:false});
+    // Read-only Egress improvement: refetch inventory only when product sync created new rows.
+    const inventoryItemIds=new Set((result.data||[]).map(row=>String(row.item_id)));
+    const missingInventoryItems=okbItems.some(item=>!inventoryItemIds.has(String(item.id)));
+    if(missingInventoryItems){
+      const synced=await syncOKBItemsToBranchInventory(branch,result.data||[]);if(!synced)return;
+      result=await supabaseClient.from('branch_inventory').select('*').eq('branch',branch).order('item_name',{ascending:true});
+      if(result.error){branchStockSchemaError(result.error);return;}
+    }
+    // Keep the original full receipt history and newest-per-item selection; transfer only UI-used fields.
+    const receiptsResult=await supabaseClient.from('branch_stock_receipts').select('id,branch,item_id,item_name,added_qty,received_qty,damaged_qty,actual_qty,request_reason,receipt_reason,status,requested_by,requested_at,received_by,received_at,updated_at,settlement_confirmed_at,settlement_confirmed_by').eq('branch',branch).order('updated_at',{ascending:false});
     if(receiptsResult.error){branchStockSchemaError(receiptsResult.error);return;}
     branchStockPendingReceipts=new Map();branchStockLatestReceipts=new Map();branchStockSelectedItems.clear();
     (receiptsResult.data||[]).forEach(receipt=>{
@@ -1601,7 +1695,7 @@ async function submitBranchStockReceipt(){
   const decision=modal.dataset.decision,received=Math.floor(Number($('stockControlReceivedQty')?.value||0)),damaged=Math.floor(Number($('stockControlDamagedQty')?.value||0)),reason=String($('stockControlReason')?.value||'').trim();
   if(received<0||damaged<0||damaged>received){alert('راجع الرصيد المستلم والهالك');return;}if(decision==='accepted'&&(received!==Number(receipt.added_qty)||damaged!==0)){alert('علامة ✅ للاستلام المطابق فقط. استخدم ❌ عند وجود فرق أو هالك.');return;}if(decision==='discrepancy'&&!reason){alert('سبب الاختلاف أو الهالك مطلوب');$('stockControlReason')?.focus();return;}
   const btn=$('stockControlSaveBtn');btn.disabled=true;btn.textContent='جاري الحفظ...';
-  try{const {data,error}=await supabaseClient.rpc('okb_receive_branch_stock',{p_receipt_id:Number(receipt.id),p_decision:decision,p_received_qty:received,p_damaged_qty:damaged,p_reason:reason||null,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;const actual=received-damaged,now=new Date().toISOString(),actor=currentUser?.name||currentUser?.username||'User';row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)+actual);row.updated_at=now;row.updated_by=actor;row.pending_receipt=null;row.last_receipt={...receipt,received_qty:received,damaged_qty:damaged,actual_qty:actual,receipt_reason:reason||null,status:decision,received_by:actor,received_at:now,updated_at:now,settlement_confirmed_at:null};branchStockPendingReceipts.delete(String(row.item_id));branchStockLatestReceipts.set(String(row.item_id),row.last_receipt);closeBranchStockControlModal();renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge(currentStockTakeRows);alert(`✅ تم استلام الجرد وإضافة ${num(actual)} قطعة صالحة إلى الرصيد`);}
+  try{const {data,error}=await supabaseClient.rpc('okb_receive_branch_stock',{p_receipt_id:Number(receipt.id),p_decision:decision,p_received_qty:received,p_damaged_qty:damaged,p_reason:reason||null,p_actor:currentUser?.name||currentUser?.username||'User'});if(error)throw error;const actual=received-damaged,now=new Date().toISOString(),actor=currentUser?.name||currentUser?.username||'User';row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)+actual);row.updated_at=now;row.updated_by=actor;row.pending_receipt=null;row.last_receipt={...receipt,received_qty:received,damaged_qty:damaged,actual_qty:actual,receipt_reason:reason||null,status:decision,received_by:actor,received_at:now,updated_at:now,settlement_confirmed_at:null};branchStockPendingReceipts.delete(String(row.item_id));branchStockLatestReceipts.set(String(row.item_id),row.last_receipt);closeBranchStockControlModal();renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge();alert(`✅ تم استلام الجرد وإضافة ${num(actual)} قطعة صالحة إلى الرصيد`);}
   catch(error){alert('تعذر استلام الجرد: '+error.message);}finally{btn.disabled=false;}
 }
 
@@ -1630,7 +1724,7 @@ async function resendBranchStockReceipt(receiptId){
       row.system_qty=Math.max(0,Number(data));row._originalSystemQty=row.system_qty;row.actual_qty=Math.max(0,Number(row.actual_qty||0)-oldActual);row.updated_at=pending.updated_at;row.updated_by=currentUser?.name||currentUser?.username||'User';row.pending_receipt=pending;row.last_receipt=null;
       branchStockLatestReceipts.delete(String(row.item_id));branchStockPendingReceipts.set(String(row.item_id),pending);
     }
-    renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge(currentStockTakeRows);
+    renderStockTakeTable();updateStockTakeSummary();updateBranchStockLowStockBadge();
     alert('✅ تم إرسال الجرد مرة أخرى، وسيظهر لمدير الفرع بعلامتي ✅ و❌');
   }catch(error){alert('تعذر إعادة إرسال الجرد: '+error.message);}
 }
@@ -1740,12 +1834,12 @@ const ROLE_PERMISSION_FEATURES = [
   { key:'btn_dashboard_export_okb_branch', label:'OKB Branch', group:'Dashboard — Export' },
   { key:'btn_dashboard_import', label:'📥 Import Excel', group:'Dashboard — إدارة' },
   { key:'btn_dashboard_edit', label:'✏️ تعديل', group:'Dashboard — إدارة' },
-  { key:'customer_profile_show_username', label:'اظهار اسم المستخدم - Customer Profile', group:'Dashboard — إدارة' },
   { key:'btn_branch_export', label:'⬇ Export', group:'الفروع — Export' },
   { key:'btn_branch_export_details', label:'Details', group:'الفروع — Export' },
   { key:'btn_branch_export_smart', label:'Smart Summary', group:'الفروع — Export' },
   { key:'btn_branch_export_area_analysis', label:'📍 Area Analysis Report', group:'الفروع — Export' },
   { key:'btn_branch_edit', label:'✏️ تعديل', group:'الفروع — إدارة' },
+  { key:'btn_branch_edit_signed', label:'🔐 تعديل أوردر Signed', group:'الفروع — إدارة' },
   { key:'btn_branch_transfer', label:'🔄 تحويل', group:'الفروع — إدارة' },
   { key:'btn_delete_upfront_proof', label:'🖼️ حذف إثبات السكرتارية', group:'الفروع — إدارة' },
   { key:'btn_branch_shipping_rank', label:'🚚 Shipping Rank', group:'الفروع — إدارة' },
@@ -1842,6 +1936,9 @@ function getDefaultRolePermissions(role) {
     btn_branch_export_smart:false,
     btn_branch_export_area_analysis:false,
     btn_branch_edit:!doctor,
+    // Signed orders are financially sensitive. Only Admin is always allowed;
+    // every other Role must receive this permission explicitly from Permission.
+    btn_branch_edit_signed:false,
     btn_branch_transfer:accounting,
     btn_delete_upfront_proof:!doctor,
     btn_branch_khazna:accounting || key === 'cashier',
@@ -1887,6 +1984,13 @@ function hasRoleFeature(feature) {
 
 function hasButtonPermission(feature) {
   return hasRoleFeature(feature);
+}
+
+function canEditSignedBranchOrder(order, showMessage = true) {
+  if (String(order?.status || '').trim().toLowerCase() !== 'signed') return true;
+  if (isAdmin() || hasButtonPermission('btn_branch_edit_signed')) return true;
+  if (showMessage) alert('لا يمكن تعديل أوردر Signed. يلزم صلاحية 🔐 تعديل أوردر Signed من Permission → الفروع — إدارة.');
+  return false;
 }
 
 async function loadRolePermissions({fresh=false,throwOnError=false}={}) {
@@ -2105,6 +2209,9 @@ function applyLiveOrderPayload(payload) {
   const row = eventType === 'DELETE' ? null : payload?.new;
   const id = String(row?.id || payload?.old?.id || '');
   if (!id) return;
+  // v260: plan Pending badge refresh independently of the page render timer.
+  // Unknown previous UPDATE/DELETE values are conservatively treated as relevant.
+  schedulePendingHeaderRealtimeRefresh(payload);
 
   orders = replaceLiveOrderInList(orders, id, row, Boolean(row && isLiveOrderInsideDashboardScope(row)));
   branchOrders = replaceLiveOrderInList(branchOrders, id, row, Boolean(row && isLiveOrderInsideBranchScope(row)));
@@ -2124,6 +2231,7 @@ function applyLiveOrderPayload(payload) {
     branchRankingPreviousRevision += 1;
     invalidateBranchRankingPreviousDerivedCache();
   }
+  clearDoctorRankHistory(); // v253: never restore pre-mutation historical orders.
   const touchesDoctorRank = doctorRankDataReady && (
     doctorRankOrders.some(order => String(order.id) === id) || Boolean(row && isLiveOrderInsideDoctorRankScope(row))
   );
@@ -2135,6 +2243,8 @@ function applyLiveOrderPayload(payload) {
   khaznaOrders = replaceLiveOrderInList(khaznaOrders, id, row, Boolean(row && khaznaOrders.some(order => String(order.id) === id)));
   branchesTreasuryOrders = replaceLiveOrderInList(branchesTreasuryOrders, id, row, Boolean(row && branchesTreasuryOrders.some(order => String(order.id) === id)));
   pendingOrders = replaceLiveOrderInList(pendingOrders, id, row, Boolean(row && pendingOrders.some(order => String(order.id) === id)));
+  // Any live order mutation could affect a previously viewed period.
+  clearDailyReportHistory();
   const touchesDailyReport = dailyReportDataReady && (
     dailyReportOrders.some(order => String(order.id) === id) || Boolean(row && isLiveOrderInsideDailyReportScope(row))
   );
@@ -2168,7 +2278,7 @@ function scheduleLiveBusinessRender() {
     if (isLivePageVisible('khaznaPage')) financialRefreshes.push(loadKhaznaData());
     if (isLivePageVisible('branchesTreasuryPage')) financialRefreshes.push(loadBranchesTreasury());
     if (isLivePageVisible('pendingPage')) financialRefreshes.push(loadPendingOrders(false));
-    financialRefreshes.push(refreshPendingHeaderCount());
+    // v260: Pending badge is scheduled per relevant order mutation, not per UI render.
     await Promise.allSettled(financialRefreshes);
   }, 250);
 }
@@ -2218,6 +2328,7 @@ async function applyLiveUserPayload(payload) {
     branchRankingPreviousLoadError = '';
     branchRankingPreviousRevision += 1;
     invalidateBranchRankingPreviousDerivedCache();
+    clearDoctorRankHistory();
     doctorRankLoadToken += 1;
     doctorRankOrders = [];
     doctorRankOrdersScope = '';
@@ -2391,6 +2502,253 @@ async function createCustomRole(){
   alert(`تم إنشاء ${label} بنجاح. افتح Permission وحدد صلاحياتها.`);
 }
 
+/* v267 — admin-only presentation configuration. Zero writes to orders or accounting tables. */
+const OKB_UI_DEFAULTS=Object.freeze({dashboardLabel:'Dashboard',chatLabel:'Chat',doctorRankLabel:'Doctor Rank',dailyReportLabel:'Daily Report',showDoctorRank:true,showDailyReport:true});
+let okbUIConfig={...OKB_UI_DEFAULTS,buttonLabels:{},fields:{}};
+let okbUIConfigRequested=false;
+const okbCustomButtonNodes=new Map();
+const okbCustomFieldNodes=new Map();
+const OKB_CUSTOM_PAGES=Object.freeze({ordersPage:'Dashboard',branchPage:'صفحة الفرع',khaznaPage:'خزنة الفرع',branchesTreasuryPage:'خزنة الفروع'});
+const OKB_CRITICAL_FIELD_ID=/(price|deposit|discount|total|paid|fee|cost|amount|remaining|balance|treasury|collection|qty|quantity|product|stock|status|customername|phone$|employee|doctorname|shippingcompany|ordername|ordernumber|area|customer)/i;
+function validOKBUILabel(value,fallback){const s=String(value??'').trim();return s?s.slice(0,70):fallback;}
+function escapeOKBEditor(value){return escapeHTML(String(value??''));}
+function normalizeOKBUIConfiguration(config){
+ const raw=(config&&typeof config==='object'&&!Array.isArray(config))?config:{};
+ const out={};
+ for(const key of ['dashboardLabel','chatLabel','doctorRankLabel','dailyReportLabel'])out[key]=validOKBUILabel(raw[key],OKB_UI_DEFAULTS[key]);
+ for(const key of ['showDoctorRank','showDailyReport'])out[key]=typeof raw[key]==='boolean'?raw[key]:OKB_UI_DEFAULTS[key];
+ out.buttonLabels={};
+ if(raw.buttonLabels&&typeof raw.buttonLabels==='object'&&!Array.isArray(raw.buttonLabels))for(const [key,label] of Object.entries(raw.buttonLabels)){
+   if(/^b\d+$/.test(key)&&typeof label==='string'&&label.trim())out.buttonLabels[key]=validOKBUILabel(label,'');
+ }
+ out.fields={};
+ if(raw.fields&&typeof raw.fields==='object'&&!Array.isArray(raw.fields))for(const [id,row] of Object.entries(raw.fields)){
+   if(!/^[a-zA-Z][\w-]{0,90}$/.test(id)||!row||typeof row!=='object'||Array.isArray(row))continue;
+   out.fields[id]={label:typeof row.label==='string'?row.label.trim().slice(0,70):'',visible:row.visible!==false};
+ }
+ return out;
+}
+function getOKBTextNode(el){
+ // Prefer the existing dedicated text container, leaving icons and unread counters intact.
+ const named=el.querySelector('.dashboard-header-label,.logout-header-label,.header-settings-item > span:not(.chat-menu-unread),.okb-stores-report-btn > span,.okb-chat-header-btn .logout-header-label');
+ if(named)return {node:named,kind:'element'};
+ let texts=[];
+ function collect(parent){for(const n of parent.childNodes){if(n.nodeType===3&&n.textContent.trim())texts.push(n);else if(n.nodeType===1&&n.matches('span:not([id]):not([class]),b:not([id]):not([class])'))collect(n);}}
+ collect(el);const node=texts.sort((a,b)=>b.textContent.trim().length-a.textContent.trim().length)[0];return node?{node,kind:'text'}:null;
+}
+function initializeOKBButtonCatalog(){
+ if(okbCustomButtonNodes.size)return;
+ document.querySelectorAll('button[data-okb-custom-button]').forEach(btn=>{
+   const key=btn.getAttribute('data-okb-custom-button');
+   const slot=getOKBTextNode(btn);if(!slot)return;
+   const original=slot.node.textContent;
+   const title=original.trim().replace(/\s+/g,' ');
+   if(!title||title.length>120)return;
+   const page=btn.closest('section[id],.header-settings-dropdown,.okb-stores-menu,.shipping-rank-header-menu')?.id||btn.closest('section[id]')?.id||'General / Header';
+   okbCustomButtonNodes.set(key,{btn,slot,original,title,page});
+ });
+}
+// v268: clean field catalog. IDs are internal only, never surfaced as labels.
+const OKB_FIELD_EXCLUDE_IDS=new Set(['adminOrderDate','adminBranchOrderDate','selectPageOrders','selectBranchPageOrders','khaznaSelectAll','existingPaymentImage']);
+const OKB_FIELD_LABELS=Object.freeze({
+ employeeName:'اسم الموظف',doctorName:'اسم الدكتور',orderNumber:'رقم الأوردر',customerName:'اسم العميل',phone:'رقم الموبايل',phone2:'رقم موبايل إضافي',shippingCompany:'شركة الشحن',area:'المنطقة',productNames:'المنتجات',status:'حالة الأوردر',dashUrgentOrder:'أوردر مستعجل',dashReplacementOrder:'أوردر استبدال',dashErrorOrder:'أوردر خطأ',dashProductNameInput:'اختيار المنتج',dashProductPriceInput:'سعر المنتج',dashProductQtyInput:'كمية المنتج',dashDiscountInput:'الخصم',dashDepositInput:'العربون',dashGrandTotal:'إجمالي الأوردر',orderNotes:'ملاحظات الأوردر',fromDate:'من تاريخ',toDate:'إلى تاريخ',searchInput:'البحث في الأوردرات',filterStatus:'فلتر الحالة',filterEmployee:'فلتر الموظف',filterShippingCompany:'فلتر شركة الشحن',filterDoctor:'فلتر الدكتور',
+ bEmployeeName:'اسم الموظف',bDoctorName:'اسم الدكتور',bOrderNumber:'رقم الأوردر',bCustomerName:'اسم العميل',bPhone:'رقم الموبايل',bPhone2:'رقم موبايل إضافي',bShippingCompany:'شركة الشحن',bArea:'المنطقة',bProductNames:'المنتجات',bStatus:'حالة الأوردر',branchUrgentOrder:'أوردر مستعجل',branchReplacementOrder:'أوردر استبدال',branchErrorOrder:'أوردر خطأ',branchProductNameInput:'اختيار المنتج',branchProductPriceInput:'سعر المنتج',branchProductQtyInput:'كمية المنتج',branchDeliveryInput:'مصاريف الشحن',branchDiscountInput:'الخصم',branchDepositInput:'العربون',branchGrandTotal:'إجمالي الأوردر',bOrderNotes:'ملاحظات الأوردر',bFromDate:'من تاريخ',bToDate:'إلى تاريخ',bSearchInput:'البحث في أوردرات الفرع',bFilterStatus:'فلتر الحالة',bFilterEmployee:'فلتر الموظف',bFilterDoctor:'فلتر الدكتور',
+ khaznaFromDate:'من تاريخ',khaznaToDate:'إلى تاريخ',khaznaBarcodeSearch:'البحث بالباركود أو رقم الأوردر',khaznaFilterStatus:'فلتر حالة التحصيل',
+ btFromDate:'من تاريخ',btToDate:'إلى تاريخ',btBranchFilter:'فلتر الفرع',btStatusFilter:'فلتر الحالة',btSearch:'البحث في خزنة الفروع'
+});
+const OKB_FIELD_KIND_LABEL=Object.freeze({'Text Box':'حقل كتابة','Text Area':'ملاحظات','List Box':'قائمة اختيار','Check Box':'مربع اختيار'});
+function okbFieldHumanLabel(el){
+ // Read the *actual* user-facing text, not legacy hard-coded synonyms.
+ const id=el.id;
+ const label=el.closest('label')||document.querySelector(`label[for="${id}"]`);
+ if(el.type==='checkbox'&&label){
+   const text=String(label.textContent||'').trim().replace(/\s+/g,' ');
+   if(text&&text.length<=75)return text;
+ }
+ const placeholder=el.getAttribute('placeholder');
+ if(placeholder&&placeholder.trim()&&placeholder.trim().length<=75)return placeholder.trim();
+ if(el.tagName==='SELECT'){
+   const option=el.querySelector('option[value=""]');
+   const text=String(option?.textContent||'').trim();
+   if(text&&text.length<=75)return text;
+ }
+ const candidate=String(label?.textContent||el.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ');
+ if(candidate&&candidate.length<=75)return candidate;
+ // Exact control ID fallback only where the existing UI has no text to read.
+ return OKB_FIELD_LABELS[id]||null;
+}
+function okbVisibleTextTarget(node){
+ // Preserve nested icons and checkbox markup when renaming.
+ if(!node)return null;
+ const textNode=Array.from(node.childNodes).find(n=>n.nodeType===3&&String(n.textContent||'').trim());
+ return textNode?{node:textNode,kind:'text'}:{node,kind:'text'};
+}
+function okbFieldGroup(el){
+ const form=el.closest('form');if(form)return {name:'نموذج الأوردر',order:0};
+ const toolbar=el.closest('.toolbar,.date-filter-group');if(toolbar)return {name:'البحث والفلاتر',order:1};
+ return {name:'خيارات الصفحة',order:2};
+}
+function initOKBFieldsCatalog(){
+ // Re-scan to include controls which become available after rendering; keep original labels.
+ for(const [pageId,pageLabel] of Object.entries(OKB_CUSTOM_PAGES)){
+  const page=document.getElementById(pageId);if(!page)continue;
+  page.querySelectorAll('input[id],select[id],textarea[id]').forEach(el=>{
+   const id=el.id;
+   if(!id||OKB_FIELD_EXCLUDE_IDS.has(id)||['hidden','button','submit','file','datetime-local','time'].includes(el.type))return;
+   if(el.closest('#okbFieldsCustomizationPanel,#okbSystemCustomizationPanel,#okbRolePermissionsPanel'))return;
+   const readable=okbFieldHumanLabel(el);
+   if(!readable)return; // No guessed control names in the Admin editor.
+   const previous=okbCustomFieldNodes.get(id);
+   if(previous&&previous.el===el&&el.isConnected)return;
+   const ownLabel=page.querySelector(`label[for="${id}"]`);
+   const wrappingLabel=el.closest('label');
+   const inlineLabel=wrappingLabel?.querySelector('span');
+   const labelNode=ownLabel||inlineLabel||null;
+   const firstOption=el.tagName==='SELECT'?el.querySelector('option[value=""]'):null;
+   // Target the SAME existing field. The editor never creates business form controls.
+   const labelTarget=labelNode?okbVisibleTextTarget(labelNode):el.hasAttribute('placeholder')?{node:el,kind:'placeholder'}:firstOption?{node:firstOption,kind:'text'}:null;
+   const protectedField=el.required||el.disabled||el.readOnly||OKB_CRITICAL_FIELD_ID.test(id);
+   const group=el.closest('.form-grid,.smart-add-grid,.smart-summary-grid');
+   const wrapper=group?(el.parentElement===group?el:(el.parentElement?.parentElement===group?el.parentElement:null)):null;
+   const reason=el.disabled?'قائمة مقفولة بالنظام':el.readOnly?'حقل للعرض فقط':el.required?'حقل إجباري لحفظ البيانات':OKB_CRITICAL_FIELD_ID.test(id)?'حقل أساسي مرتبط بالتشغيل أو الحسابات':'';
+   const type=el.type==='checkbox'?'Check Box':el.tagName==='SELECT'?'List Box':el.tagName==='TEXTAREA'?'Text Area':'Text Box';
+   const location=okbFieldGroup(el);
+   okbCustomFieldNodes.set(id,{el,id,pageId,pageLabel,type,labelTarget,originalLabel:previous?.originalLabel||readable,protectedField,reason,wrapper,location});
+  });
+ }
+}
+function applyOKBButtonLabels(){
+ initializeOKBButtonCatalog();
+ for(const [key,item] of okbCustomButtonNodes){
+   const text=okbUIConfig.buttonLabels[key];
+   if(item.slot.node.isConnected)item.slot.node.textContent=text||item.original;
+ }
+ // Backwards-compatible v266 keys still function on their named header slots.
+ const setText=(selector,text)=>document.querySelectorAll(selector).forEach(el=>{if(el.textContent!==text)el.textContent=text;});
+ setText('#dashboardHeaderBtn .dashboard-header-label',okbUIConfig.dashboardLabel);
+ setText('#okbChatHeaderLabel',okbUIConfig.chatLabel);
+ setText('#doctorRankStoresMenuBtn span',`👨‍⚕️ ${okbUIConfig.doctorRankLabel}`);
+ setText('#dailyReportStoresMenuBtn span',`📋 ${okbUIConfig.dailyReportLabel}`);
+ const doctorBtn=document.getElementById('doctorRankStoresMenuBtn');if(doctorBtn)doctorBtn.classList.toggle('okb-ui-option-hidden',!okbUIConfig.showDoctorRank);
+ const dailyBtn=document.getElementById('dailyReportStoresMenuBtn');if(dailyBtn)dailyBtn.classList.toggle('okb-ui-option-hidden',!okbUIConfig.showDailyReport);
+ // Prefer the new catalog names when explicitly overridden.
+ for(const [key,item] of okbCustomButtonNodes){
+  const v=okbUIConfig.buttonLabels[key];if(v&&item.slot.node.isConnected)item.slot.node.textContent=v;
+ }
+}
+function applyOKBFieldConfig(){
+ initOKBFieldsCatalog();
+ for(const item of okbCustomFieldNodes.values()){
+  const value=okbUIConfig.fields[item.id]||{};
+  const label=value.label||item.originalLabel;
+  const target=item.labelTarget;
+  if(target&&target.node.isConnected){
+   if(target.kind==='placeholder')target.node.setAttribute('placeholder',label);
+   else if(target.node.textContent!==label)target.node.textContent=label;
+  }
+  const host=item.wrapper||item.el.closest('label')||item.el;
+  if(!item.protectedField){host.classList.toggle('okb-ui-option-hidden',value.visible===false);}
+  else host.classList.remove('okb-ui-option-hidden');
+ }
+}
+// v271: Field ordering is retired. Saved legacy `order` values are discarded
+// during normalization and no layout styles are changed by customization.
+function applyOKBUIConfiguration(){applyOKBButtonLabels();applyOKBFieldConfig();}
+function switchOKBPermissionTab(tab){
+ if(!isAdmin())return;
+ const map={roles:'okbRolePermissionsPanel',customization:'okbSystemCustomizationPanel',fields:'okbFieldsCustomizationPanel'};
+ const buttonIds={roles:'okbPermissionsTab',customization:'okbCustomizationTab',fields:'okbFieldsTab'};
+ if(!map[tab])tab='roles';
+ for(const [name,id] of Object.entries(map))document.getElementById(id)?.classList.toggle('hidden',name!==tab);
+ for(const [name,id] of Object.entries(buttonIds)){
+  const button=document.getElementById(id);if(!button)continue;
+  button.classList.toggle('active',name===tab);button.setAttribute('aria-selected',String(name===tab));
+ }
+ if(tab==='customization')renderOKBButtonEditor();
+ if(tab==='fields')renderOKBFieldsEditor();
+}
+function renderOKBButtonEditor(){
+ if(!isAdmin())return;
+ initializeOKBButtonCatalog();
+ const panel=document.getElementById('okbCustomButtonsCatalog');if(!panel)return;
+ const pages=document.getElementById('okbCustomButtonPage');
+ if(pages&&pages.options.length===1){
+  const distinct=[...new Set([...okbCustomButtonNodes.values()].map(x=>x.page))].sort();
+  distinct.forEach(p=>pages.add(new Option(p,p)));
+ }
+ const q=(document.getElementById('okbCustomButtonSearch')?.value||'').trim().toLowerCase();
+ const page=pages?.value||'';
+ const rows=[...okbCustomButtonNodes.entries()].filter(([k,item])=>(!page||item.page===page)&&(!q||(item.title+' '+item.page).toLowerCase().includes(q)));
+ panel.innerHTML=rows.map(([key,item])=>`<div class="okb-customization-entry"><div class="okb-customization-entry-head"><b>${escapeOKBEditor(item.title)}</b><small>${escapeOKBEditor(item.page)}</small></div><label>الاسم الجديد<input type="text" maxlength="70" data-okb-button-label="${key}" value="${escapeOKBEditor(okbUIConfig.buttonLabels[key]||'') }" placeholder="${escapeOKBEditor(item.title)}" onchange="stageOKBButtonLabel(this)"/></label><small>زر ${escapeOKBEditor(key)} — اسم العرض فقط</small></div>`).join('')||'<p>لا توجد أزرار مطابقة</p>';
+}
+function stageOKBButtonLabel(input){
+ if(!isAdmin())return;
+ const key=input.dataset.okbButtonLabel;
+ if(!okbCustomButtonNodes.has(key))return;
+ const value=input.value.trim().slice(0,70);
+ if(value)okbUIConfig.buttonLabels[key]=value;else delete okbUIConfig.buttonLabels[key];
+}
+function renderOKBFieldsEditor(){
+ if(!isAdmin())return;
+ initOKBFieldsCatalog();
+ const panel=document.getElementById('okbCustomFieldsCatalog');if(!panel)return;
+ const page=document.getElementById('okbCustomFieldsPage')?.value||'ordersPage';
+ const q=(document.getElementById('okbCustomFieldsSearch')?.value||'').trim().toLowerCase();
+ const rows=[...okbCustomFieldNodes.values()].filter(item=>item.pageId===page&&(!q||(item.originalLabel+' '+item.type+' '+OKB_FIELD_KIND_LABEL[item.type]).toLowerCase().includes(q))).sort((x,y)=>x.location.order-y.location.order);
+ const heading=rows.length?`<p class="okb-customization-note">${rows.length} حقلًا موجودًا بالفعل في الصفحة — إعادة التسمية والإظهار والإخفاء فقط، بدون تغيير ترتيب الصفحة أو بيانات الأوردر.</p>`:'';
+ panel.innerHTML=heading+rows.map(item=>{
+  const saved=okbUIConfig.fields[item.id]||{};const safeId=escapeOKBEditor(item.id);
+  return `<div class="okb-customization-entry ${item.protectedField?'okb-customization-disabled':''}">
+    <div class="okb-customization-entry-head"><b>${escapeOKBEditor(item.originalLabel)}</b><small>${escapeOKBEditor(item.location.name)} • ${escapeOKBEditor(OKB_FIELD_KIND_LABEL[item.type])}</small></div>
+    <label>تعديل اسم الحقل الموجود<input type="text" maxlength="70" data-okb-field-name="${safeId}" value="${escapeOKBEditor(saved.label||'')}" placeholder="${escapeOKBEditor(item.originalLabel)}" onchange="stageOKBField(this)"/></label>
+    <div class="okb-customization-options"><label><input type="checkbox" data-okb-field-visible="${safeId}" ${saved.visible===false&&!item.protectedField?'':'checked'} ${item.protectedField?'disabled':''} onchange="stageOKBField(this)"/> إظهار</label>
+    </div>
+    ${item.reason?`<small>🔒 ${escapeOKBEditor(item.reason)} — يمكن تغيير الاسم فقط.</small>`:''}
+   </div>`;
+ }).join('')||'<p>مفيش حقول مطابقة. جرب تمسح كلمة البحث.</p>';
+}
+function stageOKBField(input){
+ if(!isAdmin())return;
+ const id=input.dataset.okbFieldName||input.dataset.okbFieldVisible;
+ const item=okbCustomFieldNodes.get(id);if(!item)return;
+ const row=okbUIConfig.fields[id]||{label:'',visible:true};
+ if(input.hasAttribute('data-okb-field-name'))row.label=input.value.trim().slice(0,70);
+ if(input.hasAttribute('data-okb-field-visible')&&!item.protectedField)row.visible=input.checked;
+ okbUIConfig.fields[id]=row;
+}
+async function loadOKBUIConfiguration(force=false){
+ if(!currentUser||!supabaseClient)return;
+ if(okbUIConfigRequested&&!force)return;
+ okbUIConfigRequested=true;
+ try{
+  const {data,error}=await supabaseClient.from('okb_ui_customization').select('config').eq('id','main').maybeSingle();
+  if(error)throw error;
+  okbUIConfig=normalizeOKBUIConfiguration(data?.config||OKB_UI_DEFAULTS);applyOKBUIConfiguration();
+ }catch(err){console.warn('Optional UI customization unavailable:',err?.message||err);const status=document.getElementById('okbCustomizationSaveStatus');if(status)status.textContent='لحفظ التخصيصات شغّل SQL رقم 027 مرة واحدة على بيئة التطوير.';}
+}
+function showOKBCustomSaveStatus(message){
+ const main=document.getElementById('okbCustomizationSaveStatus');if(main)main.textContent=message;
+ document.querySelectorAll('.okbCustomizationSaveStatusMirror').forEach(el=>el.textContent=message);
+}
+async function saveOKBUIConfiguration(){
+ if(!isAdmin())return;
+ const next=normalizeOKBUIConfiguration(okbUIConfig);
+ showOKBCustomSaveStatus('جاري الحفظ...');
+ try{
+  const {error}=await supabaseClient.from('okb_ui_customization').upsert({id:'main',config:next,updated_at:new Date().toISOString()},{onConflict:'id'});
+  if(error)throw error;
+  okbUIConfig=next;applyOKBUIConfiguration();
+  showOKBCustomSaveStatus('تم حفظ التخصيص ✓ (التغييرات تظهر للموظفين عند إعادة الدخول)');
+  await logActivity('permissions_updated','تخصيص واجهة النظام','تم حفظ أسماء الأزرار وإعدادات الحقول');
+ }catch(err){showOKBCustomSaveStatus('فشل الحفظ: '+(err?.message||err));}
+}
+function resetOKBUIConfiguration(){
+ if(!isAdmin())return;
+ okbUIConfig=normalizeOKBUIConfiguration(OKB_UI_DEFAULTS);
+ renderOKBButtonEditor();renderOKBFieldsEditor();
+ showOKBCustomSaveStatus('تمت استعادة الافتراضي في النموذج؛ اضغط حفظ للتطبيق.');
+}
+
 function renderRolePermissionMatrix() {
   if (!isAdmin()) return;
   const role = document.getElementById('permissionRoleSelect')?.value || ROLE_PERMISSION_ROLES[0].key;
@@ -2434,6 +2792,8 @@ async function showPermissionPage() {
   setActiveMenu('permissionPage');
   populatePermissionRoleSelect();
   renderRolePermissionMatrix();
+  switchOKBPermissionTab('roles');
+  loadOKBUIConfiguration(true);
 }
 
 function selectAllRolePermissions(checked) {
@@ -3306,7 +3666,7 @@ function buildAllocatedOrderMessage(order){
 async function sendAllocatedOrders(){
   if(allocateState.sending)return;
   const receiver=allocateState.users.find(user=>String(user.username||'')===allocateState.selectedUsername);
-  if(!receiver){alert('اختر مستخدمًا أولًا');return;}
+  if(!receiver||isDisabledAuditChatAccount(receiver.username)){alert('اختر مستخدمًا أولًا');return;}
   const selection=getAllocateSelection();
   if(!selection.ids.length||selection.orders.length!==selection.ids.length){alert('التحديد تغيّر. أغلق النافذة وأعد اختيار الأوردرات.');return;}
   const button=document.getElementById('allocateSendBtn');
@@ -3456,6 +3816,7 @@ async function deletePaymentImage(imageUrl) {
 }
 
 async function requestPaymentOcrAudit(orderId, proofType, imageUrl, expectedAmount) {
+  if (!OKB_PAYMENT_OCR_ENABLED) return false;
   if (!orderId || !imageUrl || !['secretary','collection'].includes(proofType)) return false;
   const token=sessionStorage.getItem('okb_access_token')||'';
   if(!token)return false;
@@ -3710,6 +4071,144 @@ async function requestSecureLogin(credentials, attempt = 1) {
   }
 }
 
+// v241 — Smart Auto Cache Sync. Runs ONLY before an authenticated app opens.
+// Daily per user/browser + whenever the deployed app assets change; never reloads an active work form.
+const OKB_AUTO_CACHE_DAILY_PREFIX = 'okb_auto_cache_daily_v1_';
+const OKB_AUTO_CACHE_RELOAD_GUARD = 'okb_auto_cache_reload_guard_v1';
+
+function getOkbAutoCacheAssets(doc = document) {
+  const read = selector => {
+    const element = doc.querySelector(selector);
+    const source = element?.getAttribute('src') || element?.getAttribute('href') || '';
+    if (!source) return '';
+    try {
+      const url = new URL(source, window.location.href);
+      return url.origin === window.location.origin ? url.pathname + url.search : '';
+    } catch (_) { return ''; }
+  };
+  return {
+    main: read('script[src*="js/main.v"]'),
+    navigation: read('script[src*="js/page-navigation.js"]'),
+    style: read('link[rel="stylesheet"][href*="css/style.css"]')
+  };
+}
+
+function getOkbAutoCacheAssetFingerprint(assets) {
+  return [assets.main, assets.navigation, assets.style].join('|');
+}
+
+function getOkbAutoCacheMainVersion(asset) {
+  const match = String(asset || '').match(/main\.v(\d+)\.js(?:\?|$)/);
+  return match ? Number(match[1]) : 0;
+}
+
+async function checkOkbAutoCacheDeployedVersion() {
+  // A no-store same-origin index probe detects a newly deployed JS/CSS version.
+  // This check happens at sign-in / session restoration, never on an active work page.
+  const current = getOkbAutoCacheAssets();
+  if (!current.main) return false;
+  const probe = new URL(window.location.href);
+  probe.search = '';
+  probe.hash = '';
+  probe.searchParams.set('okb_version_probe', String(Date.now()));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(probe.toString(), { cache:'no-store', signal:controller.signal });
+    if (!response.ok) return false;
+    const latestDocument = new DOMParser().parseFromString(await response.text(), 'text/html');
+    if (!latestDocument.getElementById('loginPage') || !latestDocument.getElementById('app')) return false;
+    const latest = getOkbAutoCacheAssets(latestDocument);
+    const localVersion = getOkbAutoCacheMainVersion(current.main);
+    const deployedVersion = getOkbAutoCacheMainVersion(latest.main);
+    if (!localVersion || !deployedVersion || deployedVersion < localVersion) return false;
+    const changed = ['main','navigation','style'].some(key =>
+      current[key] && latest[key] && current[key] !== latest[key]
+    );
+    if (!changed) {
+      try { sessionStorage.removeItem(OKB_AUTO_CACHE_RELOAD_GUARD); } catch (_) {}
+      return false;
+    }
+
+    // If the host/CDN serves an old HTML after reloading, never enter a reload loop.
+    const target = getOkbAutoCacheAssetFingerprint(latest);
+    try {
+      const previous = JSON.parse(sessionStorage.getItem(OKB_AUTO_CACHE_RELOAD_GUARD) || 'null');
+      if (previous?.target === target && Date.now() - Number(previous.at || 0) < 15 * 60 * 1000) return false;
+      sessionStorage.setItem(OKB_AUTO_CACHE_RELOAD_GUARD, JSON.stringify({target,at:Date.now()}));
+    } catch (error) {
+      console.warn('Smart Auto Cache reload guard unavailable:', error);
+      return false; // Never reload without loop protection.
+    }
+    return true;
+  } catch (error) {
+    console.warn('Smart Auto Cache version probe skipped:', error?.message || error);
+    return false; // Fail open if offline/slow: do not block login.
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getOkbAutoCacheDailyStamp() {
+  // Use OKB's existing Cairo business-day clock, not the device's timezone.
+  return `${getCairoDateISO()}|${getOkbAutoCacheAssetFingerprint(getOkbAutoCacheAssets())}`;
+}
+
+async function cleanOkbAutoCacheOnceDaily() {
+  const userId = String(currentUser?.id || '').trim();
+  if (!userId) return false;
+  const markerKey = OKB_AUTO_CACHE_DAILY_PREFIX + userId;
+  const stamp = getOkbAutoCacheDailyStamp();
+  try {
+    if (localStorage.getItem(markerKey) === stamp) return false;
+  } catch (error) { console.warn('Smart Auto Cache daily marker unavailable:', error); return false; }
+
+  let complete = true;
+  // Exactly the three known OKB data caches; never clear sessions, unsaved forms or all storage.
+  for (const key of ['okb_role_permissions_cache', 'okb_doctors_cache', 'okb_filter_registry_cache_v1']) {
+    try { localStorage.removeItem(key); }
+    catch (error) { complete = false; console.warn('Smart Auto Cache local cleanup:', error); }
+  }
+  if ('caches' in window) {
+    try {
+      const keys = await caches.keys();
+      const okbKeys = keys.filter(key => /okb|operation.?system/i.test(String(key || '')));
+      const results = await Promise.allSettled(okbKeys.map(key => caches.delete(key)));
+      if (results.some(result => result.status === 'rejected')) complete = false;
+    } catch (error) { complete = false; console.warn('Smart Auto Cache storage cleanup:', error); }
+  }
+  if (complete) {
+    try { localStorage.setItem(markerKey, stamp); }
+    catch (error) { complete = false; console.warn('Smart Auto Cache daily marker write:', error); }
+  }
+  return complete;
+}
+
+async function prepareOkbSmartAutoCache({explicitLogin=false}={}) {
+  if (!currentUser) return {reloading:false,cleaned:false};
+  if (await checkOkbAutoCacheDeployedVersion()) {
+    // A successful explicit login must still be logged exactly once before a version reload.
+    if (explicitLogin) await logActivity('login', 'تسجيل دخول', 'تم تسجيل الدخول إلى السيستم بنجاح');
+    markNextAppRestoreSilent('smart_auto_cache_version');
+    const refreshUrl = new URL(window.location.href);
+    refreshUrl.searchParams.set('okb_cache', String(Date.now()));
+    refreshUrl.searchParams.delete('hard');
+    refreshUrl.hash = '';
+    window.location.replace(refreshUrl.toString());
+    return {reloading:true,cleaned:false};
+  }
+  const cleaned = await cleanOkbAutoCacheOnceDaily();
+  return {reloading:false,cleaned};
+}
+
+function finishOkbSmartAutoCacheOpen(state) {
+  // Existing app startup already loads the role matrix + OKB filters from Supabase.
+  // A fresh daily sync also refreshes the restored user's own profile/branch permissions.
+  if (state?.cleaned) {
+    syncCurrentUserPermissions().catch(error => console.warn('Smart Auto Cache profile sync:', error));
+  }
+}
+
 function startPostLoginDataLoads() {
   const dashboardMonth = getCurrentDashboardMonthRange();
   const dashboardScope = `range:${dashboardMonth.key}`;
@@ -3764,7 +4263,21 @@ async function openAuthenticatedApp(activityTitle, activityDetails, options = {}
   startRolePermissionsSync();
   startLiveBusinessSync();
   startBranchStickyNoteClock();
-  await showInitialPermittedPage();
+  try {
+    await showInitialPermittedPage();
+  } finally {
+    // v278: keep the boot screen visible until the exact order has been rendered
+    // AND the browser has had a paint opportunity. Never delay with a timer.
+    // Other pages and the existing authentication/permissions are unchanged.
+    if (document.documentElement.classList.contains('okb-exact-order-boot')) {
+      const revealExactOrder = () => document.documentElement.classList.remove('okb-exact-order-boot');
+      if (document.visibilityState === 'visible' && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(revealExactOrder));
+      } else {
+        revealExactOrder();
+      }
+    }
+  }
 
   // All heavy datasets load in parallel after the interface is already visible.
   startPostLoginDataLoads();
@@ -3847,7 +4360,13 @@ async function login() {
   sessionStorage.setItem("okb_current_user", JSON.stringify(currentUser));
   sessionStorage.setItem("okb_access_token", result.token);
   sessionStorage.setItem("okb_access_expires_at", String(result.expires_at || 0));
+  // v241: silently sync known caches before opening the authenticated UI.
+  let autoCacheState = {reloading:false,cleaned:false};
+  try { autoCacheState = await prepareOkbSmartAutoCache({explicitLogin:true}); }
+  catch (error) { console.warn('Smart Auto Cache login preflight:', error); }
+  if (autoCacheState.reloading) return;
   await openAuthenticatedApp("تسجيل دخول", "تم تسجيل الدخول إلى السيستم بنجاح", { explicitLogin:true });
+  finishOkbSmartAutoCacheOpen(autoCacheState);
   if (loginButton) { loginButton.disabled = false; loginButton.textContent = originalButtonText; }
 }
 
@@ -3892,17 +4411,25 @@ async function checkLogin() {
         return;
       }
     }
+    // v241: the same preflight also runs for a valid restored session (no login form).
+    let autoCacheState = {reloading:false,cleaned:false};
+    try { autoCacheState = await prepareOkbSmartAutoCache(); }
+    catch (error) { console.warn('Smart Auto Cache restored-session preflight:', error); }
+    if (autoCacheState.reloading) return;
     const silentRestoreReason=consumeSilentAppRestoreMarker();
     await openAuthenticatedApp("فتح السيستم", "تم فتح السيستم واستعادة جلسة المستخدم", {
       restoredSession:true,
       silentRestore:Boolean(silentRestoreReason)
     });
+    finishOkbSmartAutoCacheOpen(autoCacheState);
   } else {
     sessionStorage.removeItem("okb_current_user");
     sessionStorage.removeItem("okb_access_token");
     sessionStorage.removeItem("okb_access_expires_at");
     app.classList.add("hidden");
     loginPage.classList.remove("hidden");
+    // v276: an expired/missing session must show the real login, not a loading screen.
+    document.documentElement.classList.remove('okb-exact-order-boot');
   }
 }
 
@@ -3933,6 +4460,7 @@ function toggleUserAccountMenu(event) {
 }
 
 function setupUserView() {
+  void loadOKBUIConfiguration();
   document.body.classList.toggle('doctor-readonly', isDoctorRole() && !hasButtonPermission('btn_dashboard_edit') && !hasButtonPermission('btn_branch_edit'));
   $("userNameHere").textContent = currentUser.name;
   $("userRoleHere").textContent = getRoleDisplayName(currentUser.role);
@@ -3949,8 +4477,8 @@ const productReportsBtn = document.getElementById('productReportsHeaderBtn');
 if (productReportsBtn) productReportsBtn.style.display = canViewProductReports() ? 'inline-flex' : 'none';
 const secretaryAuditBtn = document.getElementById('secretaryAuditHeaderBtn');
 if (secretaryAuditBtn) secretaryAuditBtn.style.display = hasRoleFeature('secretary_audit') ? 'inline-flex' : 'none';
-const financialAuditBtn = document.getElementById('financialAuditHeaderBtn');
-if (financialAuditBtn) financialAuditBtn.style.display = hasButtonPermission('btn_financial_audit_main') ? 'inline-flex' : 'none';
+const chatHeaderBtn = document.getElementById('chatHeaderBtn');
+if (chatHeaderBtn) chatHeaderBtn.classList.toggle('hidden', !hasRoleFeature('chat'));
 const dashboardBtn = document.getElementById('dashboardHeaderBtn');
 if (dashboardBtn) dashboardBtn.style.display = hasRoleFeature('dashboard') ? 'inline-flex' : 'none';
 const storesBtn = document.getElementById('okbStoresHeaderBtn');
@@ -3967,9 +4495,10 @@ if(hasRoleFeature('branch_stock'))updateBranchStockLowStockBadge();
 const pendingBtn = document.getElementById('pendingHeaderBtn');
 if (pendingBtn) pendingBtn.style.display = hasRoleFeature('pending') ? 'inline-flex' : 'none';
 const shippingRankHeaderBtn = document.getElementById('shippingRankHeaderBtn');
-if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+if (shippingRankHeaderBtn) shippingRankHeaderBtn.style.display = (canViewShippingRank() || hasRoleFeature('doctor_rank_stores')) ? 'inline-flex' : 'none';
 const shippingRankHeaderWrap = document.getElementById('shippingRankHeaderWrap');
-if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = canViewShippingRank() ? 'inline-flex' : 'none';
+if (shippingRankHeaderWrap) shippingRankHeaderWrap.style.display = (canViewShippingRank() || hasRoleFeature('doctor_rank_stores')) ? 'inline-flex' : 'none';
+ document.querySelectorAll('.shipping-rank-branch-menu-item').forEach(el=>el.classList.toggle('hidden',!canViewShippingRank()));
 document.querySelectorAll('.company-rank-menu-item').forEach(el => {
   el.classList.toggle('hidden', !hasRoleFeature('company_rank'));
 });
@@ -4145,6 +4674,7 @@ function resetAppState() {
   branchRankingPreviousRevision = 0;
   invalidateBranchRankingPreviousDerivedCache();
   branchPerformanceRankingMode = 'details';
+  clearDoctorRankHistory();
   doctorRankOrders = [];
   doctorRankOrdersScope = '';
   doctorRankLoadToken += 1;
@@ -4161,6 +4691,7 @@ function resetAppState() {
   doctorRankSearchTimer = null;
   doctorWeeklyLoadToken += 1;
   doctorWeeklyOrdersSource = [];
+  clearDailyReportHistory();
   dailyReportOrders = [];
   dailyReportOrdersScope = '';
   dailyReportLoadToken += 1;
@@ -4390,7 +4921,13 @@ let pendingOrders = [];
 let pendingLoadSequence = 0;
 let pendingDataReady = false;
 let pendingHeaderLoadSequence = 0;
+let pendingHeaderRealtimeTimer = null;
 let pendingExportInProgress = false;
+let pendingCurrentPage = 1;
+let pendingLastFilterKey = null;
+const PENDING_PAGE_SIZE = 50;
+// Lightweight index keeps global search / counters accurate, while full rows are fetched only on demand.
+const PENDING_INDEX_FIELDS = 'id,branch,created_at,status,customer_name,phone,phone2,order_number,ticket_id,employee_name,doctor_name,area';
 const PENDING_BRANCH_NAMES = ['مدينة نصر','اسكندرية','طنطا','المنصورة'];
 function pendingReferenceDate(order) {
   const now = Date.now();
@@ -4421,6 +4958,30 @@ function updatePendingHeaderBadge(count){
   badge.classList.toggle('hidden',!canViewPendingHeaderCount()||value<1);
   badge.setAttribute('aria-label',`${value} pending orders`);
 }
+// v260: coalesce live order mutations without delaying financial or branch views.
+// An INSERT from today cannot qualify for a 3+ day Pending badge; never skip an
+// UPDATE/DELETE when the previous state is unknown (default Realtime replica ID).
+function schedulePendingHeaderRealtimeRefresh(payload){
+  if (!currentUser || !canViewPendingHeaderCount()) return;
+  const eventType = String(payload?.eventType || '').toUpperCase();
+  const row = payload?.new || null;
+  const old = payload?.old || null;
+  if (eventType === 'INSERT') {
+    if (String(row?.status || '') !== 'Delivering' || !PENDING_BRANCH_NAMES.includes(String(row?.branch || ''))) return;
+    if (row?.created_at && pendingDays({created_at:row.created_at}) < 3) return;
+  } else if (eventType === 'UPDATE') {
+    const newRelevant = String(row?.status || '') === 'Delivering' && PENDING_BRANCH_NAMES.includes(String(row?.branch || ''));
+    const oldKnown = typeof old?.status === 'string' && typeof old?.branch === 'string';
+    const oldRelevant = oldKnown && String(old.status) === 'Delivering' && PENDING_BRANCH_NAMES.includes(String(old.branch));
+    if (!newRelevant && oldKnown && !oldRelevant) return;
+  }
+  // Keep the first scheduled deadline: constant streams cannot postpone the count forever.
+  if (pendingHeaderRealtimeTimer) return;
+  pendingHeaderRealtimeTimer = setTimeout(() => {
+    pendingHeaderRealtimeTimer = null;
+    if (currentUser && canViewPendingHeaderCount()) void refreshPendingHeaderCount();
+  }, 4000);
+}
 async function refreshPendingHeaderCount(){
   const request=++pendingHeaderLoadSequence;
   const actorId=String(currentUser?.id||'');
@@ -4428,7 +4989,7 @@ async function refreshPendingHeaderCount(){
   try{
     let count=0;
     for(let offset=0;;offset+=1000){
-      const {data,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
+      const {data,error}=await supabaseClient.from('orders').select('id,branch,created_at').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
         .order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
       if(error)throw error;
       if(request!==pendingHeaderLoadSequence||String(currentUser?.id||'')!==actorId)return;
@@ -4441,6 +5002,8 @@ async function refreshPendingHeaderCount(){
 }
 function stopPendingHeaderNotifications(){
   pendingHeaderLoadSequence++;
+  if (pendingHeaderRealtimeTimer) clearTimeout(pendingHeaderRealtimeTimer);
+  pendingHeaderRealtimeTimer = null;
   if(pendingHeaderPollingTimer){
     clearInterval(pendingHeaderPollingTimer);
     pendingHeaderPollingTimer=null;
@@ -4451,7 +5014,7 @@ function startPendingHeaderNotifications(){
   stopPendingHeaderNotifications();
   if(!canViewPendingHeaderCount())return;
   refreshPendingHeaderCount();
-  pendingHeaderPollingTimer=setInterval(refreshPendingHeaderCount,45000);
+  pendingHeaderPollingTimer=setInterval(refreshPendingHeaderCount,300000);
 }
 function setupPendingBranchFilter(){
   const el=document.getElementById('pendingBranchFilter'); if(!el)return;
@@ -4475,7 +5038,7 @@ async function loadPendingOrders(showMessage){
   try{
     const data=[];
     for(let offset=0;;offset+=1000){
-      const {data:page,error}=await supabaseClient.from('orders').select('*').eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
+      const {data:page,error}=await supabaseClient.from('orders').select(PENDING_INDEX_FIELDS).eq('status','Delivering').in('branch',PENDING_BRANCH_NAMES)
         .order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
       if(error)throw error;
       if(request!==pendingLoadSequence||String(currentUser?.id||'')!==actorId)return false;
@@ -4485,6 +5048,7 @@ async function loadPendingOrders(showMessage){
     }
     pendingOrders=data.filter(o=>pendingOrderBranch(o)&&pendingDays(o)>=3&&canSeePendingOrder(o)).sort((a,b)=>pendingReferenceTime(a)-pendingReferenceTime(b));
     pendingDataReady=true;
+    pendingCurrentPage=1;
     updatePendingHeaderBadge(pendingOrders.length);
     setupPendingBranchFilter(); renderPendingOrders();
     return true;
@@ -4495,6 +5059,32 @@ async function loadPendingOrders(showMessage){
     }
     return false;
   }finally{if(request===pendingLoadSequence&&exportButton)exportButton.disabled=!pendingDataReady||pendingExportInProgress;}
+}
+// Load complete records only for an explicit order open or Excel export.
+// Never use the lightweight index as an authoritative financial/order detail record.
+async function loadPendingFullRows(indexRows){
+  const actor=String(currentUser?.id||'');
+  if(!hasRoleFeature('pending'))throw new Error('لا توجد صلاحية لعرض Pending');
+  const ids=[...new Set(indexRows.map(order=>String(order.id)))];
+  const result=new Map();
+  for(let start=0;start<ids.length;start+=80){
+    const chunk=ids.slice(start,start+80);
+    const {data,error}=await supabaseClient.from('orders').select('*').in('id',chunk);
+    if(error)throw error;
+    if(actor!==String(currentUser?.id||'')||!hasRoleFeature('pending'))throw new Error('تغيرت صلاحية المستخدم');
+    for(const order of (data||[])){
+      if(!canSeePendingOrder(order)||order.status!=='Delivering'||pendingDays(order)<3)throw new Error('تغيرت حالة أوردر؛ اضغط Refresh قبل المتابعة');
+      if(result.has(String(order.id)))throw new Error('نتائج أوردرات مكررة');
+      result.set(String(order.id),order);
+    }
+    if(chunk.some(id=>!result.has(id)))throw new Error('تغيرت بيانات بعض الأوردرات؛ اضغط Refresh');
+  }
+  return ids.map(id=>result.get(id));
+}
+function changePendingPage(page){
+  const max=Math.max(1,Math.ceil(getFilteredPendingOrders().length/PENDING_PAGE_SIZE));
+  pendingCurrentPage=Math.min(max,Math.max(1,Number(page)||1));
+  renderPendingOrders();
 }
 function getFilteredPendingOrders(){
   if(!hasRoleFeature('pending'))return [];
@@ -4509,7 +5099,7 @@ async function exportPendingOrders(button){
   if(!hasRoleFeature('pending')){alert('غير مسموح بتصدير بيانات Pending');return;}
   if(pendingExportInProgress)return;
   if(!pendingDataReady){alert('انتظر اكتمال تحميل البيانات أو اضغط تحديث إذا تعذر التحميل.');return;}
-  const rows=getFilteredPendingOrders();
+  let rows=getFilteredPendingOrders();
   if(!rows.length){alert('لا توجد بيانات للتصدير طبقًا للفلاتر الحالية');return;}
   if(typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة');return;}
   const actorId=String(currentUser.id);
@@ -4519,6 +5109,7 @@ async function exportPendingOrders(button){
   pendingExportInProgress=true;
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
   try{
+    rows=await loadPendingFullRows(rows);
     const workbook=new ExcelJS.Workbook();
     workbook.creator=currentUser.name||currentUser.username||'OKB CRM';workbook.created=new Date();
     const summary=workbook.addWorksheet('Overview');
@@ -4592,13 +5183,27 @@ function renderPendingOrders(){
   const list=document.getElementById('pendingOrdersList');if(!list)return;
   renderPendingBranchSummary();
   const rows=getFilteredPendingOrders();
+  const filterKey=String($('pendingSearch')?.value||'')+'|'+String($('pendingBranchFilter')?.value||'all');
+  if(pendingLastFilterKey!==filterKey){pendingCurrentPage=1;pendingLastFilterKey=filterKey;}
   document.getElementById('pendingTotalCount').textContent=num(rows.length);
   document.getElementById('pendingCriticalCount').textContent=num(rows.filter(o=>pendingDays(o)>=7).length);
   document.getElementById('pendingOldestDays').textContent=num(rows.reduce((max,order)=>Math.max(max,pendingDays(order)),0))+' يوم';
-  if(!rows.length){list.innerHTML='<div class="pending-empty">لا توجد أوردرات بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
-  list.innerHTML=rows.map(o=>`<div class="pending-row"><div class="pending-days">${num(pendingDays(o))}<small>يوم</small></div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="pending-status">Delivering</span><span class="pending-meta">Last update: ${formatEnglishDateTime(pendingReferenceDate(o))}</span></div><div><span class="pending-meta">رقم الأوردر: ${escapeHTML(o.order_number||'—')}</span><span class="pending-meta">Ticket: ${escapeHTML(getTicketId(o))}</span></div><div><span class="pending-meta">${escapeHTML(o.employee_name||'—')}</span><span class="pending-meta">${escapeHTML(o.doctor_name||'')}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(o.area||'')}</span></div><button class="pending-open-btn" type="button" onclick="openPendingOrder('${o.id}')">فتح الأوردر</button></div>`).join('');
+  if(!rows.length){pendingCurrentPage=1;list.innerHTML='<div class="pending-empty">لا توجد أوردرات بحالة Delivering متأخرة 3 أيام أو أكثر</div>';return;}
+  const maxPage=Math.ceil(rows.length/PENDING_PAGE_SIZE);
+  pendingCurrentPage=Math.min(maxPage,Math.max(1,pendingCurrentPage));
+  const start=(pendingCurrentPage-1)*PENDING_PAGE_SIZE;
+  const visibleRows=rows.slice(start,start+PENDING_PAGE_SIZE);
+  list.innerHTML=visibleRows.map(o=>`<div class="pending-row"><div class="pending-days">${num(pendingDays(o))}<small>يوم</small></div><div class="pending-customer"><strong>${escapeHTML(o.customer_name||'—')}</strong><small>${escapeHTML(o.phone||'')} ${o.phone2?'• '+escapeHTML(o.phone2):''}</small></div><div><span class="pending-status">Delivering</span><span class="pending-meta">Last update: ${formatEnglishDateTime(pendingReferenceDate(o))}</span></div><div><span class="pending-meta">رقم الأوردر: ${escapeHTML(o.order_number||'—')}</span><span class="pending-meta">Ticket: ${escapeHTML(getTicketId(o))}</span></div><div><span class="pending-meta">${escapeHTML(o.employee_name||'—')}</span><span class="pending-meta">${escapeHTML(o.doctor_name||'')}</span></div><div><span class="pending-meta">${escapeHTML(pendingOrderBranch(o))}</span><span class="pending-meta">${escapeHTML(o.area||'')}</span></div><button class="pending-open-btn" type="button" onclick="openPendingOrder('${o.id}')">فتح الأوردر</button></div>`).join('')+(maxPage>1?`<div class="pending-pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 8px;" dir="rtl"><button type="button" class="pending-refresh-btn" onclick="changePendingPage(${pendingCurrentPage-1})" ${pendingCurrentPage===1?'disabled':''}>السابق</button><span>صفحة ${pendingCurrentPage} من ${maxPage} — عرض ${start+1}–${Math.min(start+PENDING_PAGE_SIZE,rows.length)} من ${rows.length}</span><button type="button" class="pending-refresh-btn" onclick="changePendingPage(${pendingCurrentPage+1})" ${pendingCurrentPage===maxPage?'disabled':''}>التالي</button></div>`:'');
 }
-function openPendingOrder(orderId){const order=pendingOrders.find(item=>String(item.id)===String(orderId));if(order)openReportOrderTab('pending',order);}
+async function openPendingOrder(orderId){
+  const order=pendingOrders.find(item=>String(item.id)===String(orderId));
+  if(!order||!canSeePendingOrder(order)||!hasRoleFeature('pending'))return;
+  try{
+    const [full]=await loadPendingFullRows([order]);
+    if(!pendingOrders.some(item=>String(item.id)===String(orderId)))return;
+    openReportOrderTab('pending',full);
+  }catch(error){alert('تعذر فتح الأوردر: '+(error?.message||error));}
+}
 
 // ===== OKB Abnormal — Returned + Cancel + verified rescued orders =====
 let okbStoresReportOrders=[];
@@ -4617,6 +5222,9 @@ const STORES_REPORT_RESCUE_ACTIONS=['order_cancelled','order_updated','order_cre
 const STORES_REPORT_RESCUE_HISTORY_ACTIONS=[...STORES_REPORT_RESCUE_ACTIONS,'order_collected','order_note_added'];
 const STORES_REPORT_RESCUE_SOURCE_STATUSES=new Set(['Returned','Cancel']);
 const STORES_REPORT_RESCUE_DELIVERING_STATUS='Delivering';
+// Short-lived verification cache: report-only; Refresh explicitly bypasses it.
+let storesReportRescueHistoryCache=null;
+const STORES_REPORT_HISTORY_CACHE_MS=60000;
 function canSeeStoresReportOrder(order){
   const branch=pendingOrderBranch(order);if(!branch)return false;
   if(isAdmin()||isOperationManager()||isDoctorRole()||getRoleKey(currentUser?.role)==='account_manager')return true;
@@ -4630,7 +5238,7 @@ async function refreshOKBStoresReportBadge(){
   updateOKBStoresReportBadge((data||[]).filter(canSeeStoresReportOrder).length);
 }
 function stopOKBStoresReportNotifications(){if(storesReportPollingTimer)clearInterval(storesReportPollingTimer);storesReportPollingTimer=null;updateOKBStoresReportBadge(0);}
-function startOKBStoresReportNotifications(){stopOKBStoresReportNotifications();if(!currentUser||!hasRoleFeature('stores_report'))return;refreshOKBStoresReportBadge();storesReportPollingTimer=setInterval(refreshOKBStoresReportBadge,45000);}
+function startOKBStoresReportNotifications(){stopOKBStoresReportNotifications();if(!currentUser||!hasRoleFeature('stores_report'))return;refreshOKBStoresReportBadge();storesReportPollingTimer=setInterval(refreshOKBStoresReportBadge,300000);}
 function setupOKBStoresReportBranchFilter(){
   const el=document.getElementById('storesReportBranch');if(!el)return;const cur=el.value||'all';
   const branches=getOKBStoresReportBranches();
@@ -4661,6 +5269,10 @@ function getOKBStoresRescueDays(startValue,endValue){
   return Math.max(0,Math.floor((end.getTime()-start.getTime())/86400000));
 }
 function storesReportTicketKey(value){const text=String(value??'').trim();return /^\d+$/.test(text)?text.replace(/^0+(?=\d)/,''):'';}
+function getOKBStoresRescueHistoryKey(signedOrders){
+  // Includes the fields relevant to rescue proof, so a changed collection cannot reuse old verification.
+  return signedOrders.map(o=>[o.id,o.ticket_id,o.branch,o.status,o.collected_at,o.notes].join('~')).join('\n');
+}
 async function loadOKBStoresRescuedIds(signedOrders,isCurrent=()=>true){
   const rescuedIds=new Set(),byId=new Map(),byTicket=new Map(),historyByOrderId=new Map();
   signedOrders.forEach(order=>{
@@ -4773,7 +5385,7 @@ async function loadOKBStoresReport(showMessage=false){
     const ordersById=new Map();
     if(branches.length)for(let offset=0;;offset+=1000){
       if(!isCurrent())return;
-      let query=supabaseClient.from('orders').select('*').in('status',['Returned','Cancel','Signed']).in('branch',branches);
+      let query=supabaseClient.from('orders').select('id,status,branch,created_at,customer_name,doctor_name,employee_name,phone,phone2,order_number,ticket_id,price,deposit,notes,collected_at').in('status',['Returned','Cancel','Signed']).in('branch',branches);
       if(start)query=query.gte('created_at',start);
       if(end)query=query.lt('created_at',end);
       const {data,error}=await query.order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+999);
@@ -4786,8 +5398,13 @@ async function loadOKBStoresReport(showMessage=false){
     okbStoresReportOrders=candidates.filter(order=>order.status==='Returned'||order.status==='Cancel');
     storesReportLoading=false;renderOKBStoresReport();
     try{
-      const rescueResult=await loadOKBStoresRescuedIds(candidates.filter(order=>order.status==='Signed'),isCurrent);
+      const signedCandidates=candidates.filter(order=>order.status==='Signed');
+      const historyKey=getOKBStoresRescueHistoryKey(signedCandidates);
+      const cache=storesReportRescueHistoryCache;
+      const reuseHistory=!showMessage&&cache&&cache.user===user&&cache.key===historyKey&&Date.now()-cache.at<STORES_REPORT_HISTORY_CACHE_MS;
+      const rescueResult=reuseHistory?cache.result:await loadOKBStoresRescuedIds(signedCandidates,isCurrent);
       if(!isCurrent())return;
+      if(!reuseHistory)storesReportRescueHistoryCache={user,key:historyKey,at:Date.now(),result:rescueResult};
       storesReportRescuedIds=rescueResult.rescuedIds;
       storesReportRescueMeta=rescueResult.rescueMeta;
       okbStoresReportOrders=candidates.filter(order=>order.status==='Returned'||order.status==='Cancel'||isOKBStoresRescuedOrder(order));
@@ -5114,6 +5731,7 @@ async function showOrdersPage(options={}) {
   if(!exactOrder)clearExactOrderView();
   hideAllPages();
   $("ordersPage").classList.remove("hidden");
+  syncAdminManualTicketVisibility();
   renderBranchFloatingSticky();
   setActiveMenu("ordersPage");
   if(filterStatus)filterStatus.value='الكل';
@@ -5193,6 +5811,7 @@ async function showShippingRankPage(mode = 'branch') {
 async function showDoctorRankPage() {
   if (!hasRoleFeature('doctor_rank_stores')) { alert('Doctor Rank غير مضاف لصلاحيات حسابك'); return; }
   closeOKBStoresMenu();
+  closeShippingRankMenu();
   hideAllPages();
   $("doctorRankPage").classList.remove("hidden");
   setActiveMenu("doctorRankPage");
@@ -5311,7 +5930,7 @@ function closeShippingRankMenu() {
 
 function toggleShippingRankMenu(event) {
   event?.stopPropagation();
-  if (!canViewShippingRank()) return;
+  if (!canViewShippingRank() && !hasRoleFeature('doctor_rank_stores')) return;
   const menu = document.getElementById('shippingRankHeaderMenu');
   const button = document.getElementById('shippingRankHeaderBtn');
   if (!menu || !button) return;
@@ -5384,6 +6003,29 @@ document.addEventListener('click', event => {
   if (!event.target.closest('#shippingRankHeaderWrap')) closeShippingRankMenu();
 });
 
+// v273: dashboard-only emergency Ticket ID; no change to the regular generator.
+function syncAdminManualTicketVisibility() {
+  const wrap=document.getElementById('adminManualTicketWrap');
+  const enabled=document.getElementById('adminManualTicketEnabled');
+  const field=document.getElementById('adminManualTicketId');
+  const fields=document.getElementById('adminManualTicketFields');
+  if (!wrap || !enabled || !field || !fields) return;
+  const allowed=Boolean(isAdmin() && !editId);
+  wrap.style.display=allowed?'block':'none';
+  if(!allowed){enabled.checked=false;field.value='';}
+  fields.style.display=allowed&&enabled.checked?'block':'none';
+}
+function toggleAdminManualTicketMode() { syncAdminManualTicketVisibility(); }
+function getAdminManualTicketRequest() {
+  const enabled=document.getElementById('adminManualTicketEnabled');
+  if (!isAdmin() || editId || !enabled?.checked) return null;
+  const raw=String(document.getElementById('adminManualTicketId')?.value||'').trim();
+  if (!/^[0-9]{1,10}$/.test(raw) || Number(raw)<1 || !Number.isSafeInteger(Number(raw))) {
+    throw new Error('اكتب Ticket ID رقمي صحيح للطوارئ.');
+  }
+  return formatSequentialTicketId(raw);
+}
+
 function resetForm() { 
   orderForm.reset(); 
   editId = null; 
@@ -5393,6 +6035,7 @@ function resetForm() {
   const adminDateInput = document.getElementById('adminOrderDate');
   if (adminDateWrap) adminDateWrap.style.display = 'none';
   if (adminDateInput) adminDateInput.value = '';
+  syncAdminManualTicketVisibility();
   if (!isAdmin()) { 
     employeeName.value = currentUser.name; 
     employeeName.readOnly = true; 
@@ -6610,8 +7253,22 @@ orderForm.addEventListener("submit", async (e) => {
       if (result.error) throw result.error;
       orderId = editId;
     } else {
-      Object.assign(orderData, await reserveNextOrderIdentifiers());
-      result = await supabaseClient.from("orders").insert([orderData]).select();
+      const emergencyTicket=getAdminManualTicketRequest();
+      if (emergencyTicket) {
+        const approved=confirm(`تأكيد إضافة أوردر طوارئ برقم Ticket ${emergencyTicket}؟\nالعملية لا تستعيد الأوردر المحذوف تلقائيًا ولا تعدّل عداد الترقيم.`);
+        if (!approved) { releaseDashboardSubmit(); return; }
+        // Admin verification and collision protection are enforced by the dedicated database RPC.
+        const payload={...orderData,ticket_id:emergencyTicket,order_barcode:generateOrderBarcode(emergencyTicket)};
+        payload.notes=buildNotesWithOrderMeta(payload.notes,{
+          ...getOrderMeta({notes:payload.notes}),ticket_seq_v2:false,
+          manual_ticket_recovery:true,manual_ticket_recovery_at:new Date().toISOString()
+        });
+        const response=await supabaseClient.rpc('okb_admin_create_emergency_ticket',{p_order:payload});
+        result={data:response.data?[response.data]:[],error:response.error};
+      } else {
+        Object.assign(orderData, await reserveNextOrderIdentifiers());
+        result = await supabaseClient.from("orders").insert([orderData]).select();
+      }
       if (result.error) throw result.error;
       
       if (result.data && result.data.length > 0) {
@@ -6786,7 +7443,7 @@ function restoreOrderStatusBaseOptions(selectEl) {
   });
 }
 
-function syncOKBFilterStatusOptionsForEdit(selectEl, currentStatus = '') {
+function syncOKBFilterStatusOptionsForEdit(selectEl, currentStatus = '', allowExistingSigned = false) {
   if (!selectEl) return;
   restoreOrderStatusBaseOptions(selectEl);
 
@@ -6808,7 +7465,7 @@ function syncOKBFilterStatusOptionsForEdit(selectEl, currentStatus = '') {
   const current = String(currentStatus || '').trim();
   if (!current) return;
   let currentOption = Array.from(selectEl.options || []).find(option => String(option.value) === current);
-  if (!currentOption && (current !== 'Signed' || isAdmin())) {
+  if (!currentOption && (current !== 'Signed' || isAdmin() || allowExistingSigned)) {
     // If the order already has a status that Admin hid from OKB Filter, retain
     // its value invisibly so saving unrelated edits cannot silently change it.
     // It does NOT appear as a selectable option in the dropdown.
@@ -6857,6 +7514,7 @@ window.editOrder = function (id) {
   const adminDateInput = document.getElementById('adminOrderDate');
   if (adminDateWrap) adminDateWrap.style.display = isAdmin() ? 'block' : 'none';
   if (adminDateInput) adminDateInput.value = isAdmin() ? toLocalDateTimeInputValue(o.created_at) : '';
+  syncAdminManualTicketVisibility();
 
   setProductCartFromOrder('dash', o);
 
@@ -7086,6 +7744,29 @@ function normalizeDoctorRankName(value) {
 }
 
 const DOCTOR_RANK_CACHE_TTL_MS = 60000;
+// v253: short-lived, scope-isolated Doctor Rank snapshots (in-memory only).
+const DOCTOR_RANK_HISTORY_LIMIT = 3;
+const doctorRankHistory = new Map();
+function clearDoctorRankHistory() { doctorRankHistory.clear(); }
+function readDoctorRankHistory(scope) {
+  const entry = doctorRankHistory.get(scope);
+  if (!entry) return null;
+  if (Date.now() - entry.at >= DOCTOR_RANK_CACHE_TTL_MS) {
+    doctorRankHistory.delete(scope);
+    return null;
+  }
+  doctorRankHistory.delete(scope);
+  doctorRankHistory.set(scope, entry);
+  return entry;
+}
+function saveDoctorRankHistory(scope, orders, loadedAt) {
+  doctorRankHistory.delete(scope);
+  doctorRankHistory.set(scope, { orders, loadedAt, at: Date.parse(loadedAt) });
+  while (doctorRankHistory.size > DOCTOR_RANK_HISTORY_LIMIT) {
+    doctorRankHistory.delete(doctorRankHistory.keys().next().value);
+  }
+}
+
 const DOCTOR_RANK_COLUMNS = 'id,ticket_id,order_number,customer_name,phone,employee_name,doctor_name,doctor_code,branch,shipping_company,status,price,deposit,notes,created_at';
 const DOCTOR_RANK_BRANCHES = [
   { key:'nasr-city', name:'مدينة نصر', label:'مدينة نصر' },
@@ -7235,6 +7916,24 @@ async function loadDoctorRankRange(options = {}) {
   if (from > to) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
   const scope = getDoctorRankScopeKey(from, to);
   if (!options.force && !doctorRankLoadError && doctorRankDataReady && doctorRankOrdersScope === scope) return doctorRankOrders;
+  // Reuse a completed, recent snapshot when returning to a previously viewed period.
+  // Refresh always bypasses this cache. In-flight queries retain the original token rules.
+  if (!options.force && !doctorRankLoading && hasRoleFeature('doctor_rank_stores')) {
+    const cached = readDoctorRankHistory(scope);
+    if (cached) {
+      ++doctorRankLoadToken;
+      doctorRankOrders = cached.orders;
+      doctorRankOrdersScope = scope;
+      doctorRankDataReady = true;
+      doctorRankLoadedAt = cached.loadedAt;
+      doctorRankLoadError = '';
+      doctorRankRevision += 1;
+      invalidateDoctorRankDerivedCache();
+      setDoctorRankLoadState(`تم تحميل ${num(cached.orders.length)} أوردر · آخر تحديث ${formatEnglishDateTime(cached.loadedAt)}`);
+      return doctorRankOrders;
+    }
+  }
+
   if (doctorRankLoading && doctorRankLoadPromise && doctorRankLoadPromiseScope === scope) return doctorRankLoadPromise;
 
   const token = ++doctorRankLoadToken;
@@ -7260,6 +7959,7 @@ async function loadDoctorRankRange(options = {}) {
       doctorRankOrdersScope = scope;
       doctorRankDataReady = true;
       doctorRankLoadedAt = new Date().toISOString();
+      saveDoctorRankHistory(scope, data, doctorRankLoadedAt);
       doctorRankLoadError = '';
       doctorRankRevision += 1;
       invalidateDoctorRankDerivedCache();
@@ -7562,6 +8262,33 @@ const BRANCH_PERFORMANCE_MAP = [
 ];
 
 const SHIPPING_RANK_CACHE_TTL_MS = 60000;
+// Branch-only short-lived multi-period cache. Never persisted across sessions.
+// Key includes actor, role, allowed branches, override, dates and mode.
+const branchRankPeriodCache = new Map();
+const BRANCH_RANK_PERIOD_CACHE_LIMIT = 3;
+function getBranchRankPeriodCache(scope) {
+  const entry = branchRankPeriodCache.get(scope);
+  if (!entry) return null;
+  if (entry.actor !== currentUser || Date.now() - entry.savedAt >= SHIPPING_RANK_CACHE_TTL_MS) {
+    branchRankPeriodCache.delete(scope);
+    return null;
+  }
+  // LRU: recently reused periods remain in the small in-memory cache.
+  branchRankPeriodCache.delete(scope);
+  branchRankPeriodCache.set(scope, entry);
+  return entry;
+}
+function saveBranchRankPeriodCache(scope, actor, data, from, to, ranks, ranksScope, rankError) {
+  if (!scope || actor !== currentUser) return;
+  branchRankPeriodCache.delete(scope);
+  branchRankPeriodCache.set(scope, {
+    actor, data, from, to, ranks: new Map(ranks), ranksScope, rankError,
+    savedAt: Date.now()
+  });
+  while (branchRankPeriodCache.size > BRANCH_RANK_PERIOD_CACHE_LIMIT) {
+    branchRankPeriodCache.delete(branchRankPeriodCache.keys().next().value);
+  }
+}
 const SHIPPING_RANK_COLUMNS = 'id,created_at,status,branch,shipping_company,price,deposit,notes';
 
 function invalidateShippingRankDerivedCache() {
@@ -7704,11 +8431,11 @@ function buildBranchRankSnapshot(source, from, to) {
 
   (Array.isArray(source) ? source : []).forEach(order => {
     if (!isShippingRankOrderAllowed(order, from, to, { mode:'branch', allowedBranchKeys:allowedKeys })) return;
-    const effectivePrice = normalizeOrderPriceForStorage(getEffectiveOrderPrice(order));
-    if (!(effectivePrice > 0)) return;
+    if (!isCountableBranchPerformanceOrder(order)) return;
     const branch = getProductReportOrderBranch(order);
     if (!allowed.has(branch)) return;
-    const status = getOrderDisplayStatus(order) || String(order?.status || '').trim();
+    // Read the stored status consistently; never mutate financial/collection state.
+    const status = String(getOrderDisplayStatus(order) || order?.status || '').trim();
     const day = getShippingRankOrderDay(order);
     eligibleOrders.push(order);
     addBranchRankOrder(summaryAccumulator, status);
@@ -7783,9 +8510,18 @@ function getPreviousMonthComparisonRange(fromDate, toDate) {
   return { from: previousMonth(from), to: previousMonth(to, isFullMonth) };
 }
 
+// Branch Performance counting uses the same effective order price as the
+// central accounting views. An error_order flag is NOT an exclusion: a
+// financially countable error order must contribute to its branch totals.
+function isCountableBranchPerformanceOrder(order) {
+  if (!order) return false;
+  const effectivePrice = Number(getEffectiveOrderPrice(order));
+  return Number.isFinite(effectivePrice) && effectivePrice >= MIN_COUNTABLE_ORDER_PRICE;
+}
+
 function filterBranchRankingOrders(source) {
   let rows = (Array.isArray(source) ? source : []).filter(order =>
-    normalizeOrderPriceForStorage(getEffectiveOrderPrice(order)) > 0 && isShippingRankBranchOrder(order)
+    isCountableBranchPerformanceOrder(order) && isShippingRankBranchOrder(order)
   );
   if (branchShippingRankOverride) {
     const branchName = branchShippingRankOverride;
@@ -8011,8 +8747,8 @@ async function refreshShippingRankData(ev) {
     await loadShippingRankRange({ force:true, forceComparison:true });
     renderShippingRank();
     renderShippingCharts();
-    if(shippingRankMode==='branch'){
-      try{await loadBranchRankingComparisonRange({force:true});renderBranchPerformanceRanking();}
+    if(shippingRankMode==='branch' && branchPerformanceRankingMode!=='details'){
+      try{await loadBranchRankingComparisonRange();renderBranchPerformanceRanking();}
       catch(error){console.warn('Branch Rank comparison refresh failed:',error);}
     }
   } finally {
@@ -8330,6 +9066,19 @@ function getCachedDoctorRankOrdersForRange(from, to) {
 async function loadDoctorWeeklyOrdersRange(from, to) {
   const cached = getCachedDoctorRankOrdersForRange(from, to);
   if (cached) return cached;
+  // A historical Doctor Rank snapshot may cover both selected weeks.
+  for (const [key, entry] of doctorRankHistory) {
+    const dates = key.split('|').pop().split(':');
+    if (dates.length !== 2 || from < dates[0] || to > dates[1]) continue;
+    if (key !== getDoctorRankScopeKey(dates[0], dates[1])) continue;
+    const snapshot = readDoctorRankHistory(key);
+    if (!snapshot) continue;
+    return snapshot.orders.filter(order => {
+      const day = getDoctorRankOrderDay(order);
+      return day >= from && day <= to && isDoctorRankOrderAllowed(order, dates[0], dates[1]);
+    });
+  }
+
   const actor = currentUser;
   const token = ++doctorWeeklyLoadToken;
   const data = await fetchDoctorRankOrdersForRange(from, to, () =>
@@ -8453,13 +9202,39 @@ async function loadShippingRankRange(options = {}) {
   if (!hasRoleFeature('shipping_rank')) throw new Error('لا توجد صلاحية لعرض Shipping Rank');
   const requestedMode = shippingRankMode;
   const scope = getShippingRankScopeKey(from, to, requestedMode);
-  if (!options.force && !shippingRankLoadError && shippingRankDataReady && shippingRankOrdersScope === scope) {
-    if (requestedMode === 'branch') {
+  if (!options.force && !shippingRankLoadError && shippingRankDataReady && shippingRankOrdersScope === scope &&
+      (requestedMode !== 'branch' || isShippingRankCacheFresh())) {
+    if (requestedMode === 'branch' && branchPerformanceRankingMode !== 'details') {
       loadBranchRankingComparisonRange().catch(error => console.warn('Branch Rank comparison preload failed:', error));
     }
     return shippingRankOrders;
   }
   if (shippingRankLoading && shippingRankLoadPromise && shippingRankLoadPromiseScope === scope) return shippingRankLoadPromise;
+
+  // Re-selecting September after Reset must reuse the already loaded snapshot.
+  // Refresh (force:true) always bypasses this cache and fetches from Supabase.
+  if (requestedMode === 'branch' && !options.force && !shippingRankLoadError) {
+    const cached = getBranchRankPeriodCache(scope);
+    if (cached) {
+      ++shippingRankLoadToken; // invalidate a request for an older period
+      shippingRankOrders = cached.data;
+      shippingRankOrdersScope = scope;
+      shippingRankDataReady = true;
+      shippingRankLoadedAt = new Date(cached.savedAt).toISOString();
+      shippingRankLoadedRange = { from:cached.from, to:cached.to };
+      shippingRankLoadedMode = 'branch';
+      shippingRankLoadError = '';
+      shippingRankLoading = false;
+      shippingRankLoadPromise = null;
+      shippingRankLoadPromiseScope = '';
+      shippingRankRevision += 1;
+      invalidateShippingRankDerivedCache();
+      shippingRankTrueRanks = new Map(cached.ranks);
+      shippingRankTrueRanksScope = cached.ranksScope;
+      shippingRankTrueRankError = cached.rankError;
+      return shippingRankOrders;
+    }
+  }
 
   const token = ++shippingRankLoadToken;
   const actor = currentUser;
@@ -8520,6 +9295,10 @@ async function loadShippingRankRange(options = {}) {
       shippingRankTrueRanksScope = trueRankRequired ? scope : '';
       shippingRankTrueRankError = trueRankResult.error || '';
       if (requestedMode === 'branch') {
+        saveBranchRankPeriodCache(scope, actor, data, from, to,
+          shippingRankTrueRanks, shippingRankTrueRanksScope, shippingRankTrueRankError);
+      }
+      if (requestedMode === 'branch' && branchPerformanceRankingMode !== 'details') {
         loadBranchRankingComparisonRange({ force:Boolean(options.forceComparison) }).catch(error => {
           console.warn('Branch Rank previous-period comparison unavailable:', error);
         });
@@ -8635,32 +9414,78 @@ async function fetchShippingRankOrdersForRange(fromDate, toDate, requestIsCurren
   if (mode === 'branch' && !range) throw new Error('اختار فترة تاريخ صحيحة');
   const allowedBranchKeys = options.allowedBranchKeys || getShippingRankAllowedBranchKeys();
   if (mode === 'branch' && !allowedBranchKeys.length) return [];
-  const allowedBranchNames = [...new Set(BRANCH_PERFORMANCE_MAP
-    .filter(item => allowedBranchKeys.includes(item.key))
-    .flatMap(item => [item.branch, getBranchShippingCompanyName(item.branch)])
-    .filter(Boolean))];
-
-  const rows = [];
   const pageSize = 1000;
-  for (let offset = 0; ; offset += pageSize) {
-    if (!requestIsCurrent()) return null;
-    // Branch/Company Rank and the Operation Manager report need only these
-    // fields. Excluding products and proof-related columns cuts the payload
-    // substantially while preserving every status and financial KPI used here.
-    let query = supabaseClient
-      .from('orders')
-      .select(SHIPPING_RANK_COLUMNS)
-      .gte('created_at', mode === 'branch' ? range.start : `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
-      .lt('created_at', mode === 'branch' ? range.endExclusive : `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`)
-      .order('created_at', { ascending:false })
-      .order('id', { ascending:false });
-    if (mode === 'branch' && allowedBranchNames.length) query = query.in('branch', allowedBranchNames);
-    const { data, error } = await query.range(offset, offset + pageSize - 1);
-    if (!requestIsCurrent()) return null;
-    if (error) throw new Error('تعذر تحميل Shipping Rank: ' + (error.message || error));
-    if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Shipping Rank أثناء التحميل');
-    rows.push(...(data || []));
-    if (!data || data.length < pageSize) break;
+  let rows = [];
+  if (mode === 'branch') {
+  // v244: bounded parallel pagination for first-time historical range loads.
+  // Stable created_at/id ordering and complete-page validation prevent partial totals.
+  // Avoid modifying shared Supabase client state: build an independent query per page.
+  const buildQuery = (withCount = false) => supabaseClient
+    .from('orders')
+    .select(SHIPPING_RANK_COLUMNS, withCount ? { count:'exact' } : undefined)
+    .gte('created_at', mode === 'branch' ? range.start : `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
+    .lt('created_at', mode === 'branch' ? range.endExclusive : `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`)
+    .order('created_at', { ascending:false })
+    .order('id', { ascending:false });
+  const first = await buildQuery(true).range(0, pageSize - 1);
+  if (!requestIsCurrent()) return null;
+  if (first.error) throw new Error('تعذر تحميل Shipping Rank: ' + (first.error.message || first.error));
+  if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Shipping Rank أثناء التحميل');
+  const firstRows = first.data || [];
+  rows = [...firstRows];
+  if (Number.isInteger(first.count) && first.count >= 0) {
+    const expectedCount = first.count;
+    if (firstRows.length !== Math.min(pageSize, expectedCount)) throw new Error('عدد أوردرات Shipping Rank غير مكتمل، حاول التحديث');
+    const offsets = [];
+    for (let offset = pageSize; offset < expectedCount; offset += pageSize) offsets.push(offset);
+    const concurrency = 4;
+    for (let start = 0; start < offsets.length; start += concurrency) {
+      if (!requestIsCurrent()) return null;
+      const batch = offsets.slice(start, start + concurrency);
+      const responses = await Promise.all(batch.map(offset => buildQuery().range(offset, offset + pageSize - 1)));
+      if (!requestIsCurrent()) return null;
+      if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Shipping Rank أثناء التحميل');
+      for (let i = 0; i < responses.length; i++) {
+        const { data, error } = responses[i];
+        if (error) throw new Error('تعذر تحميل Shipping Rank: ' + (error.message || error));
+        const expectedPageLength = Math.min(pageSize, expectedCount - batch[i]);
+        if (!data || data.length !== expectedPageLength) throw new Error('دفعة أوردرات Shipping Rank غير مكتملة، حاول التحديث');
+        rows.push(...data);
+      }
+    }
+    if (rows.length !== expectedCount || new Set(rows.map(order => String(order.id))).size !== expectedCount) {
+      throw new Error('تغيرت أوردرات Shipping Rank أثناء التحميل، اضغط Refresh لإعادة المحاولة');
+    }
+  } else {
+    // Compatible fallback if the backend does not expose an exact row count.
+    for (let offset = pageSize; firstRows.length === pageSize; offset += pageSize) {
+      if (!requestIsCurrent()) return null;
+      const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
+      if (!requestIsCurrent()) return null;
+      if (error) throw new Error('تعذر تحميل Shipping Rank: ' + (error.message || error));
+      if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Shipping Rank أثناء التحميل');
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+  }
+  } else {
+    // Keep company ranking's original sequential query and filters untouched.
+    for (let offset = 0; ; offset += pageSize) {
+      if (!requestIsCurrent()) return null;
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select(SHIPPING_RANK_COLUMNS)
+        .gte('created_at', `${shiftISODate(requestedFrom, -1)}T00:00:00.000Z`)
+        .lt('created_at', `${shiftISODate(requestedTo, 2)}T00:00:00.000Z`)
+        .order('created_at', { ascending:false })
+        .order('id', { ascending:false })
+        .range(offset, offset + pageSize - 1);
+      if (!requestIsCurrent()) return null;
+      if (error) throw new Error('تعذر تحميل Shipping Rank: ' + (error.message || error));
+      if (currentUser !== actor || !hasRoleFeature('shipping_rank')) throw new Error('تم تغيير صلاحية Shipping Rank أثناء التحميل');
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
   }
   const unique = new Map();
   rows.forEach(order => {
@@ -8693,7 +9518,14 @@ async function onShippingFilterChange() {
   } else {
     badge.classList.remove("visible");
   }
-  try { await loadShippingRankRange({ force:true, forceComparison:true }); }
+  // Re-applying the same date range should not re-download identical rows.
+  // A changed scope or expired cache still fetches fresh data; Refresh stays forced.
+  const requestedScope = getShippingRankScopeKey(shippingDateFrom, shippingDateTo, shippingRankMode);
+  const canReuse = shippingRankDataReady && !shippingRankLoadError &&
+    shippingRankOrdersScope === requestedScope && isShippingRankCacheFresh();
+  // Branch mode can restore a recently viewed different month from its own cache.
+  // Company mode retains the original Filter behavior without changes.
+  try { await loadShippingRankRange({ force:shippingRankMode === 'branch' ? false : !canReuse, forceComparison:!canReuse }); }
   catch (error) { alert('تعذر تحميل بيانات Shipping Rank: ' + (error?.message || error)); return; }
   renderShippingRank(); renderShippingCharts();
 }
@@ -11288,6 +12120,31 @@ function setUnifiedFilterValue(selectId, preferredValue = 'الكل') {
   return select.value || 'الكل';
 }
 
+// v240 — Branch Khazna: non-admin users are intentionally locked to Signed.
+// Admin behavior stays exactly as before: the unified status selector remains editable.
+function enforceKhaznaStatusFilterAccess() {
+  const select = document.getElementById('khaznaFilterStatus');
+  if (!select) return 'Signed';
+  if (isAdmin()) {
+    select.disabled = false;
+    select.removeAttribute('aria-disabled');
+    select.removeAttribute('data-khazna-status-locked');
+    select.title = '';
+    return select.value || 'Signed';
+  }
+  const values = new Set(Array.from(select.options).map(option => option.value));
+  if (values.has('Signed')) select.value = 'Signed';
+  else {
+    select.innerHTML = '<option value="Signed">Signed</option>';
+    select.value = 'Signed';
+  }
+  select.disabled = true;
+  select.setAttribute('aria-disabled', 'true');
+  select.setAttribute('data-khazna-status-locked', 'true');
+  select.title = 'الحالة مثبتة على Signed لهذا المستخدم';
+  return 'Signed';
+}
+
 function renderUnifiedOrderFilterSelects() {
   const html = getUnifiedFilterOptionsHTML();
   const defaultById = { filterStatus:'الكل', bFilterStatus:'الكل', khaznaFilterStatus:'Signed', btStatusFilter:'Signed' };
@@ -11299,6 +12156,7 @@ function renderUnifiedOrderFilterSelects() {
     const fallback = values.has(fallbackPreferred) ? fallbackPreferred : 'الكل';
     select.value = values.has(previous) ? previous : fallback;
   });
+  enforceKhaznaStatusFilterAccess();
   refreshOrderSearchableSelects();
 }
 
@@ -11825,8 +12683,26 @@ async function loadDailyReportRange(options = {}) {
   if (from > to) throw new Error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية');
   const scope = getDailyReportScopeKey(from, to);
   if (!options.force && !dailyReportLoadError && dailyReportDataReady && dailyReportOrdersScope === scope) return dailyReportOrders;
+  // Only completed snapshots may be reused; refresh always requires a new fetch.
+  if (!options.force && !dailyReportLoading && hasRoleFeature('daily_report')) {
+    const cached = readDailyReportHistory(scope);
+    if (cached) {
+      ++dailyReportLoadToken;
+      dailyReportOrders = cached.orders;
+      dailyReportOrdersScope = scope;
+      dailyReportDataReady = true;
+      dailyReportLoadedAt = cached.loadedAt;
+      dailyReportLoadError = '';
+      dailyReportRevision += 1;
+      dailyReportAnalysisCache = new WeakMap();
+      setDailyReportLoadState(`تم تحميل ${num(cached.orders.length)} أوردر · آخر تحديث ${formatEnglishDateTime(cached.loadedAt)}`);
+      return dailyReportOrders;
+    }
+  }
+
   if (dailyReportLoading && dailyReportLoadPromise && dailyReportLoadPromiseScope === scope) return dailyReportLoadPromise;
 
+  if (options.force) dailyReportHistory.delete(scope);
   const token = ++dailyReportLoadToken;
   const actor = currentUser;
   const replacingScope = dailyReportOrdersScope !== scope;
@@ -11849,6 +12725,7 @@ async function loadDailyReportRange(options = {}) {
       dailyReportOrdersScope = scope;
       dailyReportDataReady = true;
       dailyReportLoadedAt = new Date().toISOString();
+      saveDailyReportHistory(scope, data, dailyReportLoadedAt);
       dailyReportLoadError = '';
       dailyReportRevision += 1;
       dailyReportAnalysisCache = new WeakMap();
@@ -13144,7 +14021,7 @@ function canUseBranchInlineEdit(order, showMessage = false) {
   const deny = message => { if (showMessage) alert(message); return false; };
   if (!order) return deny('تعذر العثور على الأوردر');
   if (!hasButtonPermission('btn_branch_edit')) return deny('زر التعديل غير مضاف لصلاحيات حسابك');
-  if (String(order.status || '').trim().toLowerCase() === 'signed') return deny('تعديل الأوردر المسلم متاح للأدمن من التحديد الذكي فقط.');
+  if (String(order.status || '').trim().toLowerCase() === 'signed') return deny('تعديل أوردر Signed يتم من التحديد الذكي فقط للأدمن أو لمن لديه صلاحية 🔐 تعديل أوردر Signed.');
   if (isAdmin()) return true;
   if (!isSecretary() && !isExecutiveAssistant()) return deny('زر التعديل المباشر غير متاح لهذا الـ Role.');
   if (String(order.status || '').trim().toLowerCase() !== 'delivering') {
@@ -13404,6 +14281,7 @@ function openSelectedBranchNoteModal(){
   customerProfileNoteOrderId='';
   if(!branchSelectedOrderIds.size){alert('اختر أوردر واحدًا على الأقل');return;}
   const modal=ensureBranchBulkNoteModal();
+  modal.classList.remove('customer-profile-note-modal');
   const scope=document.getElementById('branchBulkNoteScope');
   const input=document.getElementById('branchBulkNoteInput');
   if(scope)scope.textContent=`سيتم إضافة الملاحظة إلى ${num(branchSelectedOrderIds.size)} أوردر محدد، أسفل الملاحظات السابقة.`;
@@ -13418,6 +14296,7 @@ function openDashboardOrderNote(id){
   dashboardNoteOrderId=String(id);
   customerProfileNoteOrderId='';
   const modal=ensureBranchBulkNoteModal();
+  modal.classList.remove('customer-profile-note-modal');
   const scope=document.getElementById('branchBulkNoteScope');
   const input=document.getElementById('branchBulkNoteInput');
   if(scope)scope.textContent=`إضافة ملاحظة على أوردر العميل ${order.customer_name||'—'}، أسفل الملاحظات السابقة.`;
@@ -13427,11 +14306,13 @@ function openDashboardOrderNote(id){
 }
 
 function openCustomerProfileOrderNote(){
-  const order=customerProfileOrders.find(item=>String(item.id)===String(customerProfileFocusOrderId))||customerProfileOrders[0];
+  // Customer Profile note action targets the latest order shown in the notes card.
+  const order=customerProfileOrders[0];
   if(!order){alert('تعذر العثور على أوردر متاح لإضافة الملاحظة');return;}
   customerProfileNoteOrderId=String(order.id);
   dashboardNoteOrderId='';
   const modal=ensureBranchBulkNoteModal();
+  modal.classList.add('customer-profile-note-modal');
   const scope=document.getElementById('branchBulkNoteScope');
   const input=document.getElementById('branchBulkNoteInput');
   if(scope)scope.textContent=`إضافة ملاحظة على أوردر العميل ${order.customer_name||'—'} — Ticket ${getTicketId(order)||'—'}، أسفل الملاحظات السابقة.`;
@@ -13441,7 +14322,9 @@ function openCustomerProfileOrderNote(){
 }
 
 function closeSelectedBranchNoteModal(){
-  document.getElementById('branchBulkNoteModal')?.classList.add('hidden');
+  const modal=document.getElementById('branchBulkNoteModal');
+  modal?.classList.add('hidden');
+  modal?.classList.remove('customer-profile-note-modal');
   dashboardNoteOrderId='';
   customerProfileNoteOrderId='';
 }
@@ -13489,7 +14372,7 @@ async function saveSelectedBranchNote(){
       getActivityOrderInfo(order)
     )));
   }
-  document.getElementById('branchBulkNoteModal')?.classList.add('hidden');
+  { const modal=document.getElementById('branchBulkNoteModal'); modal?.classList.add('hidden'); modal?.classList.remove('customer-profile-note-modal'); }
   dashboardNoteOrderId='';
   customerProfileNoteOrderId='';
   if(isCustomerProfileNote){renderCustomerProfile();if(isLivePageVisible('ordersPage'))renderOrders();if(isLivePageVisible('branchPage'))renderBranchOrders();}
@@ -13514,9 +14397,11 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   const noteBtn=document.getElementById('branchBulkNoteBtn');
   const selectedOrders=branchOrders.filter(order=>branchSelectedOrderIds.has(String(order.id)));
   const hasLockedSigned=!isAdmin()&&selectedOrders.some(order=>String(order?.status||'').trim()==='Signed');
+  const selectedSingleOrder=selectedOrders.length===1?selectedOrders[0]:null;
+  const signedEditAllowed=!selectedSingleOrder||canEditSignedBranchOrder(selectedSingleOrder,false);
   if(bar) bar.classList.toggle('hidden',count===0);
   if(countEl) countEl.textContent=`${num(count)} عميل محدد`;
-  if(editBtn) editBtn.classList.toggle('hidden',count!==1||!hasButtonPermission('btn_branch_edit'));
+  if(editBtn) editBtn.classList.toggle('hidden',count!==1||!hasButtonPermission('btn_branch_edit')||!signedEditAllowed);
   if(noteBtn) noteBtn.classList.toggle('hidden',count===0||hasLockedSigned);
   if(transferBtn){
     const showTransfer=count>0&&hasButtonPermission('btn_branch_transfer');
@@ -13628,6 +14513,9 @@ function editSelectedBranchOrder(){
   if(!hasButtonPermission('btn_branch_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   if(branchSelectedOrderIds.size!==1){return;}
   const id=[...branchSelectedOrderIds][0];
+  const order=branchOrders.find(item=>String(item.id)===String(id));
+  if(!order)return;
+  if(!canEditSignedBranchOrder(order,true))return;
   editBranchOrder(id);
 }
 
@@ -13672,6 +14560,7 @@ function editBranchOrder(id) {
   if(!hasButtonPermission('btn_branch_edit')){alert('زر التعديل غير مضاف لصلاحيات حسابك');return;}
   const o = branchOrders.find(x => String(x.id) === String(id));
   if (!o) return;
+  if (!canEditSignedBranchOrder(o, true)) return;
   if (!canCurrentUserEditRegisteredOrder(o, true, 'btn_branch_edit')) return;
   branchEditId=String(o.id);
   branchEditExistingPaymentImage=o.payment_image||'';
@@ -13688,7 +14577,7 @@ function editBranchOrder(id) {
   const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
   if (adminBranchDateWrap) adminBranchDateWrap.style.display = isAdmin() ? 'block' : 'none';
   if (adminBranchDateInput) adminBranchDateInput.value = isAdmin() ? toLocalDateTimeInputValue(o.created_at) : '';
-  syncOKBFilterStatusOptionsForEdit(document.getElementById('bStatus'), o.status || 'Delivering');
+  syncOKBFilterStatusOptionsForEdit(document.getElementById('bStatus'), o.status || 'Delivering', canEditSignedBranchOrder(o, false));
   const orderFlags = getOrderFlagMeta(o);
   const urgentEl = document.getElementById('branchUrgentOrder');
   const replacementEl = document.getElementById('branchReplacementOrder');
@@ -13788,6 +14677,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const statEl  = document.getElementById('bStatus');
     const notesEl = document.getElementById('bOrderNotes');
     const editingOrder = branchEditId ? branchOrders.find(o=>String(o.id)===String(branchEditId)) : null;
+
+    // Defense in depth: even if the UI is bypassed or the permission is revoked
+    // while the form is open, a non-authorized user cannot save a Signed edit.
+    if (editingOrder && !canEditSignedBranchOrder(editingOrder, true)) {
+      releaseBranchSubmit();
+      return;
+    }
 
     if (!editingOrder) {
       try {
@@ -13895,6 +14791,9 @@ document.addEventListener('DOMContentLoaded', function() {
       let savedOrder;
       let error;
       if(wasEditing){
+        if(!canEditSignedBranchOrder(editingOrder, true)){
+          return;
+        }
         if(!canCurrentUserEditRegisteredOrder(editingOrder, true, 'btn_branch_edit')){
           return;
         }
@@ -13947,7 +14846,20 @@ document.addEventListener('DOMContentLoaded', function() {
       setBranchStatusToDelivering();
       clearBranchOrderSelection();
       alert(wasEditing?'✅ تم تعديل الأوردر بنجاح':'✅ تم إضافة الأوردر بنجاح');
-      await loadBranchOrders();
+      // v260: Supabase already returned the complete saved row; don't re-download
+      // the entire branch/month just to show this single create/edit.
+      if (savedOrder?.id) {
+        branchOrders = replaceLiveOrderInList(branchOrders, savedOrder.id, savedOrder,
+          isLiveOrderInsideBranchScope(savedOrder));
+        // Match the existing server ordering for dates; keep stable order on ties.
+        branchOrders.sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        const visibleIds = new Set(branchOrders.map(order => String(order.id)));
+        branchSelectedOrderIds = new Set([...branchSelectedOrderIds].filter(id => visibleIds.has(id)));
+        await loadBranchDailyLocks();
+        renderBranchOrders();
+      } else {
+        await loadBranchOrders(); // Defensive fallback if server returned no row.
+      }
     } catch (err) {
       alert('مشكلة في الحفظ: ' + err.message);
     } finally {
@@ -14410,6 +15322,7 @@ function openKhaznaPage() {
   }
   if (document.getElementById('khaznaFilterStatus')) {
     setUnifiedFilterValue('khaznaFilterStatus', 'Signed');
+    enforceKhaznaStatusFilterAccess();
   }
   if (document.getElementById('khaznaFilterEmployee')) {
     document.getElementById('khaznaFilterEmployee').value = 'الكل';
@@ -14447,7 +15360,9 @@ async function loadKhaznaData() {
   badge.style.display = 'inline-block';
   badge.textContent = from === to ? '📅 ' + from : '📅 ' + (from || 'البداية') + ' → ' + (to || 'النهاية');
 
-  const statusFilter = document.getElementById('khaznaFilterStatus')?.value || 'الكل';
+  const statusFilter = isAdmin()
+    ? (document.getElementById('khaznaFilterStatus')?.value || 'الكل')
+    : enforceKhaznaStatusFilterAccess();
   const utcRange = getCairoDateRangeUTC(from || to, to || from);
   if (!utcRange) { alert('تعذر تحديد نطاق التاريخ'); return; }
 
@@ -14498,6 +15413,12 @@ async function loadKhaznaData() {
       .eq('branch', currentBranchName).order('created_at', { ascending:false }));
   }
 
+  // Non-admin Khazna is Signed-only at both query/UI and in-memory levels.
+  // This also protects the compatibility fallback that may load a wider row set.
+  if (!isAdmin()) {
+    allData = allData.filter(order => String(order?.status || '').trim() === 'Signed');
+  }
+
   khaznaOrders = allData
     .filter(o => isOrderInAccountingDateRange(o, from || null, to || null))
     .sort((a, b) => String(getOrderAccountingDateISO(b)).localeCompare(String(getOrderAccountingDateISO(a))));
@@ -14522,7 +15443,10 @@ async function loadKhaznaShippingOverride(from, to) {
 function resetKhaznaFilter() {
   document.getElementById('khaznaFromDate').value = '';
   document.getElementById('khaznaToDate').value = '';
-  if (document.getElementById('khaznaFilterStatus')) setUnifiedFilterValue('khaznaFilterStatus', 'Signed');
+  if (document.getElementById('khaznaFilterStatus')) {
+    setUnifiedFilterValue('khaznaFilterStatus', 'Signed');
+    enforceKhaznaStatusFilterAccess();
+  }
   document.getElementById('khaznaBadge').style.display = 'none';
   
   khaznaOrders = [];
@@ -14750,7 +15674,11 @@ let financialAuditState = { scope:'branches', mode:'main', rows:[], findings:[],
 let financialAuditRefreshPromise = null;
 let financialAuditRefreshQueued = false;
 let financialAuditLiveRefreshTimer = null;
-const financialAuditSignedCache = { rows:[], loadedAt:0 };
+// v256: Only data required by Financial Audit analysis, filters, finding exports,
+// and the linked-order access check. Full order details load in their own tab.
+// Keep notes: it contains the collection history and legacy financial overrides.
+const FINANCIAL_AUDIT_ORDER_COLUMNS = 'id,branch,shipping_company,status,created_at,collected_at,notes,price,deposit,payment_image,ticket_id,order_number,customer_name,employee_name';
+const financialAuditSignedCache = { rows:[], loadedAt:0, scopeKey:'', inFlight:null, generation:0 };
 const FINANCIAL_AUDIT_CACHE_TTL_MS = 60000;
 
 function getFinancialAuditSource(scope) {
@@ -14802,6 +15730,7 @@ function financialAuditMethodLabel(analysis) {
 }
 
 async function loadPaymentOcrAudits(rows=[]) {
+  if(!OKB_PAYMENT_OCR_ENABLED)return [];
   const ids=[...new Set(rows.map(order=>String(order?.id||'')).filter(Boolean))];
   if(!ids.length)return [];
   // Keep URLs and database planning small when a busy day contains many
@@ -14829,37 +15758,55 @@ function setFinancialAuditLoading(active,message='جاري تحميل ومراج
 }
 
 function invalidateFinancialAuditCache(){
+  financialAuditSignedCache.generation++;
   financialAuditSignedCache.loadedAt=0;
+  financialAuditSignedCache.scopeKey='';
+  financialAuditSignedCache.inFlight=null;
 }
 
-async function loadFinancialAuditSignedCandidates(force=false){
-  const fresh=financialAuditSignedCache.loadedAt&&Date.now()-financialAuditSignedCache.loadedAt<FINANCIAL_AUDIT_CACHE_TTL_MS;
-  if(!force&&fresh)return financialAuditSignedCache.rows;
-  let rows=[],offset=0;
-  while(true){
-    const result=await supabaseClient.from('orders').select('*').in('branch',PENDING_BRANCH_NAMES).eq('status','Signed').order('created_at',{ascending:false}).range(offset,offset+999);
-    if(result.error)throw result.error;
-    rows.push(...(result.data||[]));
-    if(!result.data||result.data.length<1000)break;
-    offset+=1000;
-  }
-  financialAuditSignedCache.rows=rows;
-  financialAuditSignedCache.loadedAt=Date.now();
-  return rows;
-}
-
-async function loadFinancialAuditSignedCandidatesForBranch(branch){
+// Preserve historical Signed lookup based on collection history, not created_at.
+// Scope key isolates a treasury branch from the all-branches audit.
+async function loadFinancialAuditSignedCandidates(force=false,branch=''){
   const target=String(branch||'').trim();
-  if(!PENDING_BRANCH_NAMES.includes(target))return [];
-  let rows=[],offset=0;
-  while(true){
-    const result=await supabaseClient.from('orders').select('*').eq('branch',target).eq('status','Signed').order('created_at',{ascending:false}).range(offset,offset+999);
-    if(result.error)throw result.error;
-    rows.push(...(result.data||[]));
-    if(!result.data||result.data.length<1000)break;
-    offset+=1000;
+  if(target&&!PENDING_BRANCH_NAMES.includes(target))return [];
+  const scopeKey=target||'all';
+  const cache=financialAuditSignedCache;
+  const fresh=cache.loadedAt&&Date.now()-cache.loadedAt<FINANCIAL_AUDIT_CACHE_TTL_MS;
+  if(!force&&fresh){
+    if(cache.scopeKey===scopeKey)return cache.rows;
+    if(cache.scopeKey==='all'&&target)return cache.rows.filter(row=>String(row.branch||'')===target);
   }
-  return rows;
+  // Concurrent callers can share a single read, but a forced refresh must be new.
+  if(!force&&cache.inFlight&&cache.inFlight.key===scopeKey)return cache.inFlight.promise;
+  // A forced read supersedes any older in-flight read of the same cache.
+  if(force)cache.generation++;
+  const generation=cache.generation;
+  const promise=(async()=>{
+    let rows=[],offset=0;
+    while(true){
+      let query=supabaseClient.from('orders').select(FINANCIAL_AUDIT_ORDER_COLUMNS).eq('status','Signed');
+      query=target?query.eq('branch',target):query.in('branch',PENDING_BRANCH_NAMES);
+      const result=await query.order('created_at',{ascending:false}).range(offset,offset+999);
+      if(result.error)throw result.error;
+      rows.push(...(result.data||[]));
+      if(!result.data||result.data.length<1000)break;
+      offset+=1000;
+    }
+    if(cache.generation===generation){
+      cache.rows=rows;
+      cache.loadedAt=Date.now();
+      cache.scopeKey=scopeKey;
+    }
+    return rows;
+  })();
+  const flight={key:scopeKey,promise};
+  cache.inFlight=flight;
+  try{return await promise;}
+  finally{if(cache.inFlight===flight)cache.inFlight=null;}
+}
+
+async function loadFinancialAuditSignedCandidatesForBranch(branch,force=false){
+  return loadFinancialAuditSignedCandidates(force,branch);
 }
 
 async function loadFinancialAuditNonSignedRange(from,to,restrictedBranch=''){
@@ -14867,7 +15814,7 @@ async function loadFinancialAuditNonSignedRange(from,to,restrictedBranch=''){
   if(!utcRange)throw new Error('تعذر تحديد نطاق التاريخ بتوقيت القاهرة');
   let rows=[],offset=0;
   while(true){
-    let query=supabaseClient.from('orders').select('*').in('branch',PENDING_BRANCH_NAMES).neq('status','Signed').gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).range(offset,offset+999);
+    let query=supabaseClient.from('orders').select(FINANCIAL_AUDIT_ORDER_COLUMNS).in('branch',PENDING_BRANCH_NAMES).neq('status','Signed').gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).range(offset,offset+999);
     if(restrictedBranch)query=query.eq('branch',restrictedBranch);
     const result=await query;
     if(result.error)throw result.error;
@@ -14879,6 +15826,7 @@ async function loadFinancialAuditNonSignedRange(from,to,restrictedBranch=''){
 }
 
 async function loadPaymentOcrAuditScope(source,scope) {
+  if(!OKB_PAYMENT_OCR_ENABLED)return {audits:[],orders:[]};
   const dates=String(source?.period||'').match(/\d{4}-\d{2}-\d{2}/g)||[];
   let query=supabaseClient.from('payment_ocr_audits').select('*').neq('status','verified').order('updated_at',{ascending:false}).limit(1000);
   if(dates[0])query=query.gte('updated_at',`${dates[0]}T00:00:00+02:00`);
@@ -15052,7 +16000,7 @@ async function refreshFinancialAudit(force=false) {
       // created_at. Cache that smaller set briefly. Non-Signed orders use
       // created_at and are filtered by Supabase before reaching the browser.
       const treasuryBranch=treasuryMode?String(financialAuditState.restrictedBranch||'all'):'';
-      const signedPromise=treasuryBranch&&treasuryBranch!=='all'?loadFinancialAuditSignedCandidatesForBranch(treasuryBranch):loadFinancialAuditSignedCandidates(Boolean(force));
+      const signedPromise=treasuryBranch&&treasuryBranch!=='all'?loadFinancialAuditSignedCandidatesForBranch(treasuryBranch,Boolean(force)):loadFinancialAuditSignedCandidates(Boolean(force));
       const nonSignedPromise=treasuryMode?Promise.resolve([]):loadFinancialAuditNonSignedRange(from,to,'');
       const [signedCandidates,nonSigned]=await Promise.all([signedPromise,nonSignedPromise]);
       const signedInRange=signedCandidates.filter(order=>isOrderInAccountingDateRange(order,from,to));
@@ -15185,6 +16133,13 @@ let secretaryAuditState = { rows:[], findings:[], from:'', to:'', searchTerm:'' 
 let secretaryAuditLiveRefreshTimer = null;
 let secretaryAuditSearchTimer = null;
 let secretaryAuditSearchToken = 0;
+let secretaryAuditRefreshPromise = null;
+let secretaryAuditRefreshPending = false;
+// Reuse the already-loaded date-range snapshot for direct search only.
+// Manual refresh, opening the page, and realtime refresh always fetch fresh orders.
+let secretaryAuditRangeSnapshot = null;
+let secretaryAuditPageNumber = 1;
+const SECRETARY_AUDIT_PAGE_SIZE = 100;
 const SECRETARY_AUDIT_ACTIONS=['secretary_audit_error','secretary_audit_warning'];
 const SECRETARY_AUDIT_EVENT_ACTIONS=[...SECRETARY_AUDIT_ACTIONS,'secretary_audit_resolved','secretary_audit_edit'];
 const SECRETARY_AUDIT_NOTIFICATION_ACTIONS=[...SECRETARY_AUDIT_EVENT_ACTIONS];
@@ -15261,29 +16216,26 @@ function startSecretaryAuditNotifications(){
   stopSecretaryAuditNotifications();
   if(!currentUser||!hasRoleFeature('secretary_audit'))return;
   refreshSecretaryAuditUnreadCount();
-  secretaryAuditRealtimeChannel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
+  let channel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
     const action=String(payload?.new?.action_type||'');
     if(!SECRETARY_AUDIT_NOTIFICATION_ACTIONS.includes(action)||!isFourBranchSecretaryAuditEvent(payload?.new))return;
     const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
     if(open)scheduleSecretaryAuditLiveRefresh();
     else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
-  }).on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
+  });
+  if(OKB_PAYMENT_OCR_ENABLED)channel=channel.on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
     void handleSecretaryAuditOcrNotification(payload);
-  }).subscribe();
+  });
+  secretaryAuditRealtimeChannel=channel.subscribe();
   secretaryAuditPollingTimer=setInterval(refreshSecretaryAuditUnreadCount,20000);
 }
 
 function updateFinancialAuditBadge(count=financialAuditUnreadCount){financialAuditUnreadCount=Math.max(0,Number(count)||0);const badge=document.getElementById('financialAuditNotification');if(!badge)return;badge.textContent=financialAuditUnreadCount>99?'99+':String(financialAuditUnreadCount);badge.classList.toggle('hidden',financialAuditUnreadCount<1||!isAdmin());}
 function markFinancialAuditRead(){localStorage.setItem(`okb_financial_audit_seen_${currentUser?.username||currentUser?.id||'user'}`,new Date().toISOString());updateFinancialAuditBadge(0);}
 function updateFinancialAuditSignedCacheFromRealtime(payload){
-  if(!financialAuditSignedCache.loadedAt)return;
-  const row=payload?.new&&Object.keys(payload.new).length?payload.new:null;
-  const id=String(row?.id||payload?.old?.id||'');
-  if(!id)return;
-  const next=financialAuditSignedCache.rows.filter(order=>String(order.id)!==id);
-  if(row&&String(row.status||'').trim()==='Signed'&&PENDING_BRANCH_NAMES.includes(String(row.branch||'')))next.unshift(row);
-  financialAuditSignedCache.rows=next;
-  financialAuditSignedCache.loadedAt=Date.now();
+  // Realtime records may be partial and cannot safely replace financial records.
+  // Invalidate instead, so the next audit refresh obtains canonical DB data.
+  invalidateFinancialAuditCache();
 }
 function scheduleFinancialAuditLiveRefresh(){
   clearTimeout(financialAuditLiveRefreshTimer);
@@ -15299,23 +16251,23 @@ function stopFinancialAuditNotifications(){
 function startFinancialAuditNotifications(){
   stopFinancialAuditNotifications();
   if(!currentUser||!isAdmin())return;
-  financialAuditRealtimeChannel=supabaseClient.channel(`financial-audit-${currentUser.id||Date.now()}`)
+  let channel=supabaseClient.channel(`financial-audit-${currentUser.id||Date.now()}`)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
       if(String(payload?.new?.action_type||'')!=='order_collected')return;
       if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))scheduleFinancialAuditLiveRefresh();
       else updateFinancialAuditBadge(financialAuditUnreadCount+1);
-    })
-    .on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
-      const status=String(payload?.new?.status||payload?.old?.status||'');
-      if(!status)return;
-      if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))scheduleFinancialAuditLiveRefresh();
-      else if(status!=='pending'&&status!=='verified')updateFinancialAuditBadge(financialAuditUnreadCount+1);
-    })
-    .on('postgres_changes',{event:'*',schema:'public',table:'orders'},payload=>{
-      updateFinancialAuditSignedCacheFromRealtime(payload);
-      if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))scheduleFinancialAuditLiveRefresh();
-    })
-    .subscribe();
+    });
+  if(OKB_PAYMENT_OCR_ENABLED)channel=channel.on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
+    const status=String(payload?.new?.status||payload?.old?.status||'');
+    if(!status)return;
+    if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))scheduleFinancialAuditLiveRefresh();
+    else if(status!=='pending'&&status!=='verified')updateFinancialAuditBadge(financialAuditUnreadCount+1);
+  });
+  channel=channel.on('postgres_changes',{event:'*',schema:'public',table:'orders'},payload=>{
+    updateFinancialAuditSignedCacheFromRealtime(payload);
+    if(!document.getElementById('financialAuditPage')?.classList.contains('hidden'))scheduleFinancialAuditLiveRefresh();
+  });
+  financialAuditRealtimeChannel=channel.subscribe();
 }
 
 function analyzeSecretaryOrderInput(order) {
@@ -15428,18 +16380,18 @@ async function loadSecretaryAuditEventOrders(events,existingRows){
   return found;
 }
 function scheduleSecretaryAuditSearch(){
-  renderSecretaryAudit();
   clearTimeout(secretaryAuditSearchTimer);
-  const term=getSecretaryAuditDirectSearchTerm();
-  if(term===String(secretaryAuditState.searchTerm||''))return;
   const token=++secretaryAuditSearchToken;
   secretaryAuditSearchTimer=setTimeout(async()=>{
     if(token!==secretaryAuditSearchToken)return;
-    await refreshSecretaryAudit(false);
-  },300);
+    const term=getSecretaryAuditDirectSearchTerm();
+    secretaryAuditPageNumber=1;
+    if(term!==String(secretaryAuditState.searchTerm||''))await refreshSecretaryAudit(false,true);
+    else renderSecretaryAudit(true);
+  },180);
 }
 
-async function loadSecretaryAuditRows() {
+async function loadSecretaryAuditRows(reuseRangeSnapshot=false) {
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom')?.value||today;
   const to=document.getElementById('secretaryAuditTo')?.value||today;
@@ -15448,13 +16400,22 @@ async function loadSecretaryAuditRows() {
   if(!utcRange)throw new Error('تعذر تحديد نطاق التاريخ بتوقيت القاهرة');
   const fromInput=document.getElementById('secretaryAuditFrom'),toInput=document.getElementById('secretaryAuditTo');
   if(fromInput&&!fromInput.value)fromInput.value=today;if(toInput&&!toInput.value)toInput.value=today;
-  let rows=[],offset=0;
-  while(true){
-    const result=await supabaseClient.from('orders').select('*').gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).range(offset,offset+999);
-    if(result.error)throw result.error;
-    rows=rows.concat(result.data||[]);
-    if(!result.data||result.data.length<1000)break;
-    offset+=1000;
+  let rows=[];
+  const snapshotKey=`${utcRange.start}|${utcRange.endExclusive}`;
+  if(reuseRangeSnapshot&&secretaryAuditRangeSnapshot?.key===snapshotKey){
+    // A search changes the extra lookup, never the complete base date-range population.
+    rows=secretaryAuditRangeSnapshot.rows.slice();
+  }else{
+    let offset=0;
+    while(true){
+      const result=await supabaseClient.from('orders').select('*').gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).range(offset,offset+999);
+      if(result.error)throw result.error;
+      rows=rows.concat(result.data||[]);
+      if(!result.data||result.data.length<1000)break;
+      offset+=1000;
+    }
+    // Only successful complete range loads are stored; never cache partial results.
+    secretaryAuditRangeSnapshot={key:snapshotKey,rows:rows.slice()};
   }
   // Secretary Audit is an internal control for OKB's four branch pages only.
   // Shipping companies and any external/legacy branch values are excluded from
@@ -15481,10 +16442,20 @@ async function loadSecretaryAuditRows() {
   }
   if(!eventResult.error||auditEvents.length){
     const seenOrderEvents=new Set();
+    const rowById=new Map(),rowByTicket=new Map();
+    rows.forEach(row=>{
+      const id=String(row?.id||'').trim(),ticket=String(getTicketId(row)||'').trim();
+      if(id)rowById.set(id,row);
+      if(ticket&&!rowByTicket.has(ticket))rowByTicket.set(ticket,row);
+    });
+    const findingEventIds=new Set(findings.map(item=>String(item.event_id||'')).filter(Boolean));
+    const findingTicketIssues=new Set(findings.map(item=>`${String(item.ticket||'')}|${String(item.issue||'')}`));
     auditEvents.forEach(event=>{
       let info={};try{info=JSON.parse(event.action_details||'{}');}catch(_){info={issue:event.action_details||'خطأ إدخال مسجل'};}
       const issues=Array.isArray(info.issues)?info.issues:[info.issue||event.action_details||'خطأ إدخال مسجل'];
-      const matched=rows.find(row=>String(row.id||'')===String(info.order_id||event.order_id||'')||String(getTicketId(row)||'')===String(info.ticket_id||event.ticket_id||''));
+      const lookupId=String(info.order_id||event.order_id||'').trim();
+      const lookupTicket=String(info.ticket_id||event.ticket_id||'').trim();
+      const matched=(lookupId?rowById.get(lookupId):null)||(lookupTicket?rowByTicket.get(lookupTicket):null)||null;
       const savedOrderId=String(info.order_id||event.order_id||'').trim();
       if(savedOrderId&&!matched&&event.action_type!=='secretary_audit_edit')return;
       const eventOrderKey=savedOrderId||String(info.ticket_id||event.ticket_id||'').trim();
@@ -15498,25 +16469,30 @@ async function loadSecretaryAuditRows() {
       issues.forEach(issue=>{
         const severity=(event.action_type==='secretary_audit_resolved'||event.action_type==='secretary_audit_edit')?'resolved':event.action_type==='secretary_audit_warning'?'warning':'error';
         const ticket=getTicketId(order)||info.ticket_id||event.ticket_id||'—';
-        const duplicate=event.action_type==='secretary_audit_edit'?findings.some(item=>String(item.event_id||'')===String(event.id)):findings.some(item=>String(item.ticket)===String(ticket)&&String(item.issue)===String(issue));
+        const eventId=String(event.id||''),ticketIssueKey=`${String(ticket)}|${String(issue)}`;
+        const duplicate=event.action_type==='secretary_audit_edit'?findingEventIds.has(eventId):findingTicketIssues.has(ticketIssueKey);
         const eventActor=event.action_type==='secretary_audit_edit'?(info.edited_by||info.actor||event.user_name||event.username||'—'):(order.employee_name||info.actor||event.user_name||'—');
-        if(!duplicate)findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:eventActor,event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||'',action_type:event.action_type,audit_info:event.action_type==='secretary_audit_edit'?info:null,changes:event.action_type==='secretary_audit_edit'&&Array.isArray(info.changes)?info.changes:[]});
+        if(!duplicate){
+          findings.push({severity,issue:String(issue),order,ticket,branch:auditBranch,actor:eventActor,event_id:event.id,corrected_order_id:correctedOrder?.id||'',created_at:event.created_at||order.updated_at||order.created_at||'',action_type:event.action_type,audit_info:event.action_type==='secretary_audit_edit'?info:null,changes:event.action_type==='secretary_audit_edit'&&Array.isArray(info.changes)?info.changes:[]});
+          if(event.action_type==='secretary_audit_edit'&&eventId)findingEventIds.add(eventId);
+          else findingTicketIssues.add(ticketIssueKey);
+        }
       });
     });
   }
-  // A payment screenshot is part of the secretary's input controls. Surface
-  // the same OCR discrepancy here as well as in Financial Audit so it can be
-  // corrected before the order leaves the branch.
-  const ocrAudits=await loadPaymentOcrAudits(rows);
-  buildPaymentOcrFindings(rows,ocrAudits).forEach(item=>{
-    // Secretary Audit does not need the technical OCR execution-failed notice;
-    // screenshot review remains handled by the dedicated review workflow.
-    if(item?.ocr?.proof_type==='secretary'&&item?.ocr?.status==='failed')return;
-    const duplicate=findings.some(existing=>String(existing.order?.id||'')===String(item.order?.id||'')&&String(existing.issue)===String(item.issue));
-    if(!duplicate)findings.push({...item,created_at:item.at||item.ocr?.updated_at||item.order?.updated_at||item.order?.created_at||''});
-  });
+  if(OKB_PAYMENT_OCR_ENABLED){
+    // Optional OCR layer. Disabled in v239 while screenshots remain available
+    // for the dedicated manual review team.
+    const ocrAudits=await loadPaymentOcrAudits(rows);
+    buildPaymentOcrFindings(rows,ocrAudits).forEach(item=>{
+      if(item?.ocr?.proof_type==='secretary'&&item?.ocr?.status==='failed')return;
+      const duplicate=findings.some(existing=>String(existing.order?.id||'')===String(item.order?.id||'')&&String(existing.issue)===String(item.issue));
+      if(!duplicate)findings.push({...item,created_at:item.at||item.ocr?.updated_at||item.order?.updated_at||item.order?.created_at||''});
+    });
+  }
   findings.sort((a,b)=>new Date(b.created_at||b.order?.updated_at||b.order?.created_at||0)-new Date(a.created_at||a.order?.updated_at||a.order?.created_at||0));
   secretaryAuditState={rows,findings,from,to,searchTerm:directSearchTerm};
+  secretaryAuditPageNumber=1;
   populateSecretaryAuditEmployeeFilter();
 }
 
@@ -15534,14 +16510,29 @@ async function openSecretaryAudit() {
   await markSecretaryAuditRead();
 }
 function closeSecretaryAudit(){showInitialPermittedPage();}
-async function refreshSecretaryAudit(markRead=true){
+async function refreshSecretaryAudit(markRead=true,reuseRangeSnapshot=false){
+  if(secretaryAuditRefreshPromise){
+    secretaryAuditRefreshPending=true;
+    const currentResult=await secretaryAuditRefreshPromise;
+    if(markRead)await markSecretaryAuditRead();
+    return currentResult;
+  }
+  secretaryAuditRefreshPromise=(async()=>{
+    try{await loadSecretaryAuditRows(reuseRangeSnapshot);renderSecretaryAudit(true);return true;}
+    catch(error){alert('تعذر فحص أخطاء الإدخال: '+(error?.message||error));return false;}
+  })();
   let success=false;
-  try{await loadSecretaryAuditRows();renderSecretaryAudit();success=true;}
-  catch(error){alert('تعذر فحص أخطاء الإدخال: '+(error?.message||error));}
+  try{success=await secretaryAuditRefreshPromise;}
+  finally{secretaryAuditRefreshPromise=null;}
+  if(secretaryAuditRefreshPending){
+    secretaryAuditRefreshPending=false;
+    success=(await refreshSecretaryAudit(false))&&success;
+  }
   if(markRead)await markSecretaryAuditRead();
   return success;
 }
 async function resetSecretaryAuditFilters(){
+  secretaryAuditPageNumber=1;
   const today=getCairoDateISO(new Date());
   const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'all'};
   Object.entries(values).forEach(([id,value])=>{const element=document.getElementById(id);if(element)element.value=value;});
@@ -15638,15 +16629,34 @@ function openSecretaryAuditChangeDetails(eventId){
   modal.setAttribute('aria-hidden','false');
 }
 function closeSecretaryAuditChangeDetails(){const modal=document.getElementById('secretaryAuditChangeModal');if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}
-function renderSecretaryAudit(){
+function changeSecretaryAuditPage(delta){
+  const findings=getFilteredSecretaryAuditFindings();
+  const totalPages=Math.max(1,Math.ceil(findings.length/SECRETARY_AUDIT_PAGE_SIZE));
+  secretaryAuditPageNumber=Math.min(totalPages,Math.max(1,secretaryAuditPageNumber+Number(delta||0)));
+  renderSecretaryAudit(false);
+}
+function renderSecretaryAudit(resetPage=false){
   const state=secretaryAuditState,findings=getFilteredSecretaryAuditFindings(),errors=findings.filter(x=>x.severity==='error').length,warnings=findings.filter(x=>x.severity==='warning').length,resolved=findings.filter(x=>x.severity==='resolved').length,top=getSecretaryAuditTopEmployee(state.findings);
   const totalOrders=getSecretaryAuditBranchOrders().length;
+  if(resetPage)secretaryAuditPageNumber=1;
+  const totalPages=Math.max(1,Math.ceil(findings.length/SECRETARY_AUDIT_PAGE_SIZE));
+  secretaryAuditPageNumber=Math.min(totalPages,Math.max(1,secretaryAuditPageNumber));
+  const pageStart=(secretaryAuditPageNumber-1)*SECRETARY_AUDIT_PAGE_SIZE;
+  const visibleFindings=findings.slice(pageStart,pageStart+SECRETARY_AUDIT_PAGE_SIZE);
   const meta=document.getElementById('secretaryAuditMeta');if(meta)meta.textContent=`${state.from} → ${state.to} | ${totalOrders} أوردر في الفروع الأربعة | ${formatEnglishDateTime(new Date().toISOString())}`;
   const summary=document.getElementById('secretaryAuditSummary');if(summary)summary.innerHTML=[['Total Orders',totalOrders,''],['أوردرات بها مشكلة',new Set(findings.filter(x=>x.severity!=='resolved').map(x=>String(x.order?.id||x.ticket))).size,''],['أخطاء',errors,''],['تنبيهات',warnings,''],['أخطاء تم تعديلها',resolved,''],['أكثر موظف عنده تنبيهات',`${escapeHTML(top.name)} — ${top.count}`,'secretary-audit-top-employee']].map(([l,v,c])=>`<div class="financial-audit-metric ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
   const verdict=document.getElementById('secretaryAuditVerdict');if(verdict){verdict.className=`financial-audit-verdict ${errors?'bad':'ok'}`;verdict.textContent=errors?`❌ يوجد ${errors} خطأ إدخال يجب تصحيحه قبل خروج الأوردرات للفروع.`:`✅ لا توجد أخطاء إدخال مانعة${warnings?` — يوجد ${warnings} تنبيه للمراجعة`:''}.`;}
   const body=document.getElementById('secretaryAuditBody');if(!body)return;
-  body.innerHTML=findings.length?findings.map((item,index)=>{const o=item.order;const linkedId=o?.id||item.corrected_order_id||'';const openButton=linkedId?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${linkedId}')">فتح الأوردر</button>`:'';const openAction=o?.id?openButton:`<div style="display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;"><span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>${openButton}</div>`;const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';const issueSummary=getSecretaryAuditEditSummary(item);const issueCell=`<div class="secretary-audit-issue-summary"><strong>${escapeHTML(issueSummary.text)}</strong></div>`;const detailsCell=issueSummary.details?`<button class="secretary-audit-details-btn" type="button" onclick="openSecretaryAuditChangeDetails('${String(item.event_id||'').replace(/'/g,'\\\'')}')">عرض التفاصيل</button>`:`<span class="secretary-audit-no-details">—</span>`;return `<tr class="financial-audit-row-${item.severity}"><td>${index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td class="secretary-audit-issue-cell">${issueCell}</td><td class="secretary-audit-detail-cell">${detailsCell}</td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td class="secretary-audit-action-cell">${openAction}</td></tr>`;}).join(''):'<tr><td colspan="12" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
+  body.innerHTML=visibleFindings.length?visibleFindings.map((item,index)=>{const o=item.order;const linkedId=o?.id||item.corrected_order_id||'';const openButton=linkedId?`<button class="operation-manager-report-btn" type="button" onclick="openSecretaryAuditOrder('${linkedId}')">فتح الأوردر</button>`:'';const openAction=o?.id?openButton:`<div style="display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;"><span style="color:var(--text-muted);font-weight:800;">محاولة حفظ مرفوضة</span>${openButton}</div>`;const label=item.severity==='error'?'خطأ':item.severity==='resolved'?'تم التعديل':'تنبيه';const auditDate=item.created_at||o?.updated_at||o?.created_at||o?.date||'';const issueSummary=getSecretaryAuditEditSummary(item);const issueCell=`<div class="secretary-audit-issue-summary"><strong>${escapeHTML(issueSummary.text)}</strong></div>`;const detailsCell=issueSummary.details?`<button class="secretary-audit-details-btn" type="button" onclick="openSecretaryAuditChangeDetails('${String(item.event_id||'').replace(/'/g,'\\\'')}')">عرض التفاصيل</button>`:`<span class="secretary-audit-no-details">—</span>`;return `<tr class="financial-audit-row-${item.severity}"><td>${pageStart+index+1}</td><td><span class="audit-severity ${item.severity}">${label}</span></td><td>${escapeHTML(item.ticket)}</td><td>${escapeHTML(o?.customer_name||'—')}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.branch)}</td><td>${enMoney(getEffectiveOrderPrice(o))}</td><td>${enMoney(Number(o?.deposit||0))}</td><td class="secretary-audit-issue-cell">${issueCell}</td><td class="secretary-audit-detail-cell">${detailsCell}</td><td class="secretary-audit-date">${escapeHTML(formatEnglishDateTime(auditDate))}</td><td class="secretary-audit-action-cell">${openAction}</td></tr>`;}).join(''):'<tr><td colspan="12" class="empty" style="color:#10b981;font-weight:900;">✅ لا توجد نتائج مطابقة للفلاتر</td></tr>';
+  const pagination=document.getElementById('secretaryAuditPagination');
+  const paginationText=document.getElementById('secretaryAuditPaginationText');
+  const prev=document.getElementById('secretaryAuditPrevPage'),next=document.getElementById('secretaryAuditNextPage');
+  if(pagination)pagination.classList.toggle('hidden',findings.length<=SECRETARY_AUDIT_PAGE_SIZE);
+  if(paginationText)paginationText.textContent=`صفحة ${secretaryAuditPageNumber} من ${totalPages} — ${findings.length} نتيجة`;
+  if(prev)prev.disabled=secretaryAuditPageNumber<=1;
+  if(next)next.disabled=secretaryAuditPageNumber>=totalPages;
 }
+
 async function toggleSecretaryAuditReport(){
   const panel=document.getElementById('secretaryAuditReportPanel');if(!panel)return;
   panel.classList.toggle('hidden');if(panel.classList.contains('hidden'))return;
@@ -15675,7 +16685,7 @@ function renderSecretaryAuditReport(){
 async function exportSecretaryAudit(){
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة حاليًا. برجاء إعادة تحميل الصفحة والمحاولة مرة أخرى.');return;}
-  if(!await refreshSecretaryAudit(false))return;
+  if(!secretaryAuditState?.from||!secretaryAuditState?.to){if(!await refreshSecretaryAudit(false))return;}
   const state=secretaryAuditState||{rows:[],findings:[],from:'',to:''};
   const exportedFindings=getFilteredSecretaryAuditFindings();
   const errors=exportedFindings.filter(item=>item.severity==='error').length;
@@ -15714,7 +16724,7 @@ function secretaryAuditDecision(errorRate){
 async function exportSecretaryAuditManagementReport(){
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   if(typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة حاليًا. برجاء إعادة تحميل الصفحة والمحاولة مرة أخرى.');return;}
-  if(!await refreshSecretaryAudit(false))return;
+  if(!secretaryAuditState?.from||!secretaryAuditState?.to){if(!await refreshSecretaryAudit(false))return;}
   const branchFilter=document.getElementById('secretaryAuditBranchFilter')?.value||'all';
   const employeeFilter=document.getElementById('secretaryAuditEmployeeFilter')?.value||'all';
   const severityFilter=document.getElementById('secretaryAuditSeverityFilter')?.value||'all';
@@ -15898,13 +16908,17 @@ function getAuditChatBranch(order){
   return typeof branch==='string'&&PENDING_BRANCH_NAMES.includes(branch)?branch:'';
 }
 
+function isDisabledAuditChatAccount(username){
+  return Object.values(AUDIT_BOTS).some(bot => bot.username===String(username||'').trim().toLowerCase());
+}
 function isBranchAuditChatMessage(row){
-  if(!Object.values(AUDIT_BOTS).some(bot=>bot.username===String(row?.sender_username||'')))return true;
-  const match=String(row?.message||'').match(/(?:^|\n)الفرع:[ \t]*([^\r\n]+)/);
-  return Boolean(match&&getAuditChatBranch({branch:match[1]}));
+  // v262: Audit bots are never visible in human chat, including historical messages.
+  return !isDisabledAuditChatAccount(row?.sender_username)&&!isDisabledAuditChatAccount(row?.receiver_username);
 }
 
 async function sendAutomatedAuditNotice(kind,order,issues,options={}){
+  // v249: Automatic Financial/Secretary Audit chat delivery is disabled by management decision.
+  // Keep Secretary Audit activity records intact; do not write audit bot messages to chat_messages.
   if(!order||!issues?.length)return false;
   const severity=String(options.severity||'error').toLowerCase();
   const sourceScope=String(options.sourceScope||'').trim().toLowerCase();
@@ -15912,27 +16926,14 @@ async function sendAutomatedAuditNotice(kind,order,issues,options={}){
   const branch=kind==='secretary'?getSecretaryAuditNotificationBranch(order):getAuditChatBranch(order);
   if(kind==='secretary'&&!branch)return true;
   const key=`${kind}:${severity}:${branch||'external'}:${order.id||order.phone}:${issues.join('|')}`;
-  const last=auditNoticeThrottle.get(key)||0;if(Date.now()-last<120000)return true;auditNoticeThrottle.set(key,Date.now());
+  const last=auditNoticeThrottle.get(key)||0;
+  if(Date.now()-last<120000)return true;
+  auditNoticeThrottle.set(key,Date.now());
   try{
-    if(kind==='secretary'&&options.recordEvent!==false&&severity!=='resolved')await recordSecretaryAuditEvent(order,issues,severity,options.actor||currentUser,sourceScope);
-    // Warnings remain available inside Secretary Audit, but Chat is reserved
-    // for blocking errors and confirmed corrections only.
-    if(severity!=='error'&&severity!=='resolved')return true;
-    if(!branch)return true;
-    const recipients=await getAuditRecipientUsers(kind,options.actor||currentUser),bot=AUDIT_BOTS[kind];
-    const ticket=getTicketId(order)||order.order_number||'—';
-    const openMarker=order.id?`\n[OPEN_ORDER:${order.id}]`:'';
-    const title=kind==='secretary'?(severity==='resolved'?'تم تعديل خطأ أوردر':'خطأ إدخال أوردر'):'خطأ في تحصيل أوردر';
-    const detailsLabel=severity==='resolved'?'التعديلات':'المشكلة';
-    const message=`${title}\nالعميل: ${order.customer_name||'—'}\nTicket ID: ${ticket}\nالفرع: ${branch}\nبواسطة: ${(options.actor||currentUser)?.name||(options.actor||currentUser)?.username||'—'}\n${detailsLabel}: ${issues.join(' | ')}${openMarker}`;
-    // Keep sender_id as the authenticated actor UUID for compatibility with
-    // existing chat schemas/RLS, while the visible sender is the audit bot.
-    const payloads=recipients.map(receiver=>({sender_id:String((options.actor||currentUser)?.id||''),sender_username:bot.username,sender_name:bot.name,receiver_id:String(receiver.id||''),receiver_username:String(receiver.username||''),receiver_name:String(receiver.name||receiver.username||'User'),message,is_read:false}));
-    if(!payloads.length){console.warn('Audit Chat: no eligible recipients');return false;}
-    const insertResult=await supabaseClient.from('chat_messages').insert(payloads);
-    if(insertResult.error){console.error('Audit Chat insert failed:',insertResult.error);return false;}
+    if(kind==='secretary'&&options.recordEvent!==false&&severity!=='resolved')
+      await recordSecretaryAuditEvent(order,issues,severity,options.actor||currentUser,sourceScope);
     return true;
-  }catch(error){console.error('Audit Chat:',error?.message||error);return false;}
+  }catch(error){console.error('Audit event:',error?.message||error);return false;}
 }
 
 function getKhaznaUpfrontTransfersTotal() {
@@ -17579,6 +18580,7 @@ function ensureCustomerProfileModal() {
 }
 
 function closeCustomerProfile() {
+  customerProfileOpenSequence++;
   const modal = document.getElementById('customerProfileModal');
   if (modal) modal.classList.remove('open');
   document.body.classList.remove('customer-profile-open');
@@ -17609,31 +18611,14 @@ function customerProfileStatusClass(status) {
   return 'is-other';
 }
 
-function canShowCustomerProfileUsername() {
-  return hasButtonPermission('customer_profile_show_username');
-}
-
-function getCustomerProfileOrderCreator(order) {
-  if (!canShowCustomerProfileUsername()) return '';
-  const storedCreator = String(getOrderMeta(order).created_by_username || '').trim();
-  if (storedCreator) return storedCreator;
-  const orderId = String(order?.id || '');
-  const ticket = String(getTicketId(order) || '');
-  const creationEvents = customerProfileActivities
-    .filter(activity => {
-      if (String(activity?.action_type || '') !== 'order_created') return false;
-      const sameOrder = orderId && String(activity?.order_id || '') === orderId;
-      const sameTicket = ticket && String(activity?.ticket_id || '') === ticket;
-      return sameOrder || sameTicket;
-    })
-    .sort((a,b) => new Date(a?.created_at || 0) - new Date(b?.created_at || 0));
-  const creator = creationEvents[0] || null;
-  return String(creator?.username || creator?.user_name || '').trim();
-}
+// v262: Creator attribution stays in the receipt, not Customer Profile.
+// No extra order_created activity query is needed when opening a profile.
+let customerProfileOpenSequence=0;
 
 async function openCustomerProfile(orderId, source = 'dashboard') {
   customerProfileSource = source;
   customerProfileFocusOrderId = String(orderId||'');
+  const profileSequence=++customerProfileOpenSequence;
   const modal = ensureCustomerProfileModal();
   const content = document.getElementById('customerProfileContent');
   modal.classList.add('open');
@@ -17667,43 +18652,32 @@ async function openCustomerProfile(orderId, source = 'dashboard') {
       .order('created_at', { ascending: false });
     if (ordersResult.error) throw ordersResult.error;
 
+    if(profileSequence!==customerProfileOpenSequence)return;
     customerProfileCustomer = customer;
     customerProfileOrders = (ordersResult.data || []).filter(canViewCustomerOrder);
     const ticketIds = [...new Set(customerProfileOrders.map(getTicketId).filter(Boolean))];
     customerProfileActivities = [];
+    // Render customer and order history as soon as their data arrives.
+    // Activity timeline loads independently and never blocks opening the profile.
+    renderCustomerProfile();
     if (ticketIds.length) {
       const activityResult = await supabaseClient
         .from('activity_logs')
-        .select('*')
+        .select('id,ticket_id,action_type,action_title,action_details,created_at,user_name,order_id')
         .in('ticket_id', ticketIds)
         .order('created_at', { ascending: false })
         .limit(1000);
-      if (!activityResult.error) {
+      if(profileSequence!==customerProfileOpenSequence)return;
+      if(!activityResult.error){
         const existingTickets = new Set(ticketIds.map(String));
         customerProfileActivities = (activityResult.data || []).filter(activity =>
           existingTickets.has(String(activity.ticket_id || '')) && activity.action_type !== 'order_deleted'
         );
-      }
-      if (canShowCustomerProfileUsername()) {
-        const creatorResult = await supabaseClient
-          .from('activity_logs')
-          .select('*')
-          .in('ticket_id', ticketIds)
-          .eq('action_type', 'order_created')
-          .order('created_at', { ascending: true })
-          .limit(1000);
-        if (!creatorResult.error) {
-          const seen = new Set(customerProfileActivities.map(activity => String(activity.id || '')));
-          (creatorResult.data || []).forEach(activity => {
-            const key = String(activity.id || '');
-            if (!key || !seen.has(key)) customerProfileActivities.push(activity);
-            if (key) seen.add(key);
-          });
-        }
-      }
+        // The detail button always reads the latest timeline array on click.
+      }else console.warn('Customer Profile timeline:',activityResult.error.message);
     }
-    renderCustomerProfile();
   } catch (error) {
+    if(profileSequence!==customerProfileOpenSequence)return;
     content.innerHTML = `<div class="customer-profile-error"><strong>تعذر فتح ملف العميل</strong><span>${escapeHTML(error.message || String(error))}</span><button type="button" onclick="closeCustomerProfile()">إغلاق</button></div>`;
   }
 }
@@ -17725,7 +18699,7 @@ function renderCustomerProfile() {
     <header class="customer-profile-header">
       <div>
         <span class="customer-profile-kicker">CUSTOMER PROFILE</span>
-        <h2>${escapeHTML(customer.customer_name || 'عميل')}</h2>
+        <h2><span class="customer-profile-name-label">أسم العميل : </span>${escapeHTML(customer.customer_name || 'عميل')}</h2>
         <p>${escapeHTML(customer.phone || '')}${customer.phone2 ? ` • ${escapeHTML(customer.phone2)}` : ''}</p>
       </div>
       <div class="customer-profile-header-actions">
@@ -17748,11 +18722,8 @@ function renderCustomerProfile() {
     </div>
 
     <section class="customer-profile-info">
-      <div><span>المنطقة</span><strong>${escapeHTML(customer.area || latest?.area || '—')}</strong></div>
-      <div><span>الدكتور الحالي</span><strong>${escapeHTML(customer.doctor_name || latest?.doctor_name || '—')}</strong></div>
-      <div><span>آخر فرع</span><strong>${escapeHTML(customer.last_branch || latest?.branch || '—')}</strong></div>
-      <div><span>أول تعامل</span><strong>${formatEnglishDateTime(customer.created_at)}</strong></div>
-      <div><span>آخر تعامل</span><strong>${latest ? formatEnglishDateTime(latest.created_at) : '—'}</strong></div>
+      <div class="customer-profile-contact-dates"><span>تواريخ التعامل</span><div class="customer-profile-date-pair"><span>أول تعامل</span><strong>${formatEnglishDateTime(customer.created_at)}</strong><span>آخر تعامل</span><strong>${latest ? formatEnglishDateTime(latest.created_at) : '—'}</strong></div></div>
+      <div class="customer-profile-last-notes"><span>ملاحظات آخر أوردر${latest ? ` — ${escapeHTML(getTicketId(latest) || '')}` : ''}</span><strong>${escapeHTML(latest ? (cleanVisibleOrderNotes(latest.notes || '') || 'لا توجد ملاحظات') : 'لا توجد أوردرات')}</strong></div>
     </section>
 
     <section id="customerProfileEditPanel" class="customer-profile-edit hidden">
@@ -17779,14 +18750,10 @@ function renderCustomerProfileOrderRow(order) {
   const paid = customerProfilePaid(order);
   const remaining = getOrderOutstandingBalance(order);
   const products = cleanVisibleOrderNotes(order.product_names || '') || order.product_names || '—';
-  const creatorUsername = getCustomerProfileOrderCreator(order);
-  const creatorInline = creatorUsername ? ` - بواسطة ${escapeHTML(creatorUsername)}` : '';
-  const creatorBadge = creatorUsername ? `<span class="customer-order-created-by">بواسطة ${escapeHTML(creatorUsername)}</span>` : '';
-  return `<article class="customer-order-row${creatorUsername ? ' has-created-by' : ''}">
+  return `<article class="customer-order-row">
     <div class="customer-order-ticket"><span>Ticket ID</span><strong>${escapeHTML(getTicketId(order) || '—')}</strong><small>Order: ${escapeHTML(order.order_number || '—')}</small></div>
-    <div class="customer-order-main"><strong>${escapeHTML(order.doctor_name || 'بدون دكتور')}</strong><span>${escapeHTML(products)}</span><small>${escapeHTML(order.branch || order.shipping_company || '—')} • ${formatEnglishDateTime(order.created_at)}${creatorInline}</small></div>
+    <div class="customer-order-main"><strong><span class="customer-profile-doctor-label">أسم الدكتور : </span>${escapeHTML(order.doctor_name || 'بدون دكتور')}</strong><span>${escapeHTML(products)}</span><small>${escapeHTML(order.branch || order.shipping_company || '—')} • ${formatEnglishDateTime(order.created_at)}</small></div>
     <div class="customer-order-money"><span>الإجمالي <b>${money(total)}</b></span><span>المدفوع <b>${money(paid)}</b></span><span>المتبقي <b>${money(remaining)}</b></span></div>
-    ${creatorBadge}
     <span class="customer-order-status ${customerProfileStatusClass(order.status)}">${escapeHTML(getOrderDisplayStatus(order) || order.status || '—')}</span>
     <div class="customer-order-actions">${isAdmin() ? `<button type="button" onclick="showCustomerOrderTimeline('${order.id}')">التفاصيل</button>` : ''}<button type="button" onclick="openCustomerOrderFromProfile('${order.id}')">فتح الأوردر</button><button type="button" onclick="printCustomerProfileOrder('${order.id}')">طباعة</button></div>
   </article>`;
@@ -17968,8 +18935,8 @@ async function loadChatConversationMetadata(){
   const me=chatCurrentUsername();if(!me)return;
   const columns='id,sender_username,receiver_username,message,attachment_url,is_read,created_at';
   const [sent,received]=await Promise.all([
-    supabaseClient.from('chat_messages').select(columns).eq('sender_username',me).order('created_at',{ascending:false}).limit(5000),
-    supabaseClient.from('chat_messages').select(columns).eq('receiver_username',me).order('created_at',{ascending:false}).limit(5000)
+    supabaseClient.from('chat_messages').select(columns).eq('sender_username',me).neq('receiver_username','financial-audit').neq('receiver_username','secretary-audit').order('created_at',{ascending:false}).limit(5000),
+    supabaseClient.from('chat_messages').select(columns).eq('receiver_username',me).neq('sender_username','financial-audit').neq('sender_username','secretary-audit').order('created_at',{ascending:false}).limit(5000)
   ]);
   if(sent.error||received.error){handleChatSchemaError(sent.error||received.error);return;}
   const rows=[...(sent.data||[]),...(received.data||[])];
@@ -17991,7 +18958,7 @@ function handleChatSchemaError(error){
 async function refreshChatUnreadCount(){
   if (!currentUser) return updateChatUnreadBadge(0);
   const me = chatCurrentUsername();
-  const { data, error } = await supabaseClient.from('chat_messages').select('id,sender_username,receiver_username,message,attachment_url,created_at').eq('receiver_username', me).eq('is_read', false);
+  const { data, error } = await supabaseClient.from('chat_messages').select('id,sender_username,receiver_username,message,attachment_url,created_at').eq('receiver_username', me).eq('is_read', false).neq('sender_username','financial-audit').neq('sender_username','secretary-audit');
   if (error) { handleChatSchemaError(error); return; }
   const visibleRows=(data || []).filter(isBranchAuditChatMessage);
   updateChatUnreadBadge(visibleRows.length);
@@ -18076,15 +19043,24 @@ async function showChatPage(){
   hideAllPages();
   const page=document.getElementById('chatPage');
   page?.classList.remove('hidden');
-  if(isMobileFoundationViewport()){
-    page?.classList.remove('mobile-conversation-open');
-    document.body.classList.remove('mobile-chat-conversation-open');
-  }
+  page?.classList.remove('mobile-conversation-open');
+  document.body.classList.remove('mobile-chat-conversation-open');
+  chatSelectedUser=null;
+  const head=document.getElementById('chatConversationHead');
+  if(head)head.innerHTML='<div class="chat-avatar">💬</div><div><strong>اختر مستخدمًا لبدء المحادثة</strong><small>الرسائل الجديدة تظهر لحظيًا</small></div>';
+  const messages=document.getElementById('chatMessages');
+  if(messages)messages.innerHTML='<div class="chat-empty">اختر مستخدمًا من القائمة</div>';
+  const input=document.getElementById('chatMessageInput');
+  const send=document.getElementById('chatSendBtn');
+  const file=document.getElementById('chatAttachmentInput');
+  if(input){input.value='';input.disabled=true;input.placeholder='اكتب رسالة...';input.blur();}
+  if(send)send.disabled=true;
+  if(file){file.disabled=true;file.value='';}
+  chatAttachmentFile=null;
+  document.getElementById('chatAttachmentPreview')?.classList.add('hidden');
   setActiveMenu('chatPage');
   await loadChatUsers();
   await refreshChatUnreadCount();
-  const defaultUser=getDefaultChatUser();
-  if(defaultUser)await selectChatUser(chatUserKey(defaultUser));
 }
 
 async function refreshChatPage(button){
@@ -18098,8 +19074,7 @@ async function loadChatUsers(){
   const {data,error}=await supabaseClient.rpc('okb_list_chat_users');
   if(error){console.error('Chat users:',error);return;}
   const me=chatCurrentUsername();
-  const auditBots=Object.values(AUDIT_BOTS).map((bot,index)=>({id:`audit-bot-${index}`,username:bot.username,name:bot.name,role:'system_audit',active:true,is_audit_bot:true}));
-  chatUsers=[...(data||[]).filter(user=>user.active!==false&&chatUserKey(user)!==me),...auditBots];
+  chatUsers=(data||[]).filter(user=>user.active!==false&&chatUserKey(user)!==me&&!isDisabledAuditChatAccount(chatUserKey(user)));
   await loadChatConversationMetadata();
   renderChatUsers();
 }
@@ -18123,6 +19098,7 @@ function renderChatUsers(){
 }
 
 async function selectChatUser(key){
+  if(isDisabledAuditChatAccount(key))return;
   chatSelectedUser=chatUsers.find(user=>chatUserKey(user)===String(key))||null;
   if(!chatSelectedUser)return;
   const page=document.getElementById('chatPage');
@@ -18132,7 +19108,7 @@ async function selectChatUser(key){
   }
   renderChatUsers();
   const head=document.getElementById('chatConversationHead');
-  if(head)head.innerHTML=`<div class="chat-avatar">${escapeHTML(String(chatSelectedUser.name||chatSelectedUser.username||'U').trim().charAt(0).toUpperCase())}</div><div class="chat-conversation-user"><strong>${escapeHTML(chatSelectedUser.name||chatSelectedUser.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(chatSelectedUser.role))}</small></div><button type="button" class="mobile-chat-back-to-list" onclick="closeMobileChatConversation()" aria-label="Back To Chat">Back To Chat</button>`;
+  if(head)head.innerHTML=`<div class="chat-avatar">${escapeHTML(String(chatSelectedUser.name||chatSelectedUser.username||'U').trim().charAt(0).toUpperCase())}</div><div class="chat-conversation-user"><strong>${escapeHTML(chatSelectedUser.name||chatSelectedUser.username||'User')}</strong><small>${escapeHTML(getRoleDisplayName(chatSelectedUser.role))}</small></div><div class="mobile-chat-head-actions"><button type="button" class="mobile-chat-back-to-list" onclick="closeMobileChatConversation()" aria-label="Back To Chat">Back To Chat</button><button type="button" class="mobile-chat-back-home" onclick="mobileChatBackToHome()" aria-label="Back to Home">Back to Home</button></div>`;
   const input=document.getElementById('chatMessageInput'),send=document.getElementById('chatSendBtn'),file=document.getElementById('chatAttachmentInput');
   const auditBot=Boolean(chatSelectedUser.is_audit_bot);
   if(input){input.disabled=auditBot;input.placeholder=auditBot?'محادثة تنبيهات آلية — للقراءة فقط':'اكتب رسالة...';if(!auditBot)input.focus();} if(send)send.disabled=auditBot; if(file)file.disabled=auditBot;
@@ -18149,8 +19125,20 @@ function closeMobileChatConversation(){
   renderChatUsers();
 }
 
+async function mobileChatBackToHome(){
+  if(!isMobileFoundationViewport())return;
+  closeMobileChatConversation();
+  chatSelectedUser=null;
+  if(hasRoleFeature('dashboard'))return showOrdersPage();
+  if(hasRoleFeature('okb_stores')){
+    const firstBranch=Object.keys(ROLE_BRANCH_FEATURES).find(branch=>canOpenPermissionBranch(branch)&&canAccessBranch(branch));
+    if(firstBranch)return openBranchPage(firstBranch);
+  }
+  if(typeof showInitialPermittedPage==='function')await showInitialPermittedPage();
+}
+
 async function fetchChatDirection(sender,receiver){
-  return supabaseClient.from('chat_messages').select('*').eq('sender_username',sender).eq('receiver_username',receiver).order('created_at',{ascending:true}).limit(500);
+  return supabaseClient.from('chat_messages').select('*').eq('sender_username',sender).eq('receiver_username',receiver).neq('sender_username','financial-audit').neq('sender_username','secretary-audit').order('created_at',{ascending:true}).limit(500);
 }
 
 async function loadChatMessages(){
@@ -18165,9 +19153,31 @@ async function loadChatMessages(){
     const attachment=row.attachment_url?`<img src="${escapeHTML(row.attachment_url)}" alt="Chat attachment" onclick="openChatAttachment('${encodeURIComponent(row.attachment_url)}')"/>`:'';
     const raw=String(row.message||''),match=raw.match(/\[OPEN_ORDER:([^\]]+)\]/),clean=raw.replace(/\n?\[OPEN_ORDER:[^\]]+\]/g,'').trim();
     const openButton=match?`<button type="button" class="operation-manager-report-btn chat-audit-open-order" onclick="openAuditChatOrder('${chatJs(match[1])}')">فتح الأوردر</button>`:'';
-    return `<div class="chat-message ${mine?'mine':''} ${match?'has-order':''}">${match?'<div class="chat-order-chip">📦 Order</div>':''}${clean?`<div class="chat-message-text">${escapeHTML(clean)}</div>`:''}${attachment}${openButton}<div class="chat-message-time">${formatActivityTime(row.created_at)}</div></div>`;
+    // Only allocated-order messages get a clickable customer name; keep all other text and actions unchanged.
+    const allocatedText=match&&clean.startsWith('📌 Allocated Order\n')
+      ? renderAllocatedChatCustomerName(clean,match[1],row.id)
+      : escapeHTML(clean);
+    return `<div class="chat-message ${mine?'mine':''} ${match?'has-order':''}">${match?'<div class="chat-order-chip">📦 Order</div>':''}${clean?`<div class="chat-message-text">${allocatedText}</div>`:''}${attachment}${openButton}<div class="chat-message-time">${formatActivityTime(row.created_at)}</div></div>`;
   }).join('');
   requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
+}
+
+function renderAllocatedChatCustomerName(message,orderId,messageId){
+  const match=String(message||'').match(/^(📌 Allocated Order\nالعميل: )([^\n]*)([\s\S]*)$/);
+  if(!match||!orderId||!messageId)return escapeHTML(message);
+  return `${escapeHTML(match[1])}<button type="button" class="chat-allocate-customer-link" onclick="openAllocatedChatCustomerProfile('${chatJs(String(orderId))}','${chatJs(String(messageId))}')">${escapeHTML(match[2])}</button>${escapeHTML(match[3])}`;
+}
+
+async function openAllocatedChatCustomerProfile(orderId,messageId){
+  if(!currentUser||!hasRoleFeature('chat'))return;
+  // Verify this allocated order belongs to a chat message currently visible to the signed-in user.
+  const me=chatCurrentUsername();
+  const message=chatMessages.find(row=>String(row.id)===String(messageId)
+    && (String(row.sender_username||'')===me||String(row.receiver_username||'')===me)
+    && String(row.message||'').startsWith('📌 Allocated Order\n')
+    && String(row.message||'').includes(`[OPEN_ORDER:${orderId}]`));
+  if(!message){alert('تعذر التحقق من رسالة Allocate. حدّث المحادثة وأعد المحاولة.');return;}
+  await openCustomerProfile(String(orderId),'allocate_chat');
 }
 
 function openAuditChatOrder(id){
@@ -18212,7 +19222,7 @@ async function uploadChatAttachment(file){
 
 async function sendChatMessage(event){
   event?.preventDefault();
-  if(!chatSelectedUser)return;
+  if(!chatSelectedUser||isDisabledAuditChatAccount(chatUserKey(chatSelectedUser))||isDisabledAuditChatAccount(chatCurrentUsername()))return;
   const input=document.getElementById('chatMessageInput'),button=document.getElementById('chatSendBtn');
   const message=String(input?.value||'').trim(),file=chatAttachmentFile;
   if(!message&&!file)return;
@@ -18715,6 +19725,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // 👇 دي النسخة المحدثة
 // ===== خزنة الفروع المجمعة =====
 let branchesTreasuryOrders = [];
+// v254: only deduplicate simultaneous identical requests, without caching financial data.
+const branchesTreasuryInFlight = new Map();
+let branchesTreasuryRequestSequence = 0;
 let branchesTreasurySelectedIds = new Set();
 
 function getBranchesTreasuryFilters() {
@@ -18758,7 +19771,7 @@ async function showBranchesTreasuryPage() {
   await loadBranchesTreasury();
 }
 
-async function loadBranchesTreasury() {
+async function loadBranchesTreasury(force = false) {
   if (!hasRoleFeature('branches_treasury')) return;
   const filters = getBranchesTreasuryFilters();
   const { from, to } = filters;
@@ -18766,6 +19779,23 @@ async function loadBranchesTreasury() {
   if (from > to) { alert('تاريخ البداية يجب أن يكون قبل تاريخ النهاية'); return; }
   const utcRange = getCairoDateRangeUTC(from, to);
   if (!utcRange) { alert('تعذر تحديد نطاق التاريخ'); return; }
+  // Dedup is scoped to this page's live request and exact DB filters.
+  // Never persist treasury financial rows; subsequent calls still hit Supabase.
+  const requestKey = JSON.stringify([from, to, filters.branch, filters.status]);
+  const requestSequence = ++branchesTreasuryRequestSequence;
+  if (!force && branchesTreasuryInFlight.has(requestKey)) {
+    try {
+      const sharedRows = await branchesTreasuryInFlight.get(requestKey);
+      if (requestSequence !== branchesTreasuryRequestSequence || !hasRoleFeature('branches_treasury')) return;
+      branchesTreasuryOrders = sharedRows.filter(order => isOrderInAccountingDateRange(order, from, to));
+      branchesTreasurySelectedIds.clear();
+      renderBranchesTreasury();
+    } catch (error) {
+      if (requestSequence === branchesTreasuryRequestSequence) alert('تعذر تحميل خزنة الفروع: ' + (error?.message || error));
+    }
+    return;
+  }
+  const fetchTreasuryRows = async () => {
   const fetchPaged = async buildQuery => {
     const rows = [];
     for (let offset = 0; ; offset += 1000) {
@@ -18802,14 +19832,27 @@ async function loadBranchesTreasury() {
     }
   } catch (error) {
     if (!String(error?.message || '').toLowerCase().includes('collected_at')) {
-      alert('تعذر تحميل خزنة الفروع: ' + (error?.message || error));
-      return;
+      throw error;
     }
     console.warn('collected_at is not installed yet; using compatible branches treasury loading.');
     allData = await fetchPaged(() => scopeBranches(supabaseClient.from('orders').select('*'))
       .order('created_at', { ascending:false }));
   }
-  branchesTreasuryOrders = allData.filter(order => isOrderInAccountingDateRange(order, from, to));
+  return allData;
+  };
+  const pending = fetchTreasuryRows();
+  branchesTreasuryInFlight.set(requestKey, pending);
+  let rows;
+  try {
+    rows = await pending;
+  } catch (error) {
+    if (requestSequence === branchesTreasuryRequestSequence) alert('تعذر تحميل خزنة الفروع: ' + (error?.message || error));
+    return;
+  } finally {
+    if (branchesTreasuryInFlight.get(requestKey) === pending) branchesTreasuryInFlight.delete(requestKey);
+  }
+  if (requestSequence !== branchesTreasuryRequestSequence || !hasRoleFeature('branches_treasury')) return;
+  branchesTreasuryOrders = rows.filter(order => isOrderInAccountingDateRange(order, from, to));
   branchesTreasurySelectedIds.clear();
   renderBranchesTreasury();
 }
@@ -18817,7 +19860,7 @@ async function loadBranchesTreasury() {
 async function refreshBranchesTreasury(button) {
   const old = button?.textContent;
   if (button) { button.disabled = true; button.textContent = 'جاري التحديث...'; }
-  try { await loadBranchesTreasury(); }
+  try { await loadBranchesTreasury(true); }
   finally { if (button) { button.disabled = false; button.textContent = old || '↻ Refresh'; } }
 }
 
@@ -18943,7 +19986,9 @@ function printBranchesTreasuryReport(){openBranchesTreasuryPrint(false);}
 
 function getKhaznaFilteredOrders() {
   const search = (document.getElementById('khaznaBarcodeSearch')?.value || '').trim().toLowerCase();
-  const statusFilter = document.getElementById('khaznaFilterStatus')?.value || 'الكل';
+  const statusFilter = isAdmin()
+    ? (document.getElementById('khaznaFilterStatus')?.value || 'الكل')
+    : enforceKhaznaStatusFilterAccess();
   const empFilter = document.getElementById('khaznaFilterEmployee')?.value || 'الكل';
 
   return khaznaOrders.filter(o => {
@@ -19252,7 +20297,10 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
   if (!select || searchableOrderSelects.has(selectId)) return;
 
   const wrapper = document.createElement('div');
-  wrapper.className = `order-search-select${visualVariant === 'allocate' ? ' dashboard-allocate-filter' : ''}`;
+  const isAllocateVisual = visualVariant === 'allocate';
+  const isProductAllocateDesktop = visualVariant === 'product-allocate';
+  const isDoctorAllocateDesktop = visualVariant === 'doctor-allocate';
+  wrapper.className = `order-search-select${isAllocateVisual ? ' dashboard-allocate-filter' : ''}${(isProductAllocateDesktop || isDoctorAllocateDesktop) ? ' product-allocate-filter' : ''}${isDoctorAllocateDesktop ? ' doctor-allocate-filter' : ''}`;
   wrapper.classList.add(`order-search-select-${selectId}`);
   select.parentNode.insertBefore(wrapper, select);
   wrapper.appendChild(select);
@@ -19269,7 +20317,8 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
 
   const arrow = document.createElement('span');
   arrow.className = 'order-search-arrow';
-  if (visualVariant === 'allocate') {
+  const useProfessionalArrow = isAllocateVisual || ((isProductAllocateDesktop || isDoctorAllocateDesktop) && !isMobileFoundationViewport());
+  if (useProfessionalArrow) {
     arrow.classList.add('allocate-filter-arrow');
     arrow.setAttribute('aria-hidden', 'true');
     arrow.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9.5 12 14.5 17 9.5"/></svg>';
@@ -19309,7 +20358,7 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
     input.value = String(option.textContent || '').trim();
     select.dispatchEvent(new Event('change', { bubbles: true }));
     closePanel(false);
-    if (visualVariant === 'allocate' && isMobileFoundationViewport()) input.blur();
+    if (isAllocateVisual && isMobileFoundationViewport()) input.blur();
     else input.focus();
   }
 
@@ -19336,14 +20385,23 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
       button.setAttribute('role', 'option');
       button.dataset.value = option.value;
       const label = String(option.textContent || '').trim();
-      if (visualVariant === 'allocate') {
+      const useAllocateCard = isAllocateVisual || ((isProductAllocateDesktop || isDoctorAllocateDesktop) && !isMobileFoundationViewport());
+      if (useAllocateCard) {
         const rawValue = String(option.value || '').trim();
         const isAllValue = rawValue === 'الكل' || rawValue === 'all';
         let primary = label;
         let secondary = 'اختيار';
         let avatar = isAllValue ? '★' : (label.replace(/^[@#\s]+/, '').charAt(0) || '•');
         const employeeFilterIds = ['filterEmployee','bFilterEmployee','activityLogEmployee','financialAuditEmployeeFilter','secretaryAuditEmployeeFilter'];
-        if (employeeFilterIds.includes(selectId)) {
+        if (['doctorName','bDoctorName'].includes(selectId)) {
+          const parts = label.split(' - ');
+          primary = parts.shift() || label;
+          avatar = '👨‍⚕️';
+          secondary = parts.join(' - ') || 'دكتور';
+        } else if (['dashProductNameInput','branchProductNameInput'].includes(selectId)) {
+          avatar = '📦';
+          secondary = 'منتج';
+        } else if (employeeFilterIds.includes(selectId)) {
           const matchedUser = (Array.isArray(users) ? users : []).find(user =>
             [user?.name, user?.username].some(value => String(value || '').trim() === rawValue)
           );
@@ -19415,7 +20473,7 @@ function enhanceOrderSearchableSelect(selectId, searchPlaceholder, visualVariant
   });
   arrow.addEventListener('click', () => {
     if (wrapper.classList.contains('open')) closePanel();
-    else if (visualVariant === 'allocate' && isMobileFoundationViewport()) { input.blur(); openPanel(true); }
+    else if (isAllocateVisual && isMobileFoundationViewport()) { input.blur(); openPanel(true); }
     else { input.focus(); openPanel(true); }
   });
   select.addEventListener('change', syncFromSelect);
@@ -19442,10 +20500,10 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  enhanceOrderSearchableSelect('doctorName', 'ابحث باسم الدكتور أو الكود...');
-  enhanceOrderSearchableSelect('dashProductNameInput', 'ابحث باسم المنتج...');
-  enhanceOrderSearchableSelect('bDoctorName', 'ابحث باسم الدكتور أو الكود...');
-  enhanceOrderSearchableSelect('branchProductNameInput', 'ابحث باسم المنتج...');
+  enhanceOrderSearchableSelect('doctorName', 'ابحث باسم الدكتور أو الكود...', 'doctor-allocate');
+  enhanceOrderSearchableSelect('dashProductNameInput', 'ابحث باسم المنتج...', 'product-allocate');
+  enhanceOrderSearchableSelect('bDoctorName', 'ابحث باسم الدكتور أو الكود...', 'doctor-allocate');
+  enhanceOrderSearchableSelect('branchProductNameInput', 'ابحث باسم المنتج...', 'product-allocate');
   enhanceOrderSearchableSelect('filterEmployee', 'ابحث باسم الموظف...', 'allocate');
   enhanceOrderSearchableSelect('filterStatus', 'ابحث باسم الحالة...', 'allocate');
   enhanceOrderSearchableSelect('filterShippingCompany', 'ابحث باسم شركة الشحن...', 'allocate');
@@ -19563,7 +20621,7 @@ async function saveCommissionSettingsRoom(event){
     const {data,error}=await supabaseClient.rpc('okb_save_commission_settings',payload);if(error)throw error;
     const saved=normalizeCommissionSettings(Array.isArray(data)?data[0]:data||{...payload,effective_from:payload.p_effective_from});
     populateCommissionSettingsForm(saved,{effectiveMonth:month});
-    commissionRangeCache.clear();commissionAnnualData=null;
+    commissionRangeCache.clear();clearCommissionRawRangeCache();commissionAnnualData=null;
     setCommissionSettingsStatus('تم تحديث إعدادات العمولات بنجاح ✓','success');
   }catch(error){console.error('Commission settings save failed:',error);setCommissionSettingsStatus('تعذر الحفظ: '+(error.message||error),'error');}
   finally{if(button){button.disabled=false;button.textContent=old;}}
@@ -19575,6 +20633,18 @@ let commissionAnnualData = null;
 let commissionActiveView = 'total';
 let commissionCurrentApproval = null;
 const commissionRangeCache = new Map();
+const commissionComputedCacheTime = new WeakMap();
+// v258: short-lived raw range cache. Keep the original permission-enforcing RPC.
+// Fields match the existing central financial report requirements; never recalculate prices here.
+const COMMISSION_ORDER_COLUMNS = 'id,created_at,status,branch,shipping_company,price,deposit,notes,payment_image,collected_at,order_number,ticket_id,customer_name,employee_name,branch_name,shipping_system';
+const COMMISSION_RAW_CACHE_MS = 30000;
+const commissionRawRangeCache = new Map();
+const commissionRawPending = new Map();
+function clearCommissionRawRangeCache(){commissionRawRangeCache.clear();commissionRawPending.clear();}
+function commissionRawRangeKey(from,to,branches){
+  return [String(currentUser?.id||currentUser?.username||''),String(currentUser?.role||''),[...branches].sort().join('|'),from,to].join('::');
+}
+
 let commissionComparisonRefreshTimer = null;
 
 function commissionShiftMonth(dateText,delta=-1){
@@ -19673,10 +20743,32 @@ async function applyCommissionDateRange(){const from=document.getElementById('co
 async function resetCommissionDateRange(){
   const auto=document.getElementById('commissionAutoCompare');if(auto)auto.checked=true;setCommissionCurrentMonthRange();setupCommissionBranchFilter();commissionAnnualData=null;commissionActiveView='total';document.querySelectorAll('[data-commission-view]').forEach(item=>item.classList.toggle('active',item.dataset.commissionView==='total'));await loadCommissionDashboard();
 }
-async function fetchCommissionOrdersForRange(from,to,branches){
-  const rows=[];let offset=0;
-  while(true){const {data,error}=await supabaseClient.rpc('okb_get_commission_orders',{p_from:from,p_to:to}).order('created_at',{ascending:false}).range(offset,offset+999);if(error)throw error;rows.push(...(data||[]));if(!data||data.length<1000)break;offset+=1000;}
-  return rows.filter(order=>{const date=getLocalDateISO(order.created_at);return date>=from&&date<=to&&branches.includes(commissionOrderBranch(order));});
+async function fetchCommissionOrdersForRange(from,to,branches,force=false){
+  const key=commissionRawRangeKey(from,to,branches),now=Date.now();
+  if(!force){
+    const saved=commissionRawRangeCache.get(key);
+    if(saved && now-saved.at<COMMISSION_RAW_CACHE_MS)return saved.rows;
+    if(commissionRawPending.has(key))return commissionRawPending.get(key);
+  }
+  const request=(async()=>{
+    const rows=[];let offset=0;
+    while(true){
+      const {data,error}=await supabaseClient.rpc('okb_get_commission_orders',{p_from:from,p_to:to})
+        .order('created_at',{ascending:false}).range(offset,offset+999);
+      if(error)throw error;
+      rows.push(...(data||[]));if(!data||data.length<1000)break;offset+=1000;
+    }
+    const filtered=rows.filter(order=>{const date=getLocalDateISO(order.created_at);return date>=from&&date<=to&&branches.includes(commissionOrderBranch(order));});
+    // Never allow a pre-refresh pending request to replace the newer cache entry.
+    if(commissionRawPending.get(key)===request){
+      commissionRawRangeCache.delete(key);
+      commissionRawRangeCache.set(key,{at:Date.now(),rows:filtered});
+      while(commissionRawRangeCache.size>6)commissionRawRangeCache.delete(commissionRawRangeCache.keys().next().value);
+    }
+    return filtered;
+  })();
+  commissionRawPending.set(key,request);
+  try{return await request;}finally{if(commissionRawPending.get(key)===request)commissionRawPending.delete(key);}
 }
 async function loadCommissionDashboard(force=false){
   const from=document.getElementById('commissionFromDate')?.value,to=document.getElementById('commissionToDate')?.value,compareFrom=document.getElementById('commissionCompareFromDate')?.value,compareTo=document.getElementById('commissionCompareToDate')?.value,range=commissionDateRange(from,to,compareFrom,compareTo);if(!range)return;
@@ -19690,13 +20782,14 @@ async function loadCommissionDashboard(force=false){
       const settings=await fetchCommissionSettingsForDate(range.from);
       const scope=(isAdmin()||canApproveCommission())?'all':branches.join('|'),key=`${range.from}:${range.to}:${range.previousFrom}:${range.previousTo}:${scope}:${commissionSettingsSignature(settings)}`;
       data=!force?commissionRangeCache.get(key):null;
-      if(!data){const [current,previous]=await Promise.all([fetchCommissionOrdersForRange(range.from,range.to,branches),fetchCommissionOrdersForRange(range.previousFrom,range.previousTo,branches)]);data=commissionBuildData(current,previous,range,branches,settings);commissionRangeCache.set(key,data);if(commissionRangeCache.size>4)commissionRangeCache.delete(commissionRangeCache.keys().next().value);}
+      if(data && (!commissionComputedCacheTime.has(data) || Date.now()-commissionComputedCacheTime.get(data)>COMMISSION_RAW_CACHE_MS)){commissionRangeCache.delete(key);data=null;}
+      if(!data){const [current,previous]=await Promise.all([fetchCommissionOrdersForRange(range.from,range.to,branches,force),fetchCommissionOrdersForRange(range.previousFrom,range.previousTo,branches,force)]);data=commissionBuildData(current,previous,range,branches,settings);commissionComputedCacheTime.set(data,Date.now());commissionRangeCache.set(key,data);if(commissionRangeCache.size>4)commissionRangeCache.delete(commissionRangeCache.keys().next().value);}
     }
     commissionData=data;renderCommissionApprovalState();renderCommissionDashboard();ensureChartLibrary().then(()=>{if(commissionActiveView==='dashboard')renderCommissionCharts(getCommissionVisibleRows());}).catch(()=>{});
     if(notice)notice.classList.add('hidden');
   }catch(error){if(notice){notice.textContent=`تعذر تحميل بيانات العمولة: ${error?.message||error}`;notice.classList.remove('hidden');}}
 }
-async function refreshCommissionDashboard(button){const old=button?.textContent||'Refresh';if(button){button.disabled=true;button.textContent='جاري التحديث...';}try{commissionAnnualData=null;await loadCommissionDashboard(true);if(commissionActiveView==='annual')await loadCommissionAnnualComparison(true);}finally{if(button){button.disabled=false;button.textContent=old;}}}
+async function refreshCommissionDashboard(button){const old=button?.textContent||'Refresh';if(button){button.disabled=true;button.textContent='جاري التحديث...';}try{commissionAnnualData=null;clearCommissionRawRangeCache();commissionRangeCache.clear();clearCommissionRawRangeCache();await loadCommissionDashboard(true);if(commissionActiveView==='annual')await loadCommissionAnnualComparison(true);}finally{if(button){button.disabled=false;button.textContent=old;}}}
 async function loadCommissionApprovalRecord(range){
   const {data,error}=await supabaseClient.from('commission_approvals').select('*').eq('period_from',range.from).eq('period_to',range.to).eq('comparison_from',range.previousFrom).eq('comparison_to',range.previousTo).eq('branch_scope','all').eq('status','approved').order('approved_at',{ascending:false}).limit(1).maybeSingle();
   if(error){if(!['42P01','PGRST205'].includes(String(error.code||'')))console.warn('Commission approval load:',error.message);return null;}return data||null;
@@ -19732,13 +20825,13 @@ async function confirmCommissionApproval(){
   const sum=key=>commissionData.all.reduce((total,row)=>total+Number(row[key]||0),0);
   const payload={p_period_from:commissionData.range.from,p_period_to:commissionData.range.to,p_comparison_from:commissionData.range.previousFrom,p_comparison_to:commissionData.range.previousTo,p_snapshot:commissionData,p_total_net:sum('net'),p_total_base:sum('base'),p_total_rewards:commissionData.all.reduce((s,r)=>s+Math.max(0,Number(r.rtdAdjustment||0))+Math.max(0,Number(r.developmentAdjustment||0)),0),p_total_penalties:commissionData.all.reduce((s,r)=>s+Math.abs(Math.min(0,Number(r.rtdAdjustment||0)))+Math.abs(Math.min(0,Number(r.developmentAdjustment||0))),0),p_total_orders:Number(manager.total||0),p_signed_count:Number(manager.signed||0),p_rtd_count:Number(manager.rtd||0),p_pending_count:pending,p_note:note||null,p_override_reason:pending?reason:null,p_actor:currentUser?.name||currentUser?.username||'Admin'};
   const {error}=await supabaseClient.rpc('okb_approve_commission',payload);if(button){button.disabled=false;button.textContent='تأكيد الاعتماد 🔒';}
-  if(error){alert('تعذر اعتماد العمولة: '+error.message);return;}closeCommissionApprovalModal();commissionRangeCache.clear();await loadCommissionDashboard(true);
+  if(error){alert('تعذر اعتماد العمولة: '+error.message);return;}closeCommissionApprovalModal();commissionRangeCache.clear();clearCommissionRawRangeCache();await loadCommissionDashboard(true);
 }
 async function unlockCommissionApproval(){
   if(!isAdmin()||!commissionCurrentApproval)return;const reason=prompt('اكتب سبب فتح اعتماد العمولة (إجباري):','');if(!reason||reason.trim().length<3)return;
   if(!confirm('سيتم فتح الفترة وإعادة الحساب من البيانات الحالية. هل تريد المتابعة؟'))return;
   const {error}=await supabaseClient.rpc('okb_unlock_commission_approval',{p_approval_id:commissionCurrentApproval.id,p_reason:reason.trim(),p_actor:currentUser?.name||currentUser?.username||'Admin'});if(error){alert('تعذر فتح الاعتماد: '+error.message);return;}
-  commissionCurrentApproval=null;commissionRangeCache.clear();await loadCommissionDashboard(true);
+  commissionCurrentApproval=null;commissionRangeCache.clear();clearCommissionRawRangeCache();await loadCommissionDashboard(true);
 }
 function getCommissionVisibleRows(){if(!commissionData)return[];const branch=document.getElementById('commissionBranchFilter')?.value||'all';return branch==='all'?commissionData.all:commissionData.rows.filter(row=>row.branch===branch);}
 async function loadCommissionAnnualComparison(force=false){
@@ -19747,7 +20840,8 @@ async function loadCommissionAnnualComparison(force=false){
   const notice=document.getElementById('commissionNotice');if(notice){notice.textContent='جاري تحميل المقارنة السنوية...';notice.classList.remove('hidden');}
   try{
     const branches=commissionAccessibleBranches(),scope=(isAdmin()||canApproveCommission())?'all':branches.join('|'),settings=await fetchCommissionSettingsForDate(annualRange.from),key=`annual:${annualRange.from}:${annualRange.to}:${annualRange.previousFrom}:${annualRange.previousTo}:${scope}:${commissionSettingsSignature(settings)}`;let data=!force?commissionRangeCache.get(key):null;
-    if(!data){const [current,previous]=await Promise.all([fetchCommissionOrdersForRange(annualRange.from,annualRange.to,branches),fetchCommissionOrdersForRange(annualRange.previousFrom,annualRange.previousTo,branches)]);data=commissionBuildData(current,previous,annualRange,branches,settings);commissionRangeCache.set(key,data);if(commissionRangeCache.size>4)commissionRangeCache.delete(commissionRangeCache.keys().next().value);}
+    if(data && (!commissionComputedCacheTime.has(data) || Date.now()-commissionComputedCacheTime.get(data)>COMMISSION_RAW_CACHE_MS)){commissionRangeCache.delete(key);data=null;}
+    if(!data){const [current,previous]=await Promise.all([fetchCommissionOrdersForRange(annualRange.from,annualRange.to,branches,false),fetchCommissionOrdersForRange(annualRange.previousFrom,annualRange.previousTo,branches,force)]);data=commissionBuildData(current,previous,annualRange,branches,settings);commissionComputedCacheTime.set(data,Date.now());commissionRangeCache.set(key,data);if(commissionRangeCache.size>4)commissionRangeCache.delete(commissionRangeCache.keys().next().value);}
     commissionAnnualData=data;if(commissionActiveView==='annual')renderCommissionDashboard();if(notice)notice.classList.add('hidden');
   }catch(error){if(notice){notice.textContent=`تعذر تحميل المقارنة السنوية: ${error?.message||error}`;notice.classList.remove('hidden');}}
 }
@@ -19843,6 +20937,48 @@ async function refreshDashboardPage(button) {
   } finally {
     if (button) { button.disabled = false; button.textContent = oldText; }
   }
+}
+
+async function hardCacheSync(button) {
+  if (!currentUser) { alert('لا توجد جلسة مستخدم نشطة'); return; }
+  const oldText = button?.textContent || '♻ Hard Cache';
+  if (button) { button.disabled = true; button.textContent = '♻ جاري المزامنة...'; }
+  markNextAppRestoreSilent('hard_cache');
+  // Preserve the current branch when the action is used from a branch/khazna page.
+  try {
+    if (currentBranchName && (isLivePageVisible('branchPage') || isLivePageVisible('khaznaPage'))) {
+      sessionStorage.setItem('okb_hard_refresh_branch', currentBranchName);
+    }
+  } catch (error) { console.warn('Hard Cache branch marker:', error); }
+
+  try {
+    // Pull the current account + role permissions before reload. This never mutates permissions;
+    // it only refreshes the current session snapshot from the existing source of truth.
+    await syncCurrentUserPermissions({ forceRender:true });
+  } catch (error) {
+    console.warn('Hard Cache permission sync:', error);
+  }
+
+  try {
+    // Clear only known OKB data caches. Session/auth and operational/audit state are preserved.
+    localStorage.removeItem('okb_role_permissions_cache');
+    localStorage.removeItem('okb_doctors_cache');
+    localStorage.removeItem('okb_filter_registry_cache_v1');
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      const okbKeys = keys.filter(key => /okb|operation.?system/i.test(String(key || '')));
+      await Promise.allSettled(okbKeys.map(key => caches.delete(key)));
+    }
+  } catch (error) {
+    console.warn('Hard Cache cleanup:', error);
+  }
+
+  const refreshUrl = new URL(window.location.href);
+  refreshUrl.searchParams.set('okb_cache', Date.now().toString());
+  refreshUrl.searchParams.delete('hard');
+  refreshUrl.hash = '';
+  window.location.replace(refreshUrl.toString());
+  if (button) { button.disabled = false; button.textContent = oldText; }
 }
 
 async function hardRefreshAdmin(button) {
@@ -20079,6 +21215,7 @@ function renderMobileMoreSheet(container){
   }
 
   mobileFoundationAddGroup(container,'الحساب والمظهر');
+  mobileFoundationAddAction(container,{icon:'♻',title:'Hard Cache',subtitle:'تحديث الصلاحيات وأحدث ملفات السيستم',run:()=>hardCacheSync(null)});
   mobileFoundationAddAction(container,{icon:'◐',title:'Theme',subtitle:'تبديل الوضع الليلي / النهاري',run:()=>toggleTheme()});
   mobileFoundationAddAction(container,{icon:'👤',title:'My Account',subtitle:currentUser?.name||'الحساب الحالي',run:()=>openMyAccountModal()});
   mobileFoundationAddAction(container,{icon:'↪',title:'Log out',subtitle:'تسجيل الخروج من النظام',run:()=>logout(),danger:true});
@@ -20203,4 +21340,4 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 else initMobileFoundation();
 
 // OKB build diagnostic marker — v204. No UI or business-logic effect.
-window.__OKB_BUILD_VERSION = 'v231';
+window.__OKB_BUILD_VERSION = 'v240';

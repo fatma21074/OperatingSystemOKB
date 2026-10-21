@@ -110,6 +110,7 @@ function handleOkbSessionExpiry(error) {
   sessionStorage.removeItem('okb_current_user');
   if (typeof app !== 'undefined') app?.classList.add('hidden');
   if (typeof loginPage !== 'undefined') loginPage?.classList.remove('hidden');
+  document.documentElement.classList.remove('okb-exact-order-boot');
   if (typeof showLoginMessage === 'function') showLoginMessage('انتهت الجلسة الآمنة. سجل الدخول مرة أخرى للمتابعة.');
 }
 
@@ -4262,7 +4263,21 @@ async function openAuthenticatedApp(activityTitle, activityDetails, options = {}
   startRolePermissionsSync();
   startLiveBusinessSync();
   startBranchStickyNoteClock();
-  await showInitialPermittedPage();
+  try {
+    await showInitialPermittedPage();
+  } finally {
+    // v278: keep the boot screen visible until the exact order has been rendered
+    // AND the browser has had a paint opportunity. Never delay with a timer.
+    // Other pages and the existing authentication/permissions are unchanged.
+    if (document.documentElement.classList.contains('okb-exact-order-boot')) {
+      const revealExactOrder = () => document.documentElement.classList.remove('okb-exact-order-boot');
+      if (document.visibilityState === 'visible' && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(revealExactOrder));
+      } else {
+        revealExactOrder();
+      }
+    }
+  }
 
   // All heavy datasets load in parallel after the interface is already visible.
   startPostLoginDataLoads();
@@ -4413,6 +4428,8 @@ async function checkLogin() {
     sessionStorage.removeItem("okb_access_expires_at");
     app.classList.add("hidden");
     loginPage.classList.remove("hidden");
+    // v276: an expired/missing session must show the real login, not a loading screen.
+    document.documentElement.classList.remove('okb-exact-order-boot');
   }
 }
 
@@ -14395,7 +14412,7 @@ function syncBranchSelectionUI(currentPageRows=getCurrentBranchPageRows()){
   if(deleteProofBtn){
     const selectedOrder=selectedOrders.length===1?selectedOrders[0]:null;
     const hasPaymentProof=Boolean(String(selectedOrder?.payment_image||'').trim());
-    const shouldShow=count===1&&selectedOrders.length===1&&hasPaymentProof&&hasButtonPermission('btn_delete_upfront_proof');
+    const shouldShow=count===1&&selectedOrders.length===1&&hasPaymentProof&&hasButtonPermission('btn_delete_upfront_proof')&&(isAdmin()||String(selectedOrder?.status||'').trim()!=='Signed');
     deleteProofBtn.classList.toggle('hidden',!shouldShow);
     deleteProofBtn.disabled=!shouldShow;
     deleteProofBtn.setAttribute('aria-hidden',shouldShow?'false':'true');
@@ -14465,6 +14482,10 @@ async function deleteSelectedBranchPaymentProof(){
   if(!hasButtonPermission('btn_delete_upfront_proof')){alert('حذف إثبات السكرتارية غير مضاف لصلاحيات حسابك');return;}
   if(branchSelectedOrderIds.size!==1)return;
   const order=branchOrders.find(item=>branchSelectedOrderIds.has(String(item.id)));
+  if(order&&String(order.status||'').trim()==='Signed'&&!isAdmin()){
+    alert('لا يمكن حذف إثبات السكرتارية بعد تسليم الأوردر (Signed). هذا الإجراء متاح للأدمن فقط.');
+    return;
+  }
   if(order&&!canMutateSignedOrder(order,'حذف إثبات السكرتارية','btn_delete_upfront_proof'))return;
   if(!order||!order.payment_image){
     syncBranchSelectionUI();
