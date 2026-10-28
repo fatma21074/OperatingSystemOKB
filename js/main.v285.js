@@ -39,6 +39,39 @@ function createOkbSupabaseClient(accessToken = "") {
   return client;
 }
 
+// v285: Admin-only Secretary Audit manual engine switch. Default STOPPED per browser tab.
+const OKB_SECRETARY_AUDIT_SWITCH_KEY='okb_secretary_audit_engine_v285';
+function isSecretaryAuditEngineActive(){
+  try{return Boolean(isAdmin() && hasRoleFeature('secretary_audit') && sessionStorage.getItem(OKB_SECRETARY_AUDIT_SWITCH_KEY)==='active');}
+  catch(_){return false;}
+}
+function updateSecretaryAuditEngineUI(){
+  const active=isSecretaryAuditEngineActive();
+  const a=document.getElementById('secretaryAuditActivateBtn');
+  const b=document.getElementById('secretaryAuditStopBtn');
+  const panel=document.getElementById('secretaryAuditPage');
+  if(a){a.classList.toggle('okb-sa-neon-green',active);a.setAttribute('aria-pressed',String(active));}
+  if(b){b.classList.toggle('okb-sa-neon-red',!active);b.setAttribute('aria-pressed',String(!active));}
+  panel?.classList.toggle('okb-sa-stopped',!active);
+  const info=document.getElementById('secretaryAuditEngineStatus');
+  if(info)info.textContent=active?'ACTIVE — المراجعة والتحديث متاحان':'STOPPED — بيانات الصفحة مجمّدة ولا توجد قراءات خلفية للمراجعة';
+}
+async function setSecretaryAuditEngine(active){
+  if(!isAdmin()||!hasRoleFeature('secretary_audit')){alert('التحكم في Secretary Audit متاح للأدمن فقط');return;}
+  try{sessionStorage.setItem(OKB_SECRETARY_AUDIT_SWITCH_KEY,active?'active':'stopped');
+      sessionStorage.setItem('okb_secretary_audit_restore_v285','1');}catch(error){console.warn('Secretary Audit switch storage:',error);return;}
+  if(!active){
+    stopSecretaryAuditNotifications();
+    clearTimeout(secretaryAuditLiveRefreshTimer);secretaryAuditLiveRefreshTimer=null;
+    clearTimeout(secretaryAuditSearchTimer);secretaryAuditSearchTimer=null;
+    secretaryAuditSearchToken++;
+    secretaryAuditRefreshPending=false;
+  }
+  updateSecretaryAuditEngineUI();
+  // Use existing OKB scoped hard-cache cycle, preserves session and the switch marker.
+  await hardCacheSync(null);
+}
+
 function setOkbSecureSession(token, expiresAt = 0) {
   productReportOrders = null; // v252: invalidate user-scoped report rows when session changes.
   const previousClient = supabaseClient;
@@ -5964,6 +5997,9 @@ function openHeaderSettingsPage(page) {
 }
 
 async function showInitialPermittedPage() {
+  let restoreSecretaryAudit=false;
+  try{restoreSecretaryAudit=sessionStorage.getItem('okb_secretary_audit_restore_v285')==='1';sessionStorage.removeItem('okb_secretary_audit_restore_v285');}catch(_){ }
+  if(restoreSecretaryAudit&&isAdmin()&&hasRoleFeature('secretary_audit'))return openSecretaryAudit();
   if (await openOKBAbnormalLinkedOrder()) return;
   let hardRefreshBranchName = '';
   try { hardRefreshBranchName = sessionStorage.getItem('okb_hard_refresh_branch') || ''; }
@@ -16179,13 +16215,13 @@ function updateSecretaryAuditBadge(count=secretaryAuditUnreadCount){
   badge.classList.toggle('hidden',secretaryAuditUnreadCount<1||!hasRoleFeature('secretary_audit'));
 }
 async function refreshSecretaryAuditUnreadCount(){
-  if(!currentUser||!hasRoleFeature('secretary_audit')){updateSecretaryAuditBadge(0);return;}
+  if(!isSecretaryAuditEngineActive()){updateSecretaryAuditBadge(0);return;}
   const seenId=Number(localStorage.getItem(secretaryAuditSeenIdKey())||0);
   const {data,error}=await supabaseClient.from('activity_logs').select('id,action_type,action_details,branch_name').in('action_type',SECRETARY_AUDIT_NOTIFICATION_ACTIONS).gt('id',seenId).order('id',{ascending:true}).limit(1000);
   if(!error)updateSecretaryAuditBadge((data||[]).filter(isFourBranchSecretaryAuditEvent).length);
 }
 async function markSecretaryAuditRead(){
-  if(!currentUser||!hasRoleFeature('secretary_audit'))return;
+  if(!isSecretaryAuditEngineActive())return;
   const {data,error}=await supabaseClient.from('activity_logs').select('id').in('action_type',SECRETARY_AUDIT_NOTIFICATION_ACTIONS).order('id',{ascending:false}).limit(1);
   if(!error){localStorage.setItem(secretaryAuditSeenIdKey(),String(Number(data?.[0]?.id||0)));updateSecretaryAuditBadge(0);}
 }
@@ -16195,12 +16231,14 @@ function stopSecretaryAuditNotifications(){
   updateSecretaryAuditBadge(0);
 }
 function scheduleSecretaryAuditLiveRefresh(){
+  if(!isSecretaryAuditEngineActive())return;
   clearTimeout(secretaryAuditLiveRefreshTimer);
   secretaryAuditLiveRefreshTimer=setTimeout(async()=>{
-    if(!document.getElementById('secretaryAuditPage')?.classList.contains('hidden')){await refreshSecretaryAudit(false);await markSecretaryAuditRead();}
+    if(isSecretaryAuditEngineActive()&&!document.getElementById('secretaryAuditPage')?.classList.contains('hidden')){await refreshSecretaryAudit(false);await markSecretaryAuditRead();}
   },350);
 }
 async function handleSecretaryAuditOcrNotification(payload){
+  if(!isSecretaryAuditEngineActive())return;
   const status=String(payload?.new?.status||payload?.old?.status||'');
   if(!status||status==='pending'||status==='verified')return;
   const orderId=String(payload?.new?.order_id||payload?.old?.order_id||'').trim();
@@ -16218,7 +16256,7 @@ async function handleSecretaryAuditOcrNotification(payload){
 }
 function startSecretaryAuditNotifications(){
   stopSecretaryAuditNotifications();
-  if(!currentUser||!hasRoleFeature('secretary_audit'))return;
+  if(!isSecretaryAuditEngineActive())return;
   refreshSecretaryAuditUnreadCount();
   let channel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
     const action=String(payload?.new?.action_type||'');
@@ -16396,6 +16434,7 @@ function scheduleSecretaryAuditSearch(){
 }
 
 async function loadSecretaryAuditRows(reuseRangeSnapshot=false) {
+  if(!isSecretaryAuditEngineActive())return;
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom')?.value||today;
   const to=document.getElementById('secretaryAuditTo')?.value||today;
@@ -16412,6 +16451,7 @@ async function loadSecretaryAuditRows(reuseRangeSnapshot=false) {
   }else{
     let offset=0;
     while(true){
+      if(!isSecretaryAuditEngineActive())return;
       const result=await supabaseClient.from('orders').select('*').gte('created_at',utcRange.start).lt('created_at',utcRange.endExclusive).order('created_at',{ascending:false}).range(offset,offset+999);
       if(result.error)throw result.error;
       rows=rows.concat(result.data||[]);
@@ -16501,6 +16541,7 @@ async function loadSecretaryAuditRows(reuseRangeSnapshot=false) {
 }
 
 async function openSecretaryAudit() {
+  if(!isAdmin()){alert('Secretary Audit للأدمن فقط');return;}
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   const today=getCairoDateISO(new Date());
   const from=document.getElementById('secretaryAuditFrom'),to=document.getElementById('secretaryAuditTo'),severity=document.getElementById('secretaryAuditSeverityFilter');
@@ -16510,11 +16551,15 @@ async function openSecretaryAudit() {
   hideAllPages();
   document.getElementById('secretaryAuditPage')?.classList.remove('hidden');
   setActiveMenu('secretaryAuditPage');
+  updateSecretaryAuditEngineUI();
+  if(!isSecretaryAuditEngineActive())return;
+  startSecretaryAuditNotifications();
   await refreshSecretaryAudit(false);
   await markSecretaryAuditRead();
 }
 function closeSecretaryAudit(){showInitialPermittedPage();}
 async function refreshSecretaryAudit(markRead=true,reuseRangeSnapshot=false){
+  if(!isSecretaryAuditEngineActive())return false;
   if(secretaryAuditRefreshPromise){
     secretaryAuditRefreshPending=true;
     const currentResult=await secretaryAuditRefreshPromise;
@@ -16522,7 +16567,7 @@ async function refreshSecretaryAudit(markRead=true,reuseRangeSnapshot=false){
     return currentResult;
   }
   secretaryAuditRefreshPromise=(async()=>{
-    try{await loadSecretaryAuditRows(reuseRangeSnapshot);renderSecretaryAudit(true);return true;}
+    try{await loadSecretaryAuditRows(reuseRangeSnapshot);if(!isSecretaryAuditEngineActive())return false;renderSecretaryAudit(true);return true;}
     catch(error){alert('تعذر فحص أخطاء الإدخال: '+(error?.message||error));return false;}
   })();
   let success=false;
@@ -16536,6 +16581,7 @@ async function refreshSecretaryAudit(markRead=true,reuseRangeSnapshot=false){
   return success;
 }
 async function resetSecretaryAuditFilters(){
+  if(!isSecretaryAuditEngineActive())return;
   secretaryAuditPageNumber=1;
   const today=getCairoDateISO(new Date());
   const values={secretaryAuditFrom:today,secretaryAuditTo:today,secretaryAuditBranchFilter:'all',secretaryAuditEmployeeFilter:'all',secretaryAuditSeverityFilter:'all'};
@@ -16687,6 +16733,7 @@ function renderSecretaryAuditReport(){
   panel.innerHTML=`<div class="secretary-audit-report-grid">${cards.map(([l,v])=>`<div class="secretary-audit-report-card"><span>${escapeHTML(l)}</span><b>${escapeHTML(String(v))}</b></div>`).join('')}</div><h4>الأخطاء حسب الفرع</h4><div class="secretary-audit-branch-stats">${branches.map(branch=>`<div><span>${branch}</span><b>${branchCounts[branch]||Object.entries(branchCounts).filter(([k])=>k.includes(branch)).reduce((s,[,v])=>s+v,0)}</b></div>`).join('')}</div>`;
 }
 async function exportSecretaryAudit(){
+  if(!isSecretaryAuditEngineActive())return;
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   if(typeof XLSX==='undefined'){alert('مكتبة Excel غير متاحة حاليًا. برجاء إعادة تحميل الصفحة والمحاولة مرة أخرى.');return;}
   if(!secretaryAuditState?.from||!secretaryAuditState?.to){if(!await refreshSecretaryAudit(false))return;}
@@ -16726,6 +16773,7 @@ function secretaryAuditDecision(errorRate){
   return 'مراجعة إدارية عاجلة وتدريب إلزامي';
 }
 async function exportSecretaryAuditManagementReport(){
+  if(!isSecretaryAuditEngineActive())return;
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   if(typeof ExcelJS==='undefined'){alert('مكتبة Excel غير متاحة حاليًا. برجاء إعادة تحميل الصفحة والمحاولة مرة أخرى.');return;}
   if(!secretaryAuditState?.from||!secretaryAuditState?.to){if(!await refreshSecretaryAudit(false))return;}
@@ -21040,6 +21088,73 @@ async function hardRefreshBranch(button) {
   refreshUrl.hash = '';
   window.location.replace(refreshUrl.toString());
 }
+
+
+/* ===== v284 — Automatic recovery after network reconnect / system sleep =====
+ * Explicit operations decision: auto-reload even when an order or form is unsaved.
+ * Reuse OKB existing Hard Cache path and keep visibility/cooldown/one-shot guards.
+ */
+const OKB_RECOVERY_SLEEP_GAP_MS = 90 * 1000;
+const OKB_RECOVERY_COOLDOWN_MS = 60 * 1000;
+let okbRecoveryLastPulse = Date.now();
+let okbRecoveryOfflineObserved = false;
+let okbRecoveryPending = false;
+let okbRecoveryInProgress = false;
+let okbRecoveryScheduled = null;
+
+function okbRecoveryActiveSession(){
+  return Boolean(currentUser && !document.getElementById('app')?.classList.contains('hidden'));
+}
+function okbRecoveryQueue(reason){
+  if (!okbRecoveryActiveSession()) return;
+  okbRecoveryPending=true;
+  if(okbRecoveryScheduled) clearTimeout(okbRecoveryScheduled);
+  okbRecoveryScheduled=setTimeout(()=>{
+    okbRecoveryScheduled=null;
+    okbRecoveryProcess(reason);
+  }, 1800);
+}
+async function okbRecoveryProcess(reason){
+  if(!okbRecoveryPending||okbRecoveryInProgress||!okbRecoveryActiveSession())return;
+  if(document.visibilityState!=='visible'||navigator.onLine===false)return;
+  let last=0;
+  try{last=Number(sessionStorage.getItem('okb_auto_recovery_last')||0);}catch(_){ }
+  if(Date.now()-last<OKB_RECOVERY_COOLDOWN_MS){okbRecoveryPending=false;return;}
+  okbRecoveryInProgress=true;
+  okbRecoveryPending=false;
+  try {sessionStorage.setItem('okb_auto_recovery_last',String(Date.now()));}catch(_){ }
+  try{
+    await hardCacheSync(null); // existing OKB scoped-cache clearing + session/branch restore
+  }catch(error){
+    okbRecoveryInProgress=false;
+    console.warn('OKB automatic recovery deferred:',reason,error);
+  }
+}
+window.addEventListener('offline',()=>{okbRecoveryOfflineObserved=true;});
+window.addEventListener('online',()=>{
+  if(okbRecoveryOfflineObserved){
+    okbRecoveryOfflineObserved=false;
+    okbRecoveryQueue('reconnected');
+  }
+});
+setInterval(()=>{
+  const now=Date.now();
+  const gap=now-okbRecoveryLastPulse;
+  okbRecoveryLastPulse=now;
+  if(gap>OKB_RECOVERY_SLEEP_GAP_MS)okbRecoveryQueue('resumed_after_sleep');
+  else if(okbRecoveryPending && document.visibilityState==='visible')okbRecoveryProcess('pending_recovery');
+},15000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){
+    const elapsed=Date.now()-okbRecoveryLastPulse;
+    if(elapsed>OKB_RECOVERY_SLEEP_GAP_MS)okbRecoveryQueue('resumed_visible');
+    else if(okbRecoveryPending)okbRecoveryQueue('resumed_pending');
+    okbRecoveryLastPulse=Date.now();
+  }
+});
+window.addEventListener('pageshow', event=>{
+  if(event.persisted && okbRecoveryActiveSession())okbRecoveryQueue('page_restored');
+});
 
 
 /* ===== v223 — OKB Mobile Foundation (presentation/navigation only) ===== */
