@@ -2639,7 +2639,7 @@ function initializeOKBButtonCatalog(){
 const OKB_FIELD_EXCLUDE_IDS=new Set(['adminOrderDate','adminBranchOrderDate','selectPageOrders','selectBranchPageOrders','khaznaSelectAll','existingPaymentImage']);
 const OKB_FIELD_LABELS=Object.freeze({
  employeeName:'اسم الموظف',doctorName:'اسم الدكتور',orderNumber:'رقم الأوردر',customerName:'اسم العميل',phone:'رقم الموبايل',phone2:'رقم موبايل إضافي',shippingCompany:'شركة الشحن',area:'المنطقة',productNames:'المنتجات',status:'حالة الأوردر',dashUrgentOrder:'أوردر مستعجل',dashReplacementOrder:'أوردر استبدال',dashErrorOrder:'أوردر خطأ',dashProductNameInput:'اختيار المنتج',dashProductPriceInput:'سعر المنتج',dashProductQtyInput:'كمية المنتج',dashDiscountInput:'الخصم',dashDepositInput:'العربون',dashGrandTotal:'إجمالي الأوردر',orderNotes:'ملاحظات الأوردر',fromDate:'من تاريخ',toDate:'إلى تاريخ',searchInput:'البحث في الأوردرات',filterStatus:'فلتر الحالة',filterEmployee:'فلتر الموظف',filterShippingCompany:'فلتر شركة الشحن',filterDoctor:'فلتر الدكتور',
- bEmployeeName:'اسم الموظف',bDoctorName:'اسم الدكتور',bOrderNumber:'رقم الأوردر',bCustomerName:'اسم العميل',bPhone:'رقم الموبايل',bPhone2:'رقم موبايل إضافي',bShippingCompany:'شركة الشحن',bArea:'المنطقة',bProductNames:'المنتجات',bStatus:'حالة الأوردر',branchUrgentOrder:'أوردر مستعجل',branchReplacementOrder:'أوردر استبدال',branchErrorOrder:'أوردر خطأ',branchProductNameInput:'اختيار المنتج',branchProductPriceInput:'سعر المنتج',branchProductQtyInput:'كمية المنتج',branchDeliveryInput:'مصاريف الشحن',branchDiscountInput:'الخصم',branchDepositInput:'العربون',branchGrandTotal:'إجمالي الأوردر',bOrderNotes:'ملاحظات الأوردر',bFromDate:'من تاريخ',bToDate:'إلى تاريخ',bSearchInput:'البحث في أوردرات الفرع',bFilterStatus:'فلتر الحالة',bFilterEmployee:'فلتر الموظف',bFilterDoctor:'فلتر الدكتور',
+ bEmployeeName:'اسم الموظف',bDoctorName:'اسم الدكتور',bOrderNumber:'رقم الأوردر',bCustomerName:'اسم العميل',bPhone:'رقم الموبايل',bPhone2:'رقم موبايل إضافي',bShippingCompany:'شركة الشحن',bArea:'المنطقة',bProductNames:'المنتجات',bStatus:'حالة الأوردر',branchUrgentOrder:'أوردر مستعجل',branchReplacementOrder:'أوردر استبدال',branchErrorOrder:'أوردر خطأ',branchRTDOrder:'RTD',branchProductNameInput:'اختيار المنتج',branchProductPriceInput:'سعر المنتج',branchProductQtyInput:'كمية المنتج',branchDeliveryInput:'مصاريف الشحن',branchDiscountInput:'الخصم',branchDepositInput:'العربون',branchGrandTotal:'إجمالي الأوردر',bOrderNotes:'ملاحظات الأوردر',bFromDate:'من تاريخ',bToDate:'إلى تاريخ',bSearchInput:'البحث في أوردرات الفرع',bFilterStatus:'فلتر الحالة',bFilterEmployee:'فلتر الموظف',bFilterDoctor:'فلتر الدكتور',
  khaznaFromDate:'من تاريخ',khaznaToDate:'إلى تاريخ',khaznaBarcodeSearch:'البحث بالباركود أو رقم الأوردر',khaznaFilterStatus:'فلتر حالة التحصيل',
  btFromDate:'من تاريخ',btToDate:'إلى تاريخ',btBranchFilter:'فلتر الفرع',btStatusFilter:'فلتر الحالة',btSearch:'البحث في خزنة الفروع'
 });
@@ -3299,7 +3299,8 @@ function getOrderFlagMeta(order) {
   return {
     urgent: meta.urgent === true || collectMeta.urgent === true,
     replacement: meta.replacement === true || collectMeta.replacement === true,
-    errorOrder: meta.error_order === true
+    errorOrder: meta.error_order === true,
+    rtd: meta.branch_rtd === true
   };
 }
 
@@ -14688,6 +14689,8 @@ function editBranchOrder(id) {
   if (urgentEl) urgentEl.checked = orderFlags.urgent;
   if (replacementEl) replacementEl.checked = orderFlags.replacement;
   if (errorOrderEl) errorOrderEl.checked = orderFlags.errorOrder;
+  const rtdEl = document.getElementById('branchRTDOrder');
+  if (rtdEl) rtdEl.checked = orderFlags.rtd;
   const branchStatusSelect = document.getElementById('bStatus');
   if (branchStatusSelect) {
     branchStatusSelect.disabled = !hasButtonPermission('btn_branch_edit');
@@ -14846,7 +14849,7 @@ document.addEventListener('DOMContentLoaded', function() {
       delivery_fee:     bDelivFee,
       status:           editingOrder ? (hasButtonPermission('btn_branch_edit') ? (statEl?.value || editingOrder.status) : editingOrder.status) : (statEl?.value || 'Delivering'),
       fake_doctor:      editingOrder ? Boolean(editingOrder.fake_doctor) : false,
-      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), error_order:errorOrderSelected, admin_financial_override:isAdmin()&&Boolean(editingOrder), secretary_audit_scope:'branch', created_by_username:editingOrder?(getOrderMeta(editingOrder).created_by_username||null):String(currentUser?.username||currentUser?.name||'').trim() }),
+      notes:            buildNotesWithOrderMeta((notesEl?.value || '').trim() || 'لا توجد ملاحظات', { ...getOrderMeta(editingOrder), edit_count: editingOrder ? getOrderEditCount(editingOrder) + 1 : 0, discount: Number(document.getElementById('branchDiscountInput')?.value || 0), ticket_seq_v2: editingOrder?getOrderMeta(editingOrder).ticket_seq_v2:true, urgent: Boolean(document.getElementById('branchUrgentOrder')?.checked), replacement: Boolean(document.getElementById('branchReplacementOrder')?.checked), error_order:errorOrderSelected, branch_rtd:Boolean(document.getElementById('branchRTDOrder')?.checked), admin_financial_override:isAdmin()&&Boolean(editingOrder), secretary_audit_scope:'branch', created_by_username:editingOrder?(getOrderMeta(editingOrder).created_by_username||null):String(currentUser?.username||currentUser?.name||'').trim() }),
       product_names:    document.getElementById('bProductNames')?.value.trim() || '',
       branch:           currentBranchName,
       transferred:      editingOrder ? Boolean(editingOrder.transferred) : false
@@ -14939,6 +14942,8 @@ document.addEventListener('DOMContentLoaded', function() {
       if (urgentEl) urgentEl.checked = false;
       if (replacementEl) replacementEl.checked = false;
       if (errorOrderEl) errorOrderEl.checked = false;
+      const rtdEl = document.getElementById('branchRTDOrder');
+      if (rtdEl) rtdEl.checked = false;
       const adminBranchDateWrap = document.getElementById('adminBranchOrderDateWrap');
       const adminBranchDateInput = document.getElementById('adminBranchOrderDate');
       if (adminBranchDateWrap) adminBranchDateWrap.style.display = 'none';
@@ -19650,7 +19655,8 @@ function generateReceiptHTML(order, branchName) {
   const orderFlagLabels = [
     receiptFlagMeta.urgent ? receiptCheckboxLabel('branchUrgentOrder', 'dashUrgentOrder', 'استعجال') : '',
     receiptFlagMeta.replacement ? receiptCheckboxLabel('branchReplacementOrder', 'dashReplacementOrder', 'استبدال') : '',
-    receiptFlagMeta.errorOrder ? receiptCheckboxLabel('branchErrorOrder', 'dashErrorOrder', 'أخطاء❌') : ''
+    receiptFlagMeta.errorOrder ? receiptCheckboxLabel('branchErrorOrder', 'dashErrorOrder', 'أخطاء❌') : '',
+    receiptFlagMeta.rtd ? receiptCheckboxLabel('branchRTDOrder', '', 'RTD') : ''
   ].filter(Boolean);
   const receiptCustomerName = `${order.customer_name || ''}${orderFlagLabels.length ? ` - ${orderFlagLabels.join(' - ')}` : ''}`;
   const products  = parseReceiptProducts(order.product_names || '');
