@@ -5049,3 +5049,83 @@ header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-
   margin-inline-start:10px!important;
 }
 #subscriptionPage .subscription-price-box .subscription-most-popular { order:4; }
+
+/* v334 | Subscription card finishing touches: preserve prices and billing logic. */
+#subscriptionPage .subscription-price-box .currency{font-size:26px!important;font-weight:900!important;line-height:1!important;margin-inline-start:3px!important;}
+#subscriptionPage .subscription-price-box .per{display:none!important;}
+#subscriptionPage .subscription-plan-card--featured{position:relative!important;}
+#subscriptionPage .subscription-plan-card--featured .subscription-most-popular{
+  position:absolute!important;left:14px!important;right:auto!important;top:50%!important;
+  transform:translateY(-50%)!important;margin:0!important;z-index:2!important;
+  white-space:nowrap!important;border:1px solid #22cfd3!important;
+  color:#54edf0!important;background:linear-gradient(125deg,rgba(17,53,71,.97),rgba(8,31,48,.97))!important;
+  border-radius:999px!important;padding:6px 12px!important;box-shadow:none!important;
+}
+/* v334 | Pending Orders ONLY — Ocean Neon palette, not report logic. */
+#pendingPage .pending-shell{
+ background:radial-gradient(circle at 7% 5%,rgba(34,207,211,.12),transparent 35%),linear-gradient(140deg,#102e42 0%,#0d263a 45%,#081a2a 100%)!important;
+ border:1px solid rgba(79,156,175,.5)!important;box-shadow:inset 0 1px 0 rgba(222,255,255,.05)!important;
+}
+#pendingPage .pending-shell:before{color:rgba(34,207,211,.04)!important;}
+#pendingPage .pending-title-wrap h1{color:#f2fdff!important;}
+#pendingPage .pending-title-wrap p{color:#bdd7e4!important;}
+#pendingPage .pending-title-icon{
+ color:#22cfd3!important;border:1px solid #22cfd3!important;
+ background:linear-gradient(140deg,#1b485d,#10293e)!important;
+ box-shadow:inset 0 1px 0 rgba(100,255,255,.08)!important;
+}
+#pendingPage .pending-summary .pending-summary-card,
+#pendingPage .pending-summary .pending-branch-card{
+ background:linear-gradient(130deg,#1b4053,#102d42 68%,#0e2639)!important;
+ border:1px solid rgba(88,159,179,.55)!important;
+ box-shadow:inset 0 1px 0 rgba(168,245,255,.05)!important;
+}
+#pendingPage .pending-summary .pending-summary-card > span{
+ color:#fff!important;font-size:12px!important;font-weight:800!important;line-height:1.4!important;
+}
+#pendingPage .pending-summary .pending-summary-card > strong{
+ color:#22cfd3!important;font-size:25px!important;font-weight:900!important;line-height:1.3!important;
+}
+#pendingPage .pending-summary .pending-summary-card > small{
+ color:#fff!important;font-size:10px!important;line-height:1.35!important;
+}
+#pendingPage .pending-head-actions :is(.pending-refresh-btn,.app-back-btn){
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;
+ min-height:42px!important;padding:9px 17px!important;
+ border-radius:10px!important;border:1px solid rgba(102,241,240,.85)!important;
+ background:linear-gradient(115deg,#36e2e4,#22cfd3 56%,#13b5c2)!important;
+ color:#002135!important;font-size:13px!important;font-weight:800!important;
+ box-shadow:inset 0 1px 0 rgba(235,255,255,.23)!important;text-shadow:none!important;
+}
+#pendingPage .pending-head-actions :is(.pending-refresh-btn,.app-back-btn):is(:hover,:focus-visible){
+ background:linear-gradient(115deg,#48eef0,#28dbe0 56%,#18c4ce)!important;
+ color:#002135!important;border-color:#8ffafa!important;box-shadow:none!important;
+}
+#pendingPage .pending-head-actions .app-back-btn svg{stroke:currentColor!important;}
+#pendingPage .pending-toolbar :is(input,select){
+ background:linear-gradient(120deg,#1d3f52,#112d41)!important;
+ color:#f3fbff!important;border:1px solid rgba(82,141,163,.6)!important;
+}
+#pendingPage .pending-row{
+ background:linear-gradient(125deg,#18384c,#102b40 65%,#0c2335)!important;
+ border:1px solid rgba(54,208,215,.68)!important;
+ color:#effaff!important;
+}
+#pendingPage .pending-row:hover{border-color:#22cfd3!important;box-shadow:0 0 0 1px rgba(34,207,211,.12)!important;}
+#pendingPage .pending-row .pending-days{color:#22cfd3!important;}
+#pendingPage .pending-row .pending-days small,
+#pendingPage .pending-row .pending-meta,
+#pendingPage .pending-row .pending-customer small{color:#bcd7e4!important;}
+#pendingPage .pending-row .pending-customer strong{color:#fff!important;}
+#pendingPage .pending-row .pending-status{
+ background:rgba(34,207,211,.09)!important;color:#fff!important;
+ border:1px solid #22cfd3!important;box-shadow:none!important;
+}
+#pendingPage .pending-row .pending-open-btn{
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ color:#e7f7ff!important;border:1px solid #315c76!important;
+ border-radius:10px!important;box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+}
+#pendingPage .pending-row .pending-open-btn:is(:hover,:focus-visible){
+ background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;box-shadow:none!important;
+}
