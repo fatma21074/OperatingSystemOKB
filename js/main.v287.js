@@ -95,8 +95,8 @@ function okbReportRestorePage(){
 // v285: Admin-only Secretary Audit manual engine switch. Default STOPPED per browser tab.
 const OKB_SECRETARY_AUDIT_SWITCH_KEY='okb_secretary_audit_engine_v285';
 function isSecretaryAuditEngineActive(){
-  try{return Boolean(isAdmin() && hasRoleFeature('secretary_audit') && sessionStorage.getItem(OKB_SECRETARY_AUDIT_SWITCH_KEY)==='active');}
-  catch(_){return false;}
+  // Secretary Audit was retired in v302. Never revive its DB reads from stale session state.
+  return false;
 }
 function updateSecretaryAuditEngineUI(){
   const active=isSecretaryAuditEngineActive();
@@ -110,21 +110,15 @@ function updateSecretaryAuditEngineUI(){
   if(info)info.textContent=active?'ACTIVE — المراجعة والتحديث متاحان':'STOPPED — بيانات الصفحة مجمّدة ولا توجد قراءات خلفية للمراجعة';
 }
 async function setSecretaryAuditEngine(active){
-  if(!isAdmin()||!hasRoleFeature('secretary_audit')){alert('التحكم في Secretary Audit متاح للأدمن فقط');return;}
-  try{sessionStorage.setItem(OKB_SECRETARY_AUDIT_SWITCH_KEY,active?'active':'stopped');
-      sessionStorage.setItem('okb_secretary_audit_restore_v285','1');}catch(error){console.warn('Secretary Audit switch storage:',error);return;}
-  if(!active){
-    stopSecretaryAuditNotifications();
-    clearTimeout(secretaryAuditLiveRefreshTimer);secretaryAuditLiveRefreshTimer=null;
-    clearTimeout(secretaryAuditSearchTimer);secretaryAuditSearchTimer=null;
-    secretaryAuditSearchToken++;
-    secretaryAuditRefreshPending=false;
-  }
+  // Retired: remove stale tab state and tear down any existing listeners/timers.
+  try { sessionStorage.removeItem(OKB_SECRETARY_AUDIT_SWITCH_KEY); sessionStorage.removeItem('okb_secretary_audit_restore_v285'); } catch (_) {}
+  stopSecretaryAuditNotifications();
+  clearTimeout(secretaryAuditLiveRefreshTimer);secretaryAuditLiveRefreshTimer=null;
+  clearTimeout(secretaryAuditSearchTimer);secretaryAuditSearchTimer=null;
+  secretaryAuditSearchToken++;
+  secretaryAuditRefreshPending=false;
   updateSecretaryAuditEngineUI();
-  // Use existing OKB scoped hard-cache cycle, preserves session and the switch marker.
-  await hardCacheSync(null);
 }
-
 function setOkbSecureSession(token, expiresAt = 0) {
   productReportOrders = null; // v252: invalidate user-scoped report rows when session changes.
   const previousClient = supabaseClient;
@@ -147,10 +141,10 @@ function setOkbSecureSession(token, expiresAt = 0) {
       startRolePermissionsSync();
       startLiveBusinessSync();
       startActivityLogNotifications();
-      startSecretaryAuditNotifications();
+      stopSecretaryAuditNotifications();
       startFinancialAuditNotifications();
       startOnlinePresence().catch(error => console.error('Presence restart failed:', error));
-      startChatRealtime();
+      // v300: Chat Realtime restart disabled.
     }, 0);
   }
 }
@@ -2052,6 +2046,7 @@ function getPermissionsForRole(role) {
 }
 
 function hasRoleFeature(feature) {
+  if(feature==='chat') return false; // v300: Chat retired for all roles; no DB changes.
   if (!currentUser) return false;
   if (isAdmin()) return true;
   let userPermissions = currentUser.system_permissions;
@@ -2589,9 +2584,62 @@ async function createCustomRole(){
   alert(`تم إنشاء ${label} بنجاح. افتح Permission وحدد صلاحياتها.`);
 }
 
+function getDefaultSubscriptionConfig(){
+  return {yearlyDiscount:20,faq:getDefaultSubscriptionFaq(),comparison:getDefaultSubscriptionComparison(),plans:{
+    starter:{nameAr:'الباقة الأساسية',nameEn:'Starter',monthly:300,yearly:2880},
+    growth:{nameAr:'باقة النمو',nameEn:'Growth',monthly:600,yearly:5760},
+    professional:{nameAr:'الباقة الاحترافية',nameEn:'Professional',monthly:900,yearly:8640},
+    enterprise:{nameAr:'باقة المؤسسات',nameEn:'Enterprise',monthly:1400,yearly:13440}
+  }};
+}
+function normalizeSubscriptionConfig(raw){
+  const defaults=getDefaultSubscriptionConfig();
+  const source=(raw&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};
+  const out={yearlyDiscount:Number(source.yearlyDiscount)>0?Math.max(0,Math.min(99,Math.round(Number(source.yearlyDiscount)))):defaults.yearlyDiscount,plans:{}};
+  for(const key of ['starter','growth','professional','enterprise']){
+    const planSource=(source.plans&&typeof source.plans==='object'&&!Array.isArray(source.plans))?source.plans[key]:null;
+    const planDefault=defaults.plans[key];
+    out.plans[key]={
+      nameAr:validOKBUILabel(planSource?.nameAr,planDefault.nameAr),
+      nameEn:validOKBUILabel(planSource?.nameEn,planDefault.nameEn),
+      monthly:Math.max(0,Number(planSource?.monthly)||planDefault.monthly),
+      yearly:Math.max(0,Number(planSource?.yearly)||planDefault.yearly)
+    };
+  }
+  out.faq=Array.isArray(source.faq)?source.faq.slice(0,40).map(row=>({question:String(row?.question||'').trim().slice(0,250),answer:String(row?.answer||'').trim().slice(0,1500)})).filter(row=>row.question&&row.answer):defaults.faq;
+  out.comparison=Array.isArray(source.comparison)?source.comparison.slice(0,60).map(row=>({name:String(row?.name||'').trim().slice(0,120),values:['starter','growth','professional','enterprise'].map((_,i)=>{const v=row?.values?.[i];return typeof v==='boolean'?v:String(v??'').trim().slice(0,80);})})).filter(row=>row.name):defaults.comparison;
+  return out;
+}
+let subscriptionBillingMode='yearly';
+const SUBSCRIPTION_PLAN_META=Object.freeze({
+  starter:{icon:'📦',description:'مناسبة للشركات الصغيرة والبداية السريعة',cta:'ابدأ الآن',features:['فرع واحد','حتى 5 مستخدمين','إدارة الأوردرات الأساسية','تقارير المبيعات الأساسية','تقارير المرتجعات','دعم فني عبر البريد']},
+  growth:{icon:'📊',description:'مناسبة للشركات المتوسطة ومتعددة الفروع',cta:'اشترك الآن',features:['حتى 5 فروع','حتى 15 مستخدم','إدارة كاملة للأوردرات','تقارير مبيعات متقدمة','تقارير المرتجعات','صلاحيات الموظفين','دعم فني عبر الهاتف والبريد','نسخ احتياطي يومي']},
+  professional:{icon:'💎',description:'الحل الأمثل للشركات الكبيرة سريعة النمو',cta:'اشترك الآن',badge:'الأكثر طلباً',features:['حتى 20 فرع','حتى 50 مستخدم','إدارة متقدمة للأوردرات','تقارير مبيعات شاملة','تقارير المرتجعات المتقدمة','صلاحيات متقدمة للموظفين','متابعة الشحن والتوصيل','خزنة الفروع وإدارة النقدية','تقارير الأطباء والمندوبين','دعم فني مميز 24/7','نسخ احتياطي تلقائي']},
+  enterprise:{icon:'🏢',description:'مخصصة للمؤسسات والشركات الكبيرة جداً',cta:'تواصل معنا',features:['فروع غير محدودة','مستخدمين غير محدودين','إدارة كاملة ومتقدمة للأوردرات','جميع التقارير والتحليلات','تقارير مخصصة حسب الطلب','API وتكاملات خارجية','حزمة Onboarding وتدريب مخصص','مدير حسابات مخصص','دعم فني مميز 24/7','نسخ احتياطي متعدد المواقع']}
+});
+function getDefaultSubscriptionComparison(){return [
+  ['عدد الفروع',['1','5','20','غير محدود']],
+  ['عدد المستخدمين',['5','15','50','غير محدود']],
+  ['إدارة الأوردرات',[true,true,true,true]],
+  ['تقارير المبيعات',[true,true,true,true]],
+  ['تقارير المرتجعات',[true,true,true,true]],
+  ['متابعة الشحن',[false,true,true,true]],
+  ['خزنة الفروع',[false,false,true,true]],
+  ['تقارير الأطباء',[false,false,true,true]],
+  ['تكاملات API',[false,false,false,true]],
+  ['الدعم المميز 24/7',[false,false,true,true]]
+].map(([name,values])=>({name,values}));}
+function getDefaultSubscriptionFaq(){return [
+  ['هل يمكنني تغيير الباقة في أي وقت؟','نعم، يمكنك الترقية أو التغيير في أي وقت وسيتم احتساب الفرق تلقائيًا.'],
+  ['هل هناك فترة تجريبية؟','نوفر فترة مجانية لتجربة ألية العمل لدي العميل ومناقشة اي تعديل على جميع الباقات.'],
+  ['هل يمكن اضافة تعديل قبل الاشتراك؟','متاح اي تعديل او اضافة قبل الاشتراك في جميع الباقات'],
+  ['ما هي طرق الدفع المتاحة؟','نوفر الدفع عبر البطاقات الائتمانية أو التحويل البنكي.'],
+  ['هل يتم استرجاع المبلغ؟','يتم تقييم طلبات الاسترجاع خلال 7 أيام حسب حالة الدعم أيضًا.']
+].map(([question,answer])=>({question,answer}));}
+
 /* v267 — admin-only presentation configuration. Zero writes to orders or accounting tables. */
-const OKB_UI_DEFAULTS=Object.freeze({dashboardLabel:'Dashboard',chatLabel:'Chat',doctorRankLabel:'Doctor Rank',dailyReportLabel:'Daily Report',showDoctorRank:true,showDailyReport:true});
-let okbUIConfig={...OKB_UI_DEFAULTS,buttonLabels:{},fields:{}};
+const OKB_UI_DEFAULTS=Object.freeze({dashboardLabel:'Dashboard',chatLabel:'Chat',doctorRankLabel:'Doctor Rank',dailyReportLabel:'Daily Report',showDoctorRank:true,showDailyReport:true,subscriptions:getDefaultSubscriptionConfig()});
+let okbUIConfig={...OKB_UI_DEFAULTS,subscriptions:normalizeSubscriptionConfig(OKB_UI_DEFAULTS.subscriptions),buttonLabels:{},fields:{}};
 let okbUIConfigRequested=false;
 const okbCustomButtonNodes=new Map();
 const okbCustomFieldNodes=new Map();
@@ -2613,6 +2661,10 @@ function normalizeOKBUIConfiguration(config){
    if(!/^[a-zA-Z][\w-]{0,90}$/.test(id)||!row||typeof row!=='object'||Array.isArray(row))continue;
    out.fields[id]={label:typeof row.label==='string'?row.label.trim().slice(0,70):'',visible:row.visible!==false};
  }
+ out.stickyNoteBadgeVisibility={};
+ const visibility=(raw.stickyNoteBadgeVisibility&&typeof raw.stickyNoteBadgeVisibility==='object'&&!Array.isArray(raw.stickyNoteBadgeVisibility))?raw.stickyNoteBadgeVisibility:{};
+ for(const name of ['مدينة نصر','اسكندرية','طنطا','المنصورة'])out.stickyNoteBadgeVisibility[name]=visibility[name]!==false;
+ out.subscriptions=normalizeSubscriptionConfig(raw.subscriptions);
  return out;
 }
 function getOKBTextNode(el){
@@ -2740,7 +2792,7 @@ function applyOKBFieldConfig(){
 }
 // v271: Field ordering is retired. Saved legacy `order` values are discarded
 // during normalization and no layout styles are changed by customization.
-function applyOKBUIConfiguration(){applyOKBButtonLabels();applyOKBFieldConfig();}
+function applyOKBUIConfiguration(){applyOKBButtonLabels();applyOKBFieldConfig();applySubscriptionSettings();renderSubscriptionSettingsForm();}
 function switchOKBPermissionTab(tab){
  if(!isAdmin())return;
  const map={roles:'okbRolePermissionsPanel',customization:'okbSystemCustomizationPanel',fields:'okbFieldsCustomizationPanel'};
@@ -2835,6 +2887,109 @@ function resetOKBUIConfiguration(){
  renderOKBButtonEditor();renderOKBFieldsEditor();
  showOKBCustomSaveStatus('تمت استعادة الافتراضي في النموذج؛ اضغط حفظ للتطبيق.');
 }
+
+function subMoney(value){const n=Math.max(0,Number(value)||0);return Math.round(n).toLocaleString('en-US');}
+function getSubscriptionConfig(){return normalizeSubscriptionConfig(okbUIConfig?.subscriptions||OKB_UI_DEFAULTS.subscriptions);}
+function renderSubscriptionPage(){
+ const page=document.getElementById('subscriptionPage');if(!page)return;
+ const cfg=getSubscriptionConfig();
+ const plansGrid=document.getElementById('subscriptionPlansGrid');
+ if(plansGrid){
+   plansGrid.innerHTML=['starter','growth','professional','enterprise'].map(key=>{
+     const plan=cfg.plans[key],meta=SUBSCRIPTION_PLAN_META[key],featured=key==='professional';
+     const price=subscriptionBillingMode==='monthly'?plan.monthly:plan.yearly;
+     const annualLabel=subscriptionBillingMode==='monthly'?`${subMoney(plan.yearly)} $ / سنوي`:`${cfg.yearlyDiscount}% وفر`;
+     return `<article class="subscription-plan-card ${featured?'subscription-plan-card--featured':''}"><div class="subscription-plan-head"><div class="subscription-plan-title-wrap"><h3>${escapeHTML(plan.nameAr)}</h3><p>${escapeHTML(plan.nameEn)}</p></div><div class="subscription-plan-icon">${meta.icon}</div></div><div class="subscription-plan-desc">${escapeHTML(meta.description)}</div><div class="subscription-price-box">${meta.badge?`<span class="subscription-most-popular">${escapeHTML(meta.badge)} 👑</span>`:''}<span class="currency">$</span><span class="per">${subscriptionBillingMode==='monthly'?'شهرياً':'سنوياً'}</span><span class="price">${subMoney(price)}</span></div><div class="subscription-yearly-row"><span class="subscription-save-badge">${subscriptionBillingMode==='monthly'?'سنوي':'وفر '+cfg.yearlyDiscount+'%'}</span><span>${subscriptionBillingMode==='monthly'?escapeHTML(annualLabel):`${subMoney(plan.monthly)} $ / شهرياً`}</span></div><button class="subscription-plan-cta" type="button">${escapeHTML(meta.cta)}</button><ul class="subscription-plan-features">${meta.features.map(f=>`<li>${escapeHTML(f)}</li>`).join('')}</ul></article>`;
+   }).join('');
+ }
+ for(const key of ['starter','growth','professional','enterprise']){
+   const el=document.getElementById('subscriptionCompare'+key.charAt(0).toUpperCase()+key.slice(1));
+   if(el)el.textContent=cfg.plans[key].nameAr;
+ }
+ const tbody=document.getElementById('subscriptionComparisonBody');
+ if(tbody){
+   tbody.innerHTML=cfg.comparison.map(({name:label,values})=>`<tr><td>${escapeHTML(label)}</td>${values.map(v=>`<td>${typeof v==='boolean'?`<span class="${v?'subscription-check':'subscription-dash'}">${v?'✓':'–'}</span>`:escapeHTML(String(v))}</td>`).join('')}</tr>`).join('');
+ }
+ const faq=document.getElementById('subscriptionFaqList');
+ if(faq){
+   faq.className='subscription-faq-list';
+   faq.innerHTML=cfg.faq.map(({question:q,answer:a},idx)=>`<details class="subscription-faq-item" ${idx===0?'open':''}><summary>${escapeHTML(q)}</summary><p>${escapeHTML(a)}</p></details>`).join('');
+ }
+ const billingCard=document.querySelector('.subscription-billing-card');
+ if(billingCard)billingCard.dataset.mode=subscriptionBillingMode;
+ const yearlyBtn=document.getElementById('subscriptionBillingYearlyBtn'),monthlyBtn=document.getElementById('subscriptionBillingMonthlyBtn');
+ yearlyBtn?.classList.toggle('active',subscriptionBillingMode==='yearly');
+ monthlyBtn?.classList.toggle('active',subscriptionBillingMode==='monthly');
+}
+function applySubscriptionSettings(){renderSubscriptionPage();}
+function changeSubscriptionBilling(mode){subscriptionBillingMode=mode==='monthly'?'monthly':'yearly';renderSubscriptionPage();}
+function showSubscriptionPage(){hideAllPages();document.getElementById('subscriptionPage')?.classList.remove('hidden');setActiveMenu('subscriptionPage');renderSubscriptionPage();}
+function renderSubscriptionSettingsForm(){
+ if(!isAdmin())return;
+ const cfg=getSubscriptionConfig();
+ for(const key of ['starter','growth','professional','enterprise']){
+   const cap=key.charAt(0).toUpperCase()+key.slice(1),plan=cfg.plans[key];
+   const ar=document.getElementById(`subscription${cap}NameAr`),en=document.getElementById(`subscription${cap}NameEn`),mo=document.getElementById(`subscription${cap}Monthly`),yr=document.getElementById(`subscription${cap}Yearly`);
+   if(ar)ar.value=plan.nameAr; if(en)en.value=plan.nameEn; if(mo)mo.value=String(plan.monthly); if(yr)yr.value=String(plan.yearly);
+ }
+ renderSubscriptionExtraEditors();
+}
+function readSubscriptionSettingsForm(){
+ const next=getSubscriptionConfig();
+ for(const key of ['starter','growth','professional','enterprise']){
+   const cap=key.charAt(0).toUpperCase()+key.slice(1);
+   next.plans[key]={
+     nameAr:validOKBUILabel(document.getElementById(`subscription${cap}NameAr`)?.value,next.plans[key].nameAr),
+     nameEn:validOKBUILabel(document.getElementById(`subscription${cap}NameEn`)?.value,next.plans[key].nameEn),
+     monthly:Math.max(0,Number(document.getElementById(`subscription${cap}Monthly`)?.value)||0),
+     yearly:Math.max(0,Number(document.getElementById(`subscription${cap}Yearly`)?.value)||0)
+   };
+ }
+ return next;
+}
+function renderSubscriptionExtraEditors(){
+ if(!isAdmin())return;
+ const cfg=getSubscriptionConfig();
+ const fq=document.getElementById('subscriptionFaqEditor');
+ if(fq)fq.innerHTML=cfg.faq.map(({question,answer},i)=>`<div class="subscription-editor-row" data-faq-row><label>السؤال<input maxlength="250" data-faq-q value="${escapeHTML(question)}" required></label><label>الإجابة<textarea data-faq-a maxlength="1500" rows="2" required>${escapeHTML(answer)}</textarea></label><button type="button" class="subscription-editor-delete" onclick="removeSubscriptionEditorRow(this)">حذف السؤال</button></div>`).join('');
+ const cp=document.getElementById('subscriptionComparisonEditor');
+ if(cp)cp.innerHTML=cfg.comparison.map(({name,values})=>subscriptionComparisonEditorMarkup(name,values)).join('');
+}
+function subscriptionComparisonEditorMarkup(name='',values=[false,false,false,false]){
+ const names=['Starter','Growth','Professional','Enterprise'];
+ return `<div class="subscription-editor-row" data-comparison-row><label>اسم الميزة<input data-compare-name maxlength="120" value="${escapeHTML(name)}" required></label><div class="subscription-compare-checks">${names.map((title,i)=>`<label><input type="checkbox" data-compare-check="${i}" ${values[i]===true||String(values[i]).trim()==='✓'?'checked':''}>${title}</label>`).join('')}</div><div class="subscription-editor-values">${names.map((title,i)=>`<label>${title} — قيمة اختيارية<input data-compare-value="${i}" maxlength="80" placeholder="✓ أو — حسب التحديد" value="${escapeHTML(typeof values[i]==='string'?values[i]:'')}"></label>`).join('')}</div><button type="button" class="subscription-editor-delete" onclick="removeSubscriptionEditorRow(this)">حذف الميزة</button></div>`;
+}
+function addSubscriptionFaqRow(){
+ if(!isAdmin())return;
+ document.getElementById('subscriptionFaqEditor')?.insertAdjacentHTML('beforeend','<div class="subscription-editor-row" data-faq-row><label>السؤال<input data-faq-q maxlength="250" required></label><label>الإجابة<textarea data-faq-a maxlength="1500" rows="2" required></textarea></label><button type="button" class="subscription-editor-delete" onclick="removeSubscriptionEditorRow(this)">حذف السؤال</button></div>');
+}
+function addSubscriptionComparisonRow(){
+ if(!isAdmin())return;
+ document.getElementById('subscriptionComparisonEditor')?.insertAdjacentHTML('beforeend',subscriptionComparisonEditorMarkup());
+}
+function removeSubscriptionEditorRow(button){if(!isAdmin())return;button?.closest('.subscription-editor-row')?.remove();}
+function readSubscriptionFaqEditor(){
+ return [...document.querySelectorAll('#subscriptionFaqEditor [data-faq-row]')].slice(0,40).map(row=>({question:String(row.querySelector('[data-faq-q]')?.value||'').trim().slice(0,250),answer:String(row.querySelector('[data-faq-a]')?.value||'').trim().slice(0,1500)})).filter(x=>x.question&&x.answer);
+}
+function readSubscriptionComparisonEditor(){
+ return [...document.querySelectorAll('#subscriptionComparisonEditor [data-comparison-row]')].slice(0,60).map(row=>({name:String(row.querySelector('[data-compare-name]')?.value||'').trim().slice(0,120),values:[0,1,2,3].map(i=>{const val=String(row.querySelector(`[data-compare-value="${i}"]`)?.value||'').trim().slice(0,80);return val||Boolean(row.querySelector(`[data-compare-check="${i}"]`)?.checked);})})).filter(x=>x.name);
+}
+function setSubscriptionSettingsStatus(message){const el=document.getElementById('subscriptionSettingsStatus');if(el)el.textContent=message||'';}
+async function saveSubscriptionSettings(event){
+ event?.preventDefault?.();
+ if(!isAdmin())return;
+ okbUIConfig=normalizeOKBUIConfiguration({...okbUIConfig,subscriptions:readSubscriptionSettingsForm()});
+ setSubscriptionSettingsStatus('جاري الحفظ...');
+ try{
+   const {error}=await supabaseClient.from('okb_ui_customization').upsert({id:'main',config:okbUIConfig,updated_at:new Date().toISOString()},{onConflict:'id'});
+   if(error)throw error;
+   applyOKBUIConfiguration();
+   setSubscriptionSettingsStatus('تم حفظ الاشتراكات ✓');
+   await logActivity('permissions_updated','تحديث الاشتراكات','تم تعديل أسماء وأسعار الباقات من الإعدادات');
+ }catch(err){setSubscriptionSettingsStatus('فشل الحفظ: '+(err?.message||err));}
+}
+function resetSubscriptionSettingsForm(){if(!isAdmin())return;okbUIConfig=normalizeOKBUIConfiguration({...okbUIConfig,subscriptions:getDefaultSubscriptionConfig()});renderSubscriptionSettingsForm();applySubscriptionSettings();setSubscriptionSettingsStatus('تمت استعادة الافتراضي في النموذج؛ اضغط حفظ للتطبيق.');}
+document.getElementById('subscriptionSettingsForm')?.addEventListener('submit',saveSubscriptionSettings);
 
 function renderRolePermissionMatrix() {
   if (!isAdmin()) return;
@@ -3456,8 +3611,13 @@ function buildNotesWithCollectMeta(notes, meta) {
   return `${orderBlock}${orderBlock ? "\n" : ""}${COLLECT_META_PREFIX}${JSON.stringify(safeMeta)}]`;
 }
 
+// Non-admin collectors may correct their first Signed collection once.
+// The second entry is a replacement snapshot, never an additional receipt.
 function canCurrentUserCollect(order) {
-  return String(order?.status || '').trim() !== 'Signed';
+  if (String(order?.status || '').trim() !== 'Signed') return true;
+  if (isAdmin()) return false; // Preserve the existing admin route/exception model.
+  const meta = getCollectMeta(order);
+  return Number(meta.count || 0) === 1 && Array.isArray(meta.history) && meta.history.length === 1;
 }
 
 function canMutateSignedOrder(order, actionLabel = 'تنفيذ هذا الإجراء', permissionFeature = '') {
@@ -3522,7 +3682,7 @@ async function showReturnedOrderCollectionBlockedMessage(order) {
 
 function getCollectButtonHtml(order, src) {
   if (!canCollectOrders()) return "";
-  if (String(order?.status || '').trim() === 'Signed') return "";
+  if (!canCurrentUserCollect(order)) return "";
   if (isReturnedOrCancelledOrder(order)) return "";
   if (typeof isOrderLockedByDaily === 'function' && isOrderLockedByDaily(order)) {
     return disabledActionButton('$ تحصيل');
@@ -3530,15 +3690,18 @@ function getCollectButtonHtml(order, src) {
   const meta = getCollectMeta(order);
   const count = Number(meta.count || 0);
 
-  const isSecondEmployeeTry = false;
+  const isSecondEmployeeTry = !isAdmin() && String(order.status || '').trim() === 'Signed' && count === 1;
   const collectPrefix = count > 0 ? String(count) : '$';
   const label = `${collectPrefix} تحصيل`;
-  const opacity = isSecondEmployeeTry ? "opacity:.5;" : "";
+  const secondTryStyle = isSecondEmployeeTry
+    ? "border-color:rgba(192,132,252,.85);background:linear-gradient(135deg,rgba(126,34,206,.50),rgba(8,145,178,.34));color:#f5e9ff;box-shadow:0 0 0 1px rgba(192,132,252,.20),0 0 16px rgba(168,85,247,.38),0 5px 14px rgba(8,145,178,.22);text-shadow:0 0 9px rgba(216,180,254,.36);"
+    : "";
+  const displayLabel = isSecondEmployeeTry ? "آخر تحصيل ⛔" : label;
   const title = isSecondEmployeeTry
     ? "آخر مرة متاحة للموظف لتعديل التحصيل"
     : (isAdmin() && count >= 2 ? "تحصيل/تعديل متاح للأدمن فقط" : "تحصيل الأوردر");
 
-  return `<button title="${title}" onclick="openCollectModal('${order.id}','${String(order.customer_name||'').replace(/'/g,"\\'")}',${Number(order.price||0)},${Number(order.deposit||0)},'${src}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:linear-gradient(135deg,rgba(100,210,240,0.28),rgba(80,190,230,0.20));backdrop-filter:blur(10px);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(100,210,240,0.18);text-shadow:0 1px 2px rgba(0,0,0,0.2);${opacity}">${label}</button>`;
+  return `<button title="${title}" onclick="openCollectModal('${order.id}','${String(order.customer_name||'').replace(/'/g,"\\'")}',${Number(order.price||0)},${Number(order.deposit||0)},'${src}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:linear-gradient(135deg,rgba(100,210,240,0.28),rgba(80,190,230,0.20));backdrop-filter:blur(10px);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(100,210,240,0.18);text-shadow:0 1px 2px rgba(0,0,0,0.2);${secondTryStyle}">${displayLabel}</button>`;
 }
 
 function handleEnter(e) { if (e.key === "Enter") login(); }
@@ -4317,7 +4480,7 @@ function startPostLoginDataLoads() {
       if (result.status === 'rejected') console.error('Background startup load failed:', result.reason);
     });
   });
-  initChatFeature().catch(error => console.error('Chat startup failed:', error));
+  // v300: Chat auto-start disabled (no polling or initial reads).
 }
 
 function getNavigationType(){
@@ -4564,7 +4727,7 @@ if (selectPageTh) selectPageTh.style.display = isAdmin() ? "" : "none";
 const productReportsBtn = document.getElementById('productReportsHeaderBtn');
 if (productReportsBtn) productReportsBtn.style.display = canViewProductReports() ? 'inline-flex' : 'none';
 const secretaryAuditBtn = document.getElementById('secretaryAuditHeaderBtn');
-if (secretaryAuditBtn) secretaryAuditBtn.style.display = hasRoleFeature('secretary_audit') ? 'inline-flex' : 'none';
+if (secretaryAuditBtn) secretaryAuditBtn.style.display = 'inline-flex';
 const chatHeaderBtn = document.getElementById('chatHeaderBtn');
 if (chatHeaderBtn) chatHeaderBtn.classList.toggle('hidden', !hasRoleFeature('chat'));
 const dashboardBtn = document.getElementById('dashboardHeaderBtn');
@@ -4641,13 +4804,15 @@ const standardSettingsAccess = hasRoleFeature('settings_page');
 });
 const commissionSettingsCard = document.getElementById('commissionSettingsCard');
 if (commissionSettingsCard) commissionSettingsCard.classList.toggle('hidden', !canOpenCommissionSettingsRoom);
+const subscriptionSettingsCard = document.getElementById('subscriptionSettingsCard');
+if (subscriptionSettingsCard) subscriptionSettingsCard.classList.toggle('hidden', !isAdmin());
 const activityBtn = document.getElementById("activityLogHeaderBtn");
 if (activityBtn) activityBtn.style.display = hasRoleFeature('activity_log') ? "inline-flex" : "none";
 document.querySelectorAll('[data-page="usersPage"]').forEach(el => {
   el.style.display = canOpenUsers ? "" : "none";
 });
 startActivityLogNotifications();
-startSecretaryAuditNotifications();
+stopSecretaryAuditNotifications();
 startFinancialAuditNotifications();
 startOnlinePresence();
 startLastSeenHeartbeat();
@@ -4810,7 +4975,7 @@ function resetAppState() {
   });
   const av = $("userAvatar"); if (av) av.textContent = "U";
 
-  ["orderForm", "userForm", "itemForm", "doctorSettingsForm", "shippingSettingsForm", "stickyNoteSettingsForm", "okbFilterSettingsForm", "commissionSettingsForm"].forEach(id => {
+  ["orderForm", "userForm", "itemForm", "doctorSettingsForm", "shippingSettingsForm", "stickyNoteSettingsForm", "okbFilterSettingsForm", "commissionSettingsForm", "subscriptionSettingsForm"].forEach(id => {
     const f = $(id); if (f) f.reset();
   });
 
@@ -5807,7 +5972,7 @@ async function exportOKBStoresReportExcel(){
 }
 
 function hideAllPages() {
-  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "commissionPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "secretaryAuditPage", "financialAuditPage"].forEach(id => {
+  ["ordersPage", "activityLogPage", "productReportsPage", "branchStockPage", "pendingPage", "okbStoresReportPage", "branchesTreasuryPage", "commissionPage", "analyticsPage", "shippingRankPage", "doctorRankPage", "branchRankPage", "usersPage", "branchsPage", "permissionPage", "branchPage", "khaznaPage", "chatPage", "subscriptionPage", "secretaryAuditPage", "financialAuditPage"].forEach(id => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
@@ -5979,7 +6144,7 @@ function showBranchsPage() {
     loadShippingSystems();
     loadOKBFilters({ silent:true });
   }
-  if (isAdmin()) loadStickyNoteSetting();
+  if (isAdmin()) { loadStickyNoteSetting(); renderSubscriptionSettingsForm(); }
   if(canOpenCommissionRoom) loadCommissionSettingsRoom();
 }
 
@@ -5992,6 +6157,7 @@ async function refreshSettingsPage(button) {
     if(isAdmin())jobs.push(loadStickyNoteSetting());
     if(hasRoleFeature('commission_settings_room'))jobs.push(loadCommissionSettingsRoom());
     await Promise.all(jobs);
+    if(isAdmin())renderSubscriptionSettingsForm();
   } finally {
     if (button) { button.disabled = false; button.textContent = oldText || 'Refresh'; }
   }
@@ -6058,7 +6224,7 @@ function openHeaderSettingsPage(page) {
 async function showInitialPermittedPage() {
   let restoreSecretaryAudit=false;
   try{restoreSecretaryAudit=sessionStorage.getItem('okb_secretary_audit_restore_v285')==='1';sessionStorage.removeItem('okb_secretary_audit_restore_v285');}catch(_){ }
-  if(restoreSecretaryAudit&&isAdmin()&&hasRoleFeature('secretary_audit'))return openSecretaryAudit();
+  // Secretary Audit retired: do not restore its page even from an old session marker.
   if(okbReportRestorePage())return;
   if (await openOKBAbnormalLinkedOrder()) return;
   let hardRefreshBranchName = '';
@@ -12532,6 +12698,8 @@ async function loadStickyNoteSetting() {
   if (!isAdmin()) return;
   const branch = document.getElementById('stickyNoteBranch')?.value;
   if (!BRANCH_STICKY_NOTE_BRANCHES.includes(branch)) return;
+  const badgeControl=document.getElementById('stickyNoteBadgeVisible');
+  if(badgeControl)badgeControl.value=okbUIConfig.stickyNoteBadgeVisibility?.[branch]===false?'hide':'show';
   setStickyNoteSettingsStatus('جاري تحميل إعداد الفرع...');
   const { data, error } = await supabaseClient
     .from('branch_sticky_notes')
@@ -12619,6 +12787,33 @@ async function disableStickyNote() {
   }
 }
 
+async function saveStickyNoteBadgeVisibility() {
+  if(!isAdmin())return;
+  const branch=document.getElementById('stickyNoteBranch')?.value;
+  const control=document.getElementById('stickyNoteBadgeVisible');
+  if(!BRANCH_STICKY_NOTE_BRANCHES.includes(branch)||!control)return;
+  const visible=control.value!=='hide';
+  const button=document.getElementById('saveStickyNoteBadgeVisible');
+  if(button)button.disabled=true;
+  setStickyNoteSettingsStatus('جاري حفظ ظهور زر الفرع...');
+  try {
+    // UI-only JSON configuration: never touches operational branch_sticky_notes or order tables.
+    const {data:latest,error:readError}=await supabaseClient.from('okb_ui_customization').select('config').eq('id','main').maybeSingle();
+    if(readError)throw readError;
+    const next=normalizeOKBUIConfiguration(latest?.config||okbUIConfig);
+    next.stickyNoteBadgeVisibility[branch]=visible;
+    const {error}=await supabaseClient.from('okb_ui_customization').upsert({id:'main',config:next,updated_at:new Date().toISOString()},{onConflict:'id'});
+    if(error)throw error;
+    okbUIConfig=next;
+    renderBranchFloatingSticky();
+    setStickyNoteSettingsStatus(visible?'تم إظهار اسم الفرع أسفل الصفحة.':'تم إخفاء اسم الفرع أسفل الصفحة.','success');
+    await logActivity('settings_updated','ظهور اسم الفرع',`الفرع: ${branch} | ${visible?'إظهار':'إخفاء'}`,{branch_name:branch}).catch(()=>{});
+  }catch(error){
+    console.error('Sticky Note badge visibility save failed:',error);
+    setStickyNoteSettingsStatus('تعذر الحفظ: '+(error?.message||error),'error');
+  }finally{if(button)button.disabled=false;}
+}
+
 function isActiveBranchStickyNote(note) {
   if (!note?.active || !note.display_text) return false;
   const now = Date.now();
@@ -12633,7 +12828,8 @@ function renderBranchFloatingSticky() {
   const message = document.getElementById('branchFloatingMessage');
   const branchPageVisible = Boolean(currentUser && currentBranchName && !document.getElementById('branchPage')?.classList.contains('hidden'));
   const dashboardPageVisible = Boolean(currentUser && !document.getElementById('ordersPage')?.classList.contains('hidden'));
-  const shellVisible = branchPageVisible || dashboardPageVisible;
+  const badgeEnabled=!branchPageVisible||okbUIConfig.stickyNoteBadgeVisibility?.[currentBranchName]!==false;
+  const shellVisible = (branchPageVisible && badgeEnabled) || dashboardPageVisible;
   if (!shell || !branchBadge || !message) return;
   shell.classList.toggle('hidden', !shellVisible);
   document.body.classList.toggle('branch-floating-sticky-visible', shellVisible);
@@ -12644,6 +12840,7 @@ function renderBranchFloatingSticky() {
     message.textContent = '';
     return;
   }
+  shell.dataset.floatingBranch=currentBranchName;
   branchBadge.textContent = `فرع ${currentBranchName}`;
   const showMessage = activeBranchStickyNote?.branch_name === currentBranchName && isActiveBranchStickyNote(activeBranchStickyNote);
   message.classList.toggle('hidden', !showMessage);
@@ -13946,7 +14143,8 @@ async function openBranchPage(branchName,options={}) {
   hideAllPages();
 
   const bp = document.getElementById('branchPage');
-  if (bp) bp.classList.remove('hidden');
+  if (bp) { bp.classList.remove('hidden'); bp.dataset.oceanNeonTrial = ['المنصورة','مدينة نصر','اسكندرية','طنطا'].includes(String(branchName || '').trim()) ? 'mansoura' : ''; }
+  setMansouraBranchFormVisualLayout(bp?.dataset.oceanNeonTrial === 'mansoura');
   rememberAppPage('branchPage');
 
   const title = document.getElementById('branchPageTitle');
@@ -16323,23 +16521,9 @@ async function handleSecretaryAuditOcrNotification(payload){
   else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
 }
 function startSecretaryAuditNotifications(){
+  // Retired feature: intentionally never subscribe or start polling.
   stopSecretaryAuditNotifications();
-  if(!isSecretaryAuditEngineActive())return;
-  refreshSecretaryAuditUnreadCount();
-  let channel=supabaseClient.channel(`secretary-audit-${currentUser?.id||Date.now()}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_logs'},payload=>{
-    const action=String(payload?.new?.action_type||'');
-    if(!SECRETARY_AUDIT_NOTIFICATION_ACTIONS.includes(action)||!isFourBranchSecretaryAuditEvent(payload?.new))return;
-    const open=!document.getElementById('secretaryAuditPage')?.classList.contains('hidden');
-    if(open)scheduleSecretaryAuditLiveRefresh();
-    else updateSecretaryAuditBadge(secretaryAuditUnreadCount+1);
-  });
-  if(OKB_PAYMENT_OCR_ENABLED)channel=channel.on('postgres_changes',{event:'*',schema:'public',table:'payment_ocr_audits'},payload=>{
-    void handleSecretaryAuditOcrNotification(payload);
-  });
-  secretaryAuditRealtimeChannel=channel.subscribe();
-  secretaryAuditPollingTimer=setInterval(refreshSecretaryAuditUnreadCount,20000);
 }
-
 function updateFinancialAuditBadge(count=financialAuditUnreadCount){financialAuditUnreadCount=Math.max(0,Number(count)||0);const badge=document.getElementById('financialAuditNotification');if(!badge)return;badge.textContent=financialAuditUnreadCount>99?'99+':String(financialAuditUnreadCount);badge.classList.toggle('hidden',financialAuditUnreadCount<1||!isAdmin());}
 function markFinancialAuditRead(){localStorage.setItem(`okb_financial_audit_seen_${currentUser?.username||currentUser?.id||'user'}`,new Date().toISOString());updateFinancialAuditBadge(0);}
 function updateFinancialAuditSignedCacheFromRealtime(payload){
@@ -16609,6 +16793,9 @@ async function loadSecretaryAuditRows(reuseRangeSnapshot=false) {
 }
 
 async function openSecretaryAudit() {
+  // Secretary Audit retired from the application.
+  stopSecretaryAuditNotifications();
+  return;
   if(!isAdmin()){alert('Secretary Audit للأدمن فقط');return;}
   if(!hasRoleFeature('secretary_audit')){alert('Secretary Audit غير مضاف لصلاحيات حسابك');return;}
   const today=getCairoDateISO(new Date());
@@ -17922,8 +18109,8 @@ function getLatestCollectPaymentMethod(order) {
 async function openCollectModal(orderId, customerName, price, deposit, src) {
   if (!canCollectOrders()) { alert('زر التحصيل غير مضاف لصلاحيات حسابك'); return; }
   const order = getOrderByIdAny(orderId);
-  if (order && String(order.status || '').trim() === 'Signed') {
-    alert('تم تسليم وتحصيل هذا الأوردر بالفعل. لا يمكن تحصيل أوردر Signed مرة أخرى.\nيجب على الأدمن تعديل حالة الأوردر أولاً.');
+  if (order && String(order.status || '').trim() === 'Signed' && !canCurrentUserCollect(order)) {
+    alert('تم تحصيل هذا الأوردر بالفعل ولا توجد محاولة تصحيح أخرى متاحة.');
     return;
   }
   if (order && isReturnedOrCancelledOrder(order)) {
@@ -18211,8 +18398,28 @@ async function confirmCollectOrder() {
 
   try {
     if (currentOrder && !canCurrentUserCollect(currentOrder)) {
-      alert('تم تسليم وتحصيل هذا الأوردر بالفعل. لا يمكن تحصيل أوردر Signed مرة أخرى.\nيجب على الأدمن تعديل حالة الأوردر أولاً.');
+      alert('لم تعد محاولة التحصيل أو التصحيح متاحة لهذا الأوردر.');
       return;
+    }
+    // Verify the persisted state: local screen data may be stale after another device saves.
+    const { data: persistedOrder, error: persistedReadError } = await supabaseClient
+      .from('orders').select('id,status,notes,price,deposit,branch,created_at').eq('id', _collectOrderId).single();
+    if (persistedReadError || !persistedOrder) throw new Error('تعذر التحقق من أحدث حالة للأوردر');
+    if (!canCurrentUserCollect(persistedOrder) ||
+        String(persistedOrder.status || '') !== String(currentOrder?.status || '') ||
+        String(persistedOrder.notes || '') !== String(currentOrder?.notes || '')) {
+      alert('تم تحديث الأوردر من جلسة أخرى. حدّث الصفحة قبل تسجيل التحصيل.');
+      return;
+    }
+    const isCorrection = !isAdmin() && String(persistedOrder.status || '').trim() === 'Signed';
+    if (isCorrection) {
+      const originalCollectAt = getLatestCollectEntry(persistedOrder)?.at;
+      const originalCollectDay = getLocalDateISO(originalCollectAt || persistedOrder.collected_at || new Date());
+      if (isOrderLockedByDaily(persistedOrder) ||
+          (persistedOrder.branch && await fetchDailyLock(persistedOrder.branch, originalCollectDay))) {
+        alert('لا يمكن تصحيح التحصيل بعد قفل اليومية.');
+        return;
+      }
     }
 
     const collectionValidation = currentOrder ? validateCollectionDraft(currentOrder, {
@@ -18242,7 +18449,9 @@ async function confirmCollectOrder() {
     }
 
     const collectDateInput = document.getElementById('collectDateInput');
-    const selectedCollectDate = isAdmin() ? String(collectDateInput?.value || '').trim() : getLocalDateISO();
+    const selectedCollectDate = isAdmin() ? String(collectDateInput?.value || '').trim()
+      : isCorrection ? getLocalDateISO(getLatestCollectEntry(persistedOrder)?.at || persistedOrder.collected_at || new Date())
+      : getLocalDateISO();
     if (isAdmin() && !selectedCollectDate) {
       alert('اختر تاريخ التحصيل أولاً.');
       if (collectDateInput) collectDateInput.focus();
@@ -18253,7 +18462,10 @@ async function confirmCollectOrder() {
       if (collectDateInput) collectDateInput.focus();
       return;
     }
-    const collectionTimestamp = isAdmin() ? buildCollectionTimestamp(selectedCollectDate) : new Date().toISOString();
+    // A correction belongs to the original accounting day, not the day it was edited.
+    const collectionTimestamp = isCorrection
+      ? (getLatestCollectEntry(persistedOrder)?.at || persistedOrder.collected_at || new Date().toISOString())
+      : isAdmin() ? buildCollectionTimestamp(selectedCollectDate) : new Date().toISOString();
     if (isAdmin() && currentOrder?.branch) {
       const selectedDayLock = await fetchDailyLock(currentOrder.branch, selectedCollectDate);
       if (selectedDayLock) {
@@ -18308,12 +18520,18 @@ async function confirmCollectOrder() {
       collected_at: collectionTimestamp
     };
 
-    const { error } = await supabaseClient
-      .from('orders')
-      .update(collectUpdateData)
-      .eq('id', _collectOrderId);
-
+    let collectWrite = supabaseClient.from('orders')
+      .update(collectUpdateData).eq('id', _collectOrderId);
+    // Compare-and-set protects the one correction slot from simultaneous submissions.
+    if (isCorrection) {
+      collectWrite = collectWrite.eq('status', 'Signed');
+      collectWrite = persistedOrder.notes == null
+        ? collectWrite.is('notes', null) : collectWrite.eq('notes', persistedOrder.notes);
+    }
+    const { data: savedCollection, error } = await collectWrite.select('id');
     if (error) throw error;
+    if (!savedCollection || savedCollection.length !== 1)
+      throw new Error('تم تعديل التحصيل من جلسة أخرى؛ حدّث الصفحة وراجع آخر بيانات الأوردر');
 
     if (isCollectionTransfer && proofUrl) {
       const expectedTransferAmount = isCashTransfer ? transferAmount : sales;
@@ -19120,6 +19338,7 @@ function getDefaultChatUser(){
 
 function startChatRealtime(){
   stopChatRealtime();
+  return; // v300: Never subscribe or poll for retired Chat.
   if (!currentUser) return;
   const me = chatCurrentUsername();
   chatRealtimeChannel = supabaseClient.channel(`okb-chat-${me}-${Date.now()}`)
@@ -19152,12 +19371,14 @@ function startChatRealtime(){
 }
 
 async function initChatFeature(){
+  return; // v300: Chat feature retired.
   if (!currentUser) return;
   startChatRealtime();
   await refreshChatUnreadCount();
 }
 
 async function showChatPage(){
+  return; // v300: Chat page no longer accessible.
   if (!currentUser) return;
   if (!hasRoleFeature('chat')) { alert('صفحة Chat غير مضافة لصلاحيات حسابك'); return; }
   hideAllPages();
@@ -21278,7 +21499,7 @@ function syncMobileFoundationAccess(){
   const quickLabel=document.getElementById('mobileQuickLabel');
   if(quickBtn)quickBtn.dataset.mobileTarget=quick?.target||'';
   if(quickIcon)quickIcon.textContent=quick?.icon||'◌';
-  if(quickLabel)quickLabel.textContent=quick?.label||'Chat';
+  if(quickLabel)quickLabel.textContent=quick?.label||'Quick';
   const access={
     mobileNavDashboard:hasUser&&hasRoleFeature('dashboard'),
     mobileNavBranches:hasUser&&hasRoleFeature('okb_stores'),
@@ -21403,7 +21624,7 @@ function renderMobileMoreSheet(container){
   if(hasRoleFeature('branch_stock'))operations.push(['📦','Branch Stock','الجرد والمخزون',()=>showBranchStockPage(),mobileFoundationBadgeValue('branchStockNotification')]);
   if(hasRoleFeature('activity_log')&&quickTarget!=='activity')operations.push(['📈','Activity Log','سجل الحركات',()=>showActivityLogPage(),mobileFoundationBadgeValue('activityLogNotification')]);
   if(canViewProductReports())operations.push(['📊','Product Reports','تقارير المنتجات',()=>showProductReportsPage(),0]);
-  if(hasRoleFeature('secretary_audit'))operations.push(['🛡️','Secretary Audit','مراجعة السكرتارية',()=>openSecretaryAudit(),mobileFoundationBadgeValue('secretaryAuditNotification')]);
+  operations.push(['👑','Subscription','الاشتراكات والباقات',()=>showSubscriptionPage(),0]);
   if(hasButtonPermission('btn_financial_audit_main'))operations.push(['💰','Financial Audit','المراجعة المالية',()=>openFinancialAudit('branches','main'),mobileFoundationBadgeValue('financialAuditNotification')]);
   if(operations.length){
     mobileFoundationAddGroup(container,'التشغيل والمتابعة');
@@ -21550,3 +21771,49 @@ window.__OKB_BUILD_VERSION = 'v240';
 
 // v286: paint all independent report switches without fetching any report data.
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',okbReportUpdateUI,{once:true});else okbReportUpdateUI();
+
+/* v328: presentation-only layout migration for Mansoura. Existing inputs and their handlers stay intact. */
+function setMansouraBranchFormVisualLayout(enabled) {
+  const form=document.getElementById('branchOrderForm');
+  if(!form)return;
+  // v330: visual-only caption toggle on the shared branch page; restore for other branches.
+  const clearProductsButton=form.querySelector('.smart-products-box[data-cart="branch"] .smart-products-head > button');
+  if(clearProductsButton){
+    if(clearProductsButton.dataset.mansouraOriginalCaption === undefined)
+      clearProductsButton.dataset.mansouraOriginalCaption=clearProductsButton.textContent;
+    clearProductsButton.textContent=enabled?'مسح المنتجات':clearProductsButton.dataset.mansouraOriginalCaption;
+  }
+  const grid=form.querySelector(':scope > .form-grid');
+  const status=document.getElementById('bStatus');
+  const notes=document.getElementById('bOrderNotes');
+  const payment=document.getElementById('bPaymentImage');
+  const area=document.getElementById('bArea');
+  if(!grid||!status||!notes||!payment||!area)return;
+  const nodes=[status,notes.parentElement.parentElement,payment.parentElement];
+  if(!form._mansouraOriginalPositions){
+    form._mansouraOriginalPositions=nodes.map((node)=>{
+      const anchor=document.createComment('original mansoura dashboard form location');
+      node.parentNode.insertBefore(anchor,node);
+      return {node,anchor};
+    });
+  }
+  let layout=document.getElementById('mansouraCustomerSupportLayout');
+  if(enabled){
+    if(!layout){
+      layout=document.createElement('div');
+      layout.id='mansouraCustomerSupportLayout';
+      layout.className='mansoura-customer-support-layout';
+    }
+    area.insertAdjacentElement('afterend',layout);
+    nodes.forEach(node=>layout.appendChild(node));
+    const picker=payment.parentElement;
+    picker.classList.toggle('has-file',!!payment.files.length);
+    if(!form._mansouraProofInputBound){
+      payment.addEventListener('change',()=>picker.classList.toggle('has-file',!!payment.files.length));
+      form._mansouraProofInputBound=true;
+    }
+  }else{
+    form._mansouraOriginalPositions.forEach(({node,anchor})=>anchor.parentNode.insertBefore(node,anchor.nextSibling));
+    if(layout)layout.remove();
+  }
+}

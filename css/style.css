@@ -1275,7 +1275,7 @@ body.doctor-readonly .branch-bulk-edit,body.doctor-readonly .branch-bulk-delete,
       filter:grayscale(.45)!important;
       pointer-events:none!important;
     }
-    #employeeName[readonly], #bEmployeeName[readonly]{
+    #bEmployeeName[readonly]{
       background: var(--bg-soft) !important;
       cursor: not-allowed;
       opacity: .85;
@@ -4046,3 +4046,1006 @@ body.customer-profile-open{overflow:hidden}
 #branchOrderForm .branch-order-flags {grid-column:1/-1;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:1px 0 3px;min-width:0;}
 #branchOrderForm .branch-order-flags .order-flag-check {min-height:25px;padding:1px 0;display:inline-flex;align-items:center;gap:8px;font-size:12px;}
 #branchOrderForm .branch-order-flags .order-flag-check input[type="checkbox"] {width:14px!important;height:14px!important;min-width:14px!important;margin:0;flex:none;}
+
+
+/* ===== v301 Subscription page + settings (presentation only) ===== */
+.subscription-header-btn{background:linear-gradient(145deg,rgba(22,169,176,.18),rgba(11,35,54,.95))!important;border:1px solid rgba(40,224,223,.45)!important;box-shadow:0 0 0 1px rgba(22,195,205,.08),0 12px 30px rgba(5,16,26,.22),inset 0 1px 0 rgba(151,251,255,.12);color:#e8fdff!important}
+.subscription-header-btn .secretary-audit-icon{filter:drop-shadow(0 0 10px rgba(46,233,234,.28));font-size:17px}
+.subscription-page-wrap{display:flex;flex-direction:column;gap:18px;padding:18px 6px 28px}
+.subscription-hero{display:grid;grid-template-columns:320px 1fr;gap:18px;align-items:start}
+.subscription-billing-card,.subscription-page-title,.subscription-plan-card,.subscription-summary-card,.subscription-comparison-card,.subscription-faq-card{position:relative;background:radial-gradient(circle at top left,rgba(34,196,208,.18),transparent 34%),linear-gradient(160deg,#0d2235 0%,#0b1a2b 46%,#0a1624 100%);border:1px solid rgba(57,218,223,.28);border-radius:28px;box-shadow:0 20px 55px rgba(0,0,0,.22), inset 0 1px 0 rgba(136,246,255,.08)}
+.subscription-billing-card{padding:20px 22px}
+.subscription-billing-toggle{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.subscription-discount-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(17,186,121,.18);border:1px solid rgba(54,248,170,.28);color:#7ef5c2;border-radius:18px;padding:7px 14px;font-weight:800}
+.subscription-billing-option{border:none;background:transparent;color:#d4e9f5;font-weight:800;font-size:20px;padding:0 8px;cursor:pointer}
+.subscription-billing-option.active{color:#fff;text-shadow:0 0 16px rgba(63,237,237,.22)}
+.subscription-billing-switch{width:54px;height:30px;background:rgba(38,220,220,.16);border:1px solid rgba(64,240,239,.36);border-radius:999px;padding:3px;display:inline-flex;align-items:center;justify-content:flex-start;box-shadow:inset 0 0 16px rgba(16,212,214,.10)}
+.subscription-billing-switch .subscription-billing-dot{width:22px;height:22px;border-radius:50%;background:linear-gradient(180deg,#e7ffff,#79f0ee);box-shadow:0 0 14px rgba(64,236,239,.35)}
+.subscription-billing-card[data-mode="monthly"] .subscription-billing-switch{justify-content:flex-end}
+.subscription-billing-card p{margin:12px 0 0;color:#d3e6f5}
+.subscription-page-title{padding:28px 32px;display:flex;flex-direction:column;justify-content:center;min-height:134px}
+.subscription-page-title h1{margin:0;color:#f7fdff;font-size:52px;line-height:1.08;font-weight:900;text-align:right}
+.subscription-page-title p{margin:10px 0 0;color:#d4e7f5;font-size:26px;text-align:right}
+.subscription-plans-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
+.subscription-plan-card{padding:28px 22px 20px;overflow:hidden}
+.subscription-plan-card--featured{border-color:rgba(43,231,232,.82);box-shadow:0 0 0 1px rgba(39,223,224,.22),0 0 28px rgba(39,223,224,.16),0 20px 55px rgba(0,0,0,.24),inset 0 1px 0 rgba(180,255,255,.12)}
+.subscription-most-popular{position:absolute;top:-16px;left:50%;transform:translateX(-50%);padding:8px 22px;border-radius:999px;background:linear-gradient(180deg,rgba(5,25,44,.98),rgba(8,37,62,.92));border:1px solid rgba(43,231,232,.82);box-shadow:0 0 18px rgba(39,223,224,.22);color:#3bf1f1;font-weight:900;font-size:14px}
+.subscription-plan-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.subscription-plan-title-wrap h3{margin:0;color:#f8fdff;font-size:22px;font-weight:900;text-align:right}
+.subscription-plan-title-wrap p{margin:6px 0 0;color:#3ee6f0;font-size:15px;font-weight:800;text-align:right}
+.subscription-plan-icon{width:54px;height:54px;border-radius:17px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(36,212,220,.18),rgba(16,45,63,.94));border:1px solid rgba(53,235,236,.24);color:#45e9ef;font-size:27px;box-shadow:inset 0 1px 0 rgba(166,255,255,.10)}
+.subscription-plan-desc{min-height:48px;color:#d7e8f2;font-size:14px;line-height:1.7;text-align:right;margin-bottom:10px}
+.subscription-price-box{display:flex;align-items:flex-end;justify-content:flex-end;gap:8px;margin-bottom:8px;color:#fff}
+.subscription-price-box .currency{font-size:20px;font-weight:800;color:#e5fbff}
+.subscription-price-box .price{font-size:64px;line-height:.95;font-weight:900;letter-spacing:-1.8px}
+.subscription-price-box .per{font-size:16px;color:#d7eaf5;margin-bottom:9px}
+.subscription-yearly-row{display:flex;align-items:center;justify-content:flex-end;gap:10px;color:#d7eaf5;font-size:15px;font-weight:700;margin-bottom:18px}
+.subscription-save-badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:999px;background:rgba(16,190,126,.18);border:1px solid rgba(42,243,168,.28);color:#77f0bf;font-size:13px;font-weight:800}
+.subscription-plan-cta{width:100%;min-height:56px;border-radius:16px;border:1px solid rgba(60,198,255,.38);background:rgba(8,23,39,.22);color:#fff;font-size:17px;font-weight:900;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.subscription-plan-card--featured .subscription-plan-cta{background:linear-gradient(180deg,#34e5e8,#22cfd3);color:#002135;border-color:rgba(107,255,255,.55);box-shadow:0 0 24px rgba(34,215,220,.20)}
+.subscription-plan-features{list-style:none;padding:0;margin:16px 0 0;display:flex;flex-direction:column;gap:10px}
+.subscription-plan-features li{display:flex;align-items:flex-start;justify-content:flex-end;gap:10px;color:#eef8ff;font-size:14px;line-height:1.6;text-align:right}
+.subscription-plan-features li::before{content:"✓";flex:0 0 auto;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:rgba(14,208,205,.12);border:1px solid rgba(38,230,227,.34);color:#40ebe7;font-weight:900;margin-top:1px}
+.subscription-bottom-grid{display:grid;grid-template-columns:1.05fr 1.45fr;gap:18px;align-items:start}
+.subscription-summary-card,.subscription-comparison-card,.subscription-faq-card{padding:24px 24px 22px}
+.subscription-summary-card{display:flex;flex-direction:column;gap:16px}
+.subscription-status-pill{display:inline-flex;align-items:center;gap:8px;background:rgba(17,190,122,.16);border:1px solid rgba(54,248,170,.26);color:#85f6ca;border-radius:18px;padding:8px 14px;font-weight:800;width:max-content}
+.subscription-status-pill::before{content:"";width:10px;height:10px;border-radius:50%;background:#34f7ae;box-shadow:0 0 12px rgba(52,247,174,.48)}
+.subscription-manage-btn{width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-radius:14px;border:1px solid rgba(88,203,255,.34);background:rgba(8,23,39,.24);color:#eefaff;font-weight:800}
+.subscription-summary-meta{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.subscription-summary-box{background:rgba(8,25,41,.22);border:1px solid rgba(71,115,143,.28);border-radius:18px;padding:16px 18px;color:#d9edf8}
+.subscription-summary-box strong{display:block;font-size:16px;color:#fff;margin-top:4px}
+.subscription-table-wrap{overflow:auto;margin-top:12px}
+.subscription-compare-table{width:100%;border-collapse:collapse;min-width:640px}
+.subscription-compare-table th,.subscription-compare-table td{padding:12px 10px;border-bottom:1px solid rgba(73,114,143,.28);text-align:center;color:#eaf7ff}
+.subscription-compare-table th:first-child,.subscription-compare-table td:first-child{text-align:right;color:#f7fdff;font-weight:800}
+.subscription-compare-table thead th{color:#45ebef;background:rgba(10,28,47,.45);font-weight:900}
+ .subscription-check{color:#45ebef;font-weight:900}.subscription-dash{color:#69859c}
+.subscription-faq-card{grid-column:1/-1}
+.subscription-faq-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.subscription-faq-item{border-radius:18px;border:1px solid rgba(69,112,140,.24);background:rgba(6,19,31,.22);padding:16px 18px}
+.subscription-faq-item summary{cursor:pointer;list-style:none;font-weight:900;color:#f3fbff;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.subscription-faq-item summary::-webkit-details-marker{display:none}
+.subscription-faq-item summary::before{content:"⌄";order:2;color:#6bf0ef;font-size:18px}
+.subscription-faq-item[open] summary::before{content:"⌃"}
+.subscription-faq-item p{margin:10px 0 0;color:#d7ebf7;line-height:1.8}
+.subscription-settings-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.subscription-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.subscription-settings-plan{padding:16px;border-radius:18px;background:linear-gradient(180deg,rgba(10,31,50,.88),rgba(8,22,36,.95));border:1px solid rgba(69,112,140,.24);box-shadow:inset 0 1px 0 rgba(155,248,255,.05)}
+.subscription-settings-plan--featured{border-color:rgba(43,231,232,.52);box-shadow:0 0 0 1px rgba(43,231,232,.10),inset 0 1px 0 rgba(184,255,255,.08)}
+.subscription-settings-plan h3{margin:0 0 12px;color:#43e7ee}
+.subscription-settings-plan input{width:100%;margin-bottom:10px;padding:10px 12px;border-radius:12px;border:1px solid rgba(71,115,143,.38);background:rgba(22,44,64,.82);color:#f0f9ff}
+.subscription-settings-price-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.subscription-settings-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
+#subscriptionSettingsStatus{color:#c9deee;font-weight:700}
+@media (max-width:1200px){.subscription-plans-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.subscription-bottom-grid{grid-template-columns:1fr}.subscription-hero{grid-template-columns:1fr}}
+@media (max-width:760px){.subscription-page-title h1{font-size:34px}.subscription-page-title p{font-size:18px}.subscription-plans-grid,.subscription-settings-grid{grid-template-columns:1fr}.subscription-price-box .price{font-size:48px}.subscription-summary-meta{grid-template-columns:1fr}.subscription-billing-toggle{justify-content:flex-end}}
+
+/* v303: subscription targeted layout refinements */
+.user-account-menu .user-account-subscription{color:#39e5ea!important;border-top:1px solid rgba(61,210,222,.18)!important;margin-top:5px!important}
+.user-account-menu .user-account-subscription:hover{background:linear-gradient(90deg,rgba(36,222,226,.18),rgba(20,97,116,.22))!important;color:#83faff!important}
+#subscriptionPage .subscription-hero{direction:ltr;grid-template-columns:minmax(270px,320px) minmax(0,1fr)}
+#subscriptionPage .subscription-billing-card{grid-column:1;direction:rtl}
+#subscriptionPage .subscription-page-title{grid-column:2;direction:rtl}
+#subscriptionPage .subscription-page-title h1,#subscriptionPage .subscription-page-title p{text-align:right}
+#subscriptionPage .subscription-plan-card--featured{overflow:visible;padding-top:35px}
+#subscriptionPage .subscription-plan-card--featured .subscription-most-popular{top:9px;left:50%;white-space:nowrap;transform:translateX(-50%);z-index:2;line-height:1.25;font-size:13px;padding:5px 18px}
+#subscriptionPage .subscription-plan-card--featured .subscription-plan-head{margin-top:10px}
+#subscriptionPage .subscription-plan-cta{transition:background .22s,border-color .22s,color .22s,box-shadow .22s,transform .18s}
+#subscriptionPage .subscription-plan-cta:hover,#subscriptionPage .subscription-plan-cta:focus-visible{background:linear-gradient(180deg,#34e5e8,#22cfd3)!important;color:#002135!important;border-color:rgba(107,255,255,.75)!important;box-shadow:0 0 24px rgba(34,215,220,.28)!important;transform:translateY(-1px)}
+#subscriptionPage .subscription-summary-empty{min-height:120px;border:1px dashed rgba(75,138,159,.26);border-radius:16px;background:rgba(8,27,43,.18)}
+@media(max-width:1200px){#subscriptionPage .subscription-hero{grid-template-columns:minmax(0,1fr)}#subscriptionPage .subscription-billing-card{grid-column:1;grid-row:2}#subscriptionPage .subscription-page-title{grid-column:1;grid-row:1}}
+
+/* v304 — compact Subscription layout & consistent CTA hover; no logic changes */
+#subscriptionPage .subscription-page-wrap{gap:13px;padding:12px 4px 22px}
+#subscriptionPage .subscription-hero{gap:12px;grid-template-columns:minmax(240px,285px) minmax(0,1fr)}
+#subscriptionPage .subscription-billing-card{padding:13px 16px}
+#subscriptionPage .subscription-billing-card p{font-size:12px;margin-top:8px}
+#subscriptionPage .subscription-billing-option{font-size:15px}
+#subscriptionPage .subscription-discount-chip{font-size:11px;padding:5px 10px}
+#subscriptionPage .subscription-page-title{min-height:100px;padding:18px 25px}
+#subscriptionPage .subscription-page-title h1{font-size:34px}
+#subscriptionPage .subscription-page-title p{font-size:16px;margin-top:6px}
+#subscriptionPage .subscription-plans-grid{gap:12px}
+#subscriptionPage .subscription-plan-card{padding:18px 16px 17px;border-radius:19px}
+#subscriptionPage .subscription-plan-card--featured{padding-top:29px}
+#subscriptionPage .subscription-plan-card--featured .subscription-most-popular{top:7px;font-size:11px;padding:4px 12px}
+#subscriptionPage .subscription-plan-card--featured .subscription-plan-head{margin-top:6px}
+#subscriptionPage .subscription-plan-head{margin-bottom:9px;gap:8px}
+#subscriptionPage .subscription-plan-title-wrap h3{font-size:17px}
+#subscriptionPage .subscription-plan-title-wrap p{font-size:12px;margin-top:3px}
+#subscriptionPage .subscription-plan-icon{width:42px;height:42px;border-radius:12px;font-size:21px}
+#subscriptionPage .subscription-plan-desc{font-size:12px;min-height:40px;margin-bottom:8px;line-height:1.55}
+#subscriptionPage .subscription-price-box{gap:5px;margin-bottom:6px}
+#subscriptionPage .subscription-price-box .price{font-size:43px;letter-spacing:-.8px}
+#subscriptionPage .subscription-price-box .currency{font-size:14px}
+#subscriptionPage .subscription-price-box .per{font-size:12px;margin-bottom:6px}
+#subscriptionPage .subscription-yearly-row{font-size:12px;gap:7px;margin-bottom:13px}
+#subscriptionPage .subscription-save-badge{font-size:10px;padding:4px 9px}
+#subscriptionPage .subscription-plan-cta{min-height:42px;border-radius:11px;font-size:13px;background:rgba(8,23,39,.22);color:#fff;border-color:rgba(60,198,255,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+#subscriptionPage .subscription-plan-card--featured .subscription-plan-cta{background:rgba(8,23,39,.22);color:#fff;border-color:rgba(60,198,255,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+#subscriptionPage .subscription-plan-cta:hover,#subscriptionPage .subscription-plan-cta:focus-visible,#subscriptionPage .subscription-plan-card--featured .subscription-plan-cta:hover,#subscriptionPage .subscription-plan-card--featured .subscription-plan-cta:focus-visible{background:linear-gradient(180deg,#34e5e8,#22cfd3)!important;color:#002135!important;border-color:rgba(107,255,255,.75)!important;box-shadow:0 0 24px rgba(34,215,220,.28)!important}
+#subscriptionPage .subscription-plan-features{gap:6px;margin-top:12px}
+#subscriptionPage .subscription-plan-features li{font-size:11px;gap:7px;line-height:1.5}
+#subscriptionPage .subscription-plan-features li::before{width:16px;height:16px;font-size:11px}
+#subscriptionPage .subscription-bottom-grid{gap:12px}
+#subscriptionPage .subscription-summary-card,#subscriptionPage .subscription-comparison-card,#subscriptionPage .subscription-faq-card{padding:18px;border-radius:19px}
+#subscriptionPage .subscription-summary-card h2,#subscriptionPage .subscription-comparison-card h2,#subscriptionPage .subscription-faq-card h2{font-size:17px}
+#subscriptionPage .subscription-compare-table th,#subscriptionPage .subscription-compare-table td{font-size:11px;padding:8px 6px}
+#subscriptionPage .subscription-faq-item{padding:12px 14px;border-radius:12px;font-size:12px}
+#subscriptionPage .subscription-faq-item p{font-size:12px}
+@media(max-width:1200px){#subscriptionPage .subscription-hero{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){#subscriptionPage .subscription-page-title h1{font-size:27px}#subscriptionPage .subscription-page-title p{font-size:14px}#subscriptionPage .subscription-price-box .price{font-size:39px}}
+
+/* v305 — price-row badge, aligned subscription cards, header/menu aqua hover */
+#subscriptionPage .subscription-plan-card--featured{padding-top:18px;overflow:hidden}
+#subscriptionPage .subscription-plan-card--featured .subscription-plan-head{margin-top:0}
+#subscriptionPage .subscription-price-box{min-height:48px;align-items:center;gap:5px;flex-wrap:nowrap}
+#subscriptionPage .subscription-price-box .subscription-most-popular{position:static;transform:none;white-space:nowrap;flex-shrink:0;margin-inline-end:auto;line-height:1.3;font-size:13px;font-weight:900;padding:6px 10px;border-radius:999px;background:rgba(4,38,56,.74);border:1px solid #21d6cb;box-shadow:0 0 11px rgba(33,214,203,.22);color:#70fafa}
+#subscriptionPage .subscription-plan-card--featured .subscription-most-popular{position:static;top:auto;left:auto;transform:none;font-size:13px;padding:6px 10px}
+#subscriptionPage .subscription-plan-desc{min-height:40px}
+#subscriptionPage .subscription-plan-head{min-height:42px}
+#subscriptionPage .subscription-yearly-row{min-height:24px}
+/* Only the top navigation and its dropdown choices — preserve current onclick and dropdown behavior. */
+header :is(.dashboard-header-btn,.shipping-rank-header-btn,.header-okb-stores-btn,.pending-header-btn,.branch-stock-btn,.settings-header-btn,.activity-log-btn,.product-reports-btn):hover,
+header :is(.dashboard-header-btn,.shipping-rank-header-btn,.header-okb-stores-btn,.pending-header-btn,.branch-stock-btn,.settings-header-btn,.activity-log-btn,.product-reports-btn):focus-visible,
+header :is(.header-settings-item,.okb-branch-btn,.okb-stores-report-btn):hover,
+header :is(.header-settings-item,.okb-branch-btn,.okb-stores-report-btn):focus-visible{
+  background:linear-gradient(180deg,#34e5e8,#22cfd3)!important;
+  color:#002135!important;
+  border-color:rgba(107,255,255,.82)!important;
+  box-shadow:0 0 20px rgba(34,215,220,.29)!important;
+  text-shadow:none!important;
+  transition:background .2s,color .2s,border-color .2s,box-shadow .2s;
+}
+header :is(.dashboard-header-btn,.shipping-rank-header-btn,.header-okb-stores-btn,.pending-header-btn,.branch-stock-btn,.settings-header-btn,.activity-log-btn,.product-reports-btn,.header-settings-item,.okb-branch-btn,.okb-stores-report-btn):is(:hover,:focus-visible) :is(span,svg){color:#002135!important;text-shadow:none!important}
+header :is(.dashboard-header-btn,.shipping-rank-header-btn,.header-okb-stores-btn,.pending-header-btn,.branch-stock-btn,.settings-header-btn,.activity-log-btn,.product-reports-btn):is(:hover,:focus-visible) svg{stroke:#002135!important}
+@media(max-width:760px){#subscriptionPage .subscription-price-box .subscription-most-popular{font-size:11px;padding:5px 8px}#subscriptionPage .subscription-price-box .price{font-size:35px}}
+
+/* v306 — Subscription comparison full width, FAQ below; dropdowns turquoise only */
+#subscriptionPage .subscription-bottom-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important}
+#subscriptionPage .subscription-comparison-card,#subscriptionPage .subscription-faq-card{grid-column:1/-1!important;width:100%!important;min-width:0!important}
+#subscriptionPage .subscription-compare-table{width:100%!important}
+/* Kill the old rotating neon border layers for all dropdown choices. */
+header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-stores-report-btn,.header-settings-item)::before,
+header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-stores-report-btn,.header-settings-item)::after{
+  content:none!important;display:none!important;animation:none!important;background:none!important;box-shadow:none!important
+}
+header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-stores-report-btn,.header-settings-item){
+  isolation:auto!important;overflow:visible!important;transition:background .18s ease,color .18s ease,border-color .18s ease!important
+}
+header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-stores-report-btn,.header-settings-item):is(:hover,:focus-visible){
+  background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;
+  box-shadow:none!important;text-shadow:none!important;transform:none!important;outline:none!important
+}
+header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-stores-report-btn,.header-settings-item):is(:hover,:focus-visible) :is(span,svg,b,i){color:#002135!important;text-shadow:none!important}
+header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-stores-report-btn,.header-settings-item):is(:hover,:focus-visible) svg{stroke:#002135!important}
+
+
+/* v307 — scoped unified Aqua hover for refresh/cache and Dashboard toolbar; CSS only. */
+:is(#ordersPage,#branchPage) :is(.admin-hard-refresh-btn,.hard-cache-sync-btn,#adminHardRefreshBtn):not(:disabled),
+#ordersPage .toolbar :is(.btn-filter,.btn-reset-date,#exportBtn,#importBtn):not(:disabled){
+  background:linear-gradient(160deg,#102b3e,#0a1b2c)!important;
+  color:#e7f7ff!important;
+  border:1px solid #315c76!important;
+  border-radius:10px!important;
+  box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+  text-shadow:none!important;
+  transition:background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease!important;
+}
+:is(#ordersPage,#branchPage) :is(.admin-hard-refresh-btn,.hard-cache-sync-btn,#adminHardRefreshBtn):not(:disabled):is(:hover,:focus-visible),
+#ordersPage .toolbar :is(.btn-filter,.btn-reset-date,#exportBtn,#importBtn):not(:disabled):is(:hover,:focus-visible){
+  background:#22CFD3!important;
+  color:#002135!important;
+  border-color:#22CFD3!important;
+  box-shadow:none!important;
+  text-shadow:none!important;
+  outline-color:#22CFD3!important;
+}
+:is(#ordersPage,#branchPage) :is(.admin-hard-refresh-btn,.hard-cache-sync-btn,#adminHardRefreshBtn):is(:hover,:focus-visible)::before,
+:is(#ordersPage,#branchPage) :is(.admin-hard-refresh-btn,.hard-cache-sync-btn,#adminHardRefreshBtn):is(:hover,:focus-visible)::after,
+#ordersPage .toolbar :is(.btn-filter,.btn-reset-date,#exportBtn,#importBtn):is(:hover,:focus-visible)::before,
+#ordersPage .toolbar :is(.btn-filter,.btn-reset-date,#exportBtn,#importBtn):is(:hover,:focus-visible)::after{
+  animation:none!important;content:none!important;box-shadow:none!important;
+}
+
+/* v308 — Dashboard customer support fields only. Other inputs/flags remain untouched. */
+#ordersPage #orderForm .dash-customer-support-fields {
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+  align-items:start;
+  min-width:0;
+}
+#ordersPage #orderForm .dash-secretary-proof-field {
+  grid-column:2;
+  min-width:0;
+}
+#ordersPage #orderForm .dash-secretary-proof-field > input[type="file"] {
+  display:block;
+  width:100%;
+  box-sizing:border-box;
+  height:40px;
+  min-height:40px;
+}
+#ordersPage #orderForm .dash-customer-notes-field {
+  grid-column:3 / span 2;
+  min-width:0;
+}
+#ordersPage #orderForm .dash-customer-notes-field textarea {
+  width:100%;
+  box-sizing:border-box;
+  min-height:70px;
+  height:70px;
+  resize:vertical;
+}
+@media(max-width:760px) {
+  #ordersPage #orderForm .dash-customer-support-fields {
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+  #ordersPage #orderForm .dash-secretary-proof-field,
+  #ordersPage #orderForm .dash-customer-notes-field {grid-column:1;}
+}
+
+/* v309: move only Dashboard status beside secretary proof, preserving existing inputs and checkbox layout. */
+#ordersPage #orderForm .dash-customer-support-fields > .dash-order-status-ticket-row {
+  grid-column:1;
+  display:flex;
+  flex-direction:column;
+  align-self:start;
+  gap:8px;
+  min-width:0;
+  width:100%;
+}
+#ordersPage #orderForm .dash-customer-support-fields > .dash-order-status-ticket-row > #status {
+  width:100%;
+  min-width:0;
+  grid-column:auto;
+}
+#ordersPage #orderForm .dash-customer-support-fields .dash-manual-ticket-field {
+  grid-column:auto;
+  width:100%;
+}
+@media(max-width:760px){
+  #ordersPage #orderForm .dash-customer-support-fields > .dash-order-status-ticket-row {grid-column:1;}
+}
+
+/* v310: dashboard proof upload matches status control; selected filename only. */
+#ordersPage #orderForm .dash-secretary-proof-field > #paymentImage {
+  height:40px!important; min-height:40px!important; max-height:40px!important;
+  width:100%!important; min-width:0!important; box-sizing:border-box!important;
+  margin:0!important; border-radius:8px;
+}
+#ordersPage #orderForm .dash-secretary-proof-field > #paymentImagePreview {
+  display:none!important;
+}
+
+/* v311 — Subscription billing-only turquoise outlined controls. */
+#subscriptionPage .subscription-billing-toggle{align-items:center;gap:8px}
+#subscriptionPage .subscription-billing-option{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:5px 16px;border:1px solid transparent!important;border-radius:999px;background:transparent!important;color:#d4e9f5!important;font-size:14px!important;font-weight:800;box-shadow:none!important;text-shadow:none!important;transition:color .16s,border-color .16s,background-color .16s!important}
+#subscriptionPage .subscription-billing-option:hover,#subscriptionPage .subscription-billing-option:focus-visible{color:#42f0eb!important;border-color:#22CFD3!important;background:rgba(34,207,211,.07)!important;outline:none!important;box-shadow:none!important}
+#subscriptionPage .subscription-billing-option.active{color:#42f0eb!important;border-color:#22CFD3!important;background:rgba(34,207,211,.10)!important;box-shadow:none!important;text-shadow:none!important}
+#subscriptionPage .subscription-billing-option::before,#subscriptionPage .subscription-billing-option::after{animation:none!important;box-shadow:none!important}
+#subscriptionPage .subscription-billing-switch{display:none!important}
+
+/* v312: subscription settings content editor and discount position only */
+#subscriptionPage .subscription-discount-below{margin-top:9px;display:inline-flex;align-self:flex-start}
+#subscriptionSettingsCard .subscription-content-admin{margin-top:20px;padding-top:14px;border-top:1px solid rgba(56,206,215,.24)}
+#subscriptionSettingsCard .subscription-content-admin h3{color:#5cedeb;margin:22px 0 8px}
+#subscriptionSettingsCard .subscription-content-admin p{color:#b8d2e5;font-size:12px}
+#subscriptionSettingsCard .subscription-admin-rows{display:grid;gap:10px;margin:12px 0}
+#subscriptionSettingsCard .subscription-editor-row{display:grid;gap:9px;padding:12px;border:1px solid rgba(57,218,223,.25);border-radius:12px;background:rgba(9,30,46,.55)}
+#subscriptionSettingsCard .subscription-editor-row>label{display:grid;gap:5px;color:#d7e8f2;font-size:12px}
+#subscriptionSettingsCard .subscription-editor-row input:not([type=checkbox]),#subscriptionSettingsCard .subscription-editor-row textarea{width:100%;box-sizing:border-box;min-height:34px;border-radius:8px;border:1px solid #315b70;background:#11293b;color:#e7f7ff;padding:7px 10px;font-family:inherit}
+#subscriptionSettingsCard .subscription-compare-checks,#subscriptionSettingsCard .subscription-editor-values{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+#subscriptionSettingsCard .subscription-compare-checks label{display:flex;gap:6px;align-items:center;color:#d6edf3;font-size:12px}
+#subscriptionSettingsCard .subscription-editor-values label{display:grid;gap:4px;color:#aec9d8;font-size:11px}
+#subscriptionSettingsCard .subscription-editor-delete{justify-self:start;background:rgba(170,46,54,.17);border:1px solid rgba(237,98,106,.4);border-radius:8px;color:#ffc8ca;padding:7px 12px;cursor:pointer}
+@media(max-width:700px){#subscriptionSettingsCard .subscription-compare-checks,#subscriptionSettingsCard .subscription-editor-values{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v313 — Ocean Neon visual trial: header + Dashboard only. No other-page selectors. */
+#app .app-header{
+ background:radial-gradient(ellipse at 18% 0%,rgba(36,173,194,.18) 0%,transparent 44%),linear-gradient(112deg,#071622 0%,#102e43 38%,#0d2638 68%,#061724 100%)!important;
+ border-bottom:1px solid rgba(70,223,224,.35)!important;
+ box-shadow:inset 0 1px 0 rgba(163,253,252,.12),0 8px 28px rgba(0,12,23,.24)!important;
+}
+#app .app-header .brand-badge{
+ background:linear-gradient(140deg,#11425a,#0b2336 70%)!important;
+ border:1px solid rgba(72,228,225,.46)!important;
+ box-shadow:0 0 18px rgba(41,216,212,.10),inset 0 1px 0 rgba(177,255,255,.17)!important;
+}
+/* Existing dropdown stacking, button handlers and hover states are deliberately unchanged. */
+#app #ordersPage{
+ --okb-trial-line:rgba(57,211,218,.28);
+ --okb-trial-muted:#c7dfec;
+ color:#eef9ff;
+}
+#app #ordersPage > .card{
+ position:relative;
+ background:radial-gradient(ellipse at 12% 3%,rgba(31,173,197,.16),transparent 42%),radial-gradient(ellipse at 98% 90%,rgba(18,116,145,.13),transparent 44%),linear-gradient(146deg,#102c40 0%,#0b2235 47%,#081a2b 100%)!important;
+ border:1px solid var(--okb-trial-line)!important;
+ border-radius:21px!important;
+ box-shadow:0 16px 42px rgba(0,14,27,.19),inset 0 1px 0 rgba(164,252,251,.07)!important;
+}
+#app #ordersPage > .card h1,#app #ordersPage > .card h2{
+ color:#f1fbff!important;
+ text-shadow:0 1px 10px rgba(18,152,174,.12);
+}
+#app #ordersPage #orderForm .form-grid :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),select,textarea){
+ background:linear-gradient(120deg,rgba(29,63,82,.95),rgba(17,45,65,.97))!important;
+ color:#f3fbff!important;
+ border:1px solid rgba(82,141,163,.52)!important;
+ border-radius:11px!important;
+ box-shadow:inset 0 1px 0 rgba(162,245,246,.035)!important;
+}
+#app #ordersPage #orderForm .form-grid :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),select,textarea):focus{
+ border-color:#22cfd3!important;
+ box-shadow:0 0 0 2px rgba(34,207,211,.13)!important;
+ outline:none;
+}
+#app #ordersPage #orderForm .form-grid :is(input,textarea)::placeholder{color:#b8d1df!important;opacity:1;}
+#app #ordersPage :is(.toolbar,.order-actions,.smart-products-box,.smart-cart-wrap,.table-wrap){
+ border-color:rgba(67,195,211,.24)!important;
+}
+#app #ordersPage :is(.stat,.smart-total-card){
+ background:linear-gradient(145deg,rgba(18,57,76,.85),rgba(10,31,48,.95))!important;
+ border-color:rgba(64,205,217,.27)!important;
+}
+#app #ordersPage table thead th{
+ background:linear-gradient(95deg,#15384e,#0d293d)!important;
+ border-bottom-color:rgba(60,207,218,.32)!important;
+ color:#e3f8ff!important;
+}
+#app #ordersPage table tbody tr:hover{background:rgba(30,170,183,.075)!important;}
+@media(max-width:760px){#app #ordersPage > .card{border-radius:16px!important;}}
+
+/* v314 — Dashboard-only visual refinement. No form logic, values, positions or handlers changed. */
+#app #ordersPage .page-user-refresh > .app-back-btn{
+  background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+  color:#e7f7ff!important;border:1px solid #315c76!important;
+  border-radius:10px!important;font:inherit!important;font-weight:700!important;
+  box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+  text-shadow:none!important;transition:background .18s ease,color .18s ease,border-color .18s ease!important;
+}
+#app #ordersPage .page-user-refresh > .app-back-btn svg{stroke:currentColor!important;}
+#app #ordersPage .page-user-refresh > .app-back-btn:is(:hover,:focus-visible){
+  background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;
+  box-shadow:none!important;outline-color:#22cfd3!important;
+}
+/* Equal field dimensions: select uses the employee field's actual full cell width. */
+#app #ordersPage #orderForm .form-grid > #doctorName,
+#app #ordersPage #orderForm .dash-secretary-proof-field > #paymentImage{
+  width:100%!important;min-width:0!important;height:42px!important;min-height:42px!important;
+  box-sizing:border-box!important;
+}
+#app #ordersPage #orderForm .dash-secretary-proof-field > #paymentImage{
+  padding:5px 8px!important;
+  font-size:12px!important;
+}
+/* Modern native upload button, keep file-picker input behavior and filename display. */
+#app #ordersPage #paymentImage::file-selector-button{
+  background:linear-gradient(125deg,#16516a,#0c344a)!important;
+  color:#e5fbff!important;
+  border:1px solid rgba(67,210,220,.55)!important;
+  border-radius:8px!important;
+  padding:6px 11px!important;
+  margin-inline-end:9px!important;
+  font-weight:700!important;
+  cursor:pointer!important;
+}
+#app #ordersPage #paymentImage:hover::file-selector-button{
+  background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;
+}
+/* Browser-localized file button text stays native; the upload icon is a decoration only. */
+#app #ordersPage #paymentImage{color:#d9f3fd!important;}
+/* Product picker and all four dashboard filtering pickers: same inset field finish. */
+#app #ordersPage :is(#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor,
+#dashProductPriceInput,#dashProductQtyInput){
+  background:linear-gradient(120deg,rgba(29,63,82,.95),rgba(17,45,65,.97))!important;
+  color:#f3fbff!important;border:1px solid rgba(82,141,163,.52)!important;
+  border-radius:11px!important;box-shadow:inset 0 1px 0 rgba(162,245,246,.035)!important;
+  color-scheme:dark;
+}
+#app #ordersPage :is(#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor) option{
+  background:#193b50!important;color:#f3fbff!important;
+}
+#app #ordersPage :is(#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor,
+#dashProductPriceInput,#dashProductQtyInput):focus{
+  border-color:#22cfd3!important;outline:none!important;
+  box-shadow:0 0 0 2px rgba(34,207,211,.13)!important;
+}
+/* Persistent turquoise, rather than turquoise only on pointer hover. */
+#app #ordersPage :is(#submitBtn,.smart-products-box[data-cart="dash"] .smart-add-btn,.toolbar .btn-filter,.toolbar .btn-reset-date){
+  background:linear-gradient(115deg,#36e2e4 0%,#22cfd3 56%,#13b5c2 100%)!important;
+  color:#002135!important;border:1px solid rgba(86,245,245,.75)!important;
+  font-weight:800!important;text-shadow:none!important;
+  box-shadow:inset 0 1px 0 rgba(241,255,255,.25)!important;
+}
+#app #ordersPage :is(#submitBtn,.smart-products-box[data-cart="dash"] .smart-add-btn,.toolbar .btn-filter,.toolbar .btn-reset-date):is(:hover,:focus-visible){
+  background:linear-gradient(115deg,#48eef0,#28dbe0 56%,#18c4ce)!important;
+  color:#002135!important;border-color:#88f8f8!important;
+  box-shadow:inset 0 1px 0 rgba(241,255,255,.3)!important;
+}
+
+/* Small upload pictogram within the native file-picker button. */
+#app #ordersPage #paymentImage::file-selector-button{
+ background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23aaf9fb%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%2016V3m0%200L7%208m5-5%205%205%22%2F%3E%3Cpath%20d%3D%22M4%2016v3a2%202%200%200%200%202%202h12a2%202%200%200%200%202-2v-3%22%2F%3E%3C%2Fsvg%3E")!important;
+ background-repeat:no-repeat!important;
+ background-size:17px 17px!important;
+ background-position:10px center!important;
+ padding-left:34px!important;
+}
+
+/* v315 — dashboard control palette and secretary upload; no product/status/filter logic changes. */
+#ordersPage #orderForm .form-grid > #doctorName,
+#ordersPage #orderForm .dash-order-status-ticket-row > #status,
+#ordersPage #orderForm .dash-proof-picker{
+  box-sizing:border-box!important;min-width:0!important;width:100%!important;
+  height:40px!important;min-height:40px!important;max-height:40px!important;
+  border-radius:9px!important;
+  border:1px solid rgba(82,141,163,.6)!important;
+  background:linear-gradient(120deg,#1d3f52,#112d41)!important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+  color:#f3fbff!important;
+}
+#ordersPage #orderForm .dash-proof-picker{display:flex;align-items:center;gap:5px;padding:3px 5px;overflow:hidden;direction:ltr;}
+#ordersPage #orderForm .dash-proof-picker > #paymentImage{
+  flex:1 1 auto!important;width:0!important;min-width:0!important;max-width:100%!important;
+  height:32px!important;min-height:32px!important;max-height:32px!important;
+  border:0!important;background:transparent!important;box-shadow:none!important;
+  padding:2px 0!important;font-size:10px!important;direction:ltr;
+}
+#ordersPage #orderForm .dash-proof-picker > #paymentImage::file-selector-button{
+  padding:5px 8px 5px 29px!important;background-position:7px center!important;
+  background-size:15px 15px!important;font-size:10px!important;
+}
+#ordersPage #orderForm .dash-proof-delete{
+ display:none!important;align-items:center;justify-content:center;flex:0 0 auto;
+ min-width:50px;height:28px;padding:2px 8px!important;border-radius:7px!important;
+ color:#fff!important;font-size:11px!important;font-weight:700!important;
+ background:rgba(112,23,30,.43)!important;border:1px solid #f04454!important;
+ box-shadow:none!important;text-shadow:none!important;
+}
+#ordersPage #orderForm .dash-proof-picker.has-file > .dash-proof-delete{display:inline-flex!important;}
+#ordersPage #orderForm .dash-proof-delete:is(:hover,:focus-visible){
+ color:#fff!important;background:#9f2533!important;border-color:#ff6270!important;box-shadow:none!important;
+}
+/* Soft ocean-filled native selects, selected option entries and product menu where browser supports it. */
+#ordersPage :is(#doctorName,#status,#shippingCompany,#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor),
+#ordersPage .smart-add-grid select{
+  color-scheme:dark!important;background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%)!important;
+  color:#f2fbff!important;border:1px solid rgba(82,141,163,.58)!important;
+  box-shadow:inset 0 1px 0 rgba(200,248,252,.045)!important;
+}
+#ordersPage :is(#doctorName,#status,#shippingCompany,#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor) :is(option,optgroup){
+  background-color:#254b5e!important;color:#f0faff!important;border:0!important;
+}
+#ordersPage :is(#doctorName,#status,#shippingCompany,#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor) option:checked{
+ background-color:#337083!important;color:#fff!important;
+}
+#ordersPage :is(#doctorName,#status,#shippingCompany,#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor) option:hover{
+ background-color:#347487!important;color:#fff!important;
+}
+/* Modern CSS select picker support (browser-dependent, no replacement for native selection). */
+@supports (appearance:base-select){
+  #ordersPage :is(#doctorName,#status,#shippingCompany,#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor){appearance:base-select;}
+  #ordersPage :is(#doctorName,#status,#shippingCompany,#dashProductNameInput,#filterStatus,#filterEmployee,#filterShippingCompany,#filterDoctor)::picker(select){
+    appearance:base-select;background:linear-gradient(145deg,#294d61,#1a3e52)!important;
+    border:1px solid #4b899a!important;border-radius:12px!important;color:#f2fbff!important;
+    box-shadow:0 12px 24px rgba(0,0,0,.22)!important;
+  }
+}
+
+/* v316 — Real rendered searchable listboxes in Dashboard. Override legacy purple/navy skins. */
+#ordersPage #orderForm .form-grid > .order-search-select-doctorName,
+#ordersPage #orderForm .dash-order-status-ticket-row > #status {
+  min-width:0!important;width:100%!important;height:40px!important;min-height:40px!important;
+  max-height:40px!important;box-sizing:border-box!important;
+  border-radius:9px!important;
+}
+#ordersPage #orderForm .form-grid > .order-search-select-doctorName .order-search-input,
+#ordersPage #orderForm .dash-order-status-ticket-row > #status {
+  height:40px!important;min-height:40px!important;max-height:40px!important;
+  padding-top:8px!important;padding-bottom:8px!important;
+  border-radius:9px!important;box-sizing:border-box!important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%)!important;
+  border:1px solid rgba(82,141,163,.6)!important;
+  color:#f3fbff!important;box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+}
+/* All six actual dashboard dropdown wrappers, including their open panels. */
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-input {
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%)!important;
+  border:1px solid rgba(82,141,163,.6)!important;color:#f3fbff!important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+  border-radius:9px!important;height:40px!important;min-height:40px!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-input:is(:hover,:focus){
+  border-color:#4fa6b5!important;box-shadow:0 0 0 1px rgba(34,207,211,.12)!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-options {
+  background:linear-gradient(145deg,#234b60 0%,#1c4055 52%,#16364b 100%)!important;
+  border:1px solid rgba(98,170,186,.57)!important;
+  box-shadow:0 12px 24px rgba(0,18,29,.24)!important;
+  border-radius:12px!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-option {
+  background:linear-gradient(120deg,rgba(42,86,106,.83),rgba(29,69,88,.92))!important;
+  border:1px solid rgba(114,181,195,.22)!important;color:#effbff!important;
+  box-shadow:none!important;transform:none!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-option:is(:hover,.active,.selected){
+  background:linear-gradient(115deg,#326a7c,#23576b)!important;
+  border-color:rgba(74,202,211,.66)!important;color:#fff!important;
+  box-shadow:none!important;transform:none!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .dashboard-filter-avatar {
+  background:linear-gradient(135deg,#236b80,#1a5369)!important;
+  box-shadow:none!important;border:1px solid rgba(68,200,207,.28)!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .dashboard-filter-option-check {
+  border-color:rgba(111,188,198,.48)!important;background:rgba(24,73,91,.7)!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-option.selected .dashboard-filter-option-check {
+  border-color:#55cbd2!important;background:#167d89!important;color:white!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-arrow.allocate-filter-arrow{
+  border-color:rgba(102,174,185,.5)!important;
+  background:linear-gradient(145deg,#27586d,#173e54)!important;
+  color:#ccecf3!important;box-shadow:none!important;
+}
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor) .order-search-arrow.allocate-filter-arrow:is(:hover,:focus),
+#ordersPage :is(.order-search-select-doctorName,.order-search-select-dashProductNameInput,
+.order-search-select-filterStatus,.order-search-select-filterEmployee,
+.order-search-select-filterShippingCompany,.order-search-select-filterDoctor).open .order-search-arrow.allocate-filter-arrow{
+  border-color:#4eb9c4!important;background:linear-gradient(145deg,#326c7f,#1e4d65)!important;
+  color:#eafcff!important;box-shadow:none!important;
+}
+
+/* v319 — exact first-row height parity using real DOM (no #app ancestor exists).
+   Only employee and visible doctor combobox; reference #orderNumber is untouched. */
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-input {
+  display:block!important;
+  width:100%!important;
+  height:40px!important;
+  min-height:40px!important;
+  max-height:40px!important;
+  box-sizing:border-box!important;
+  margin:0!important;
+  padding-block:8px!important;
+  padding-inline:12px!important;
+  border:1px solid rgba(82,141,163,.6)!important;
+  border-radius:9px!important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%)!important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+  color:#f3fbff!important;
+  font:700 12px/22px Cairo,sans-serif!important;
+  opacity:1!important;
+  vertical-align:middle!important;
+}
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName {
+  width:100%!important;height:40px!important;min-height:40px!important;max-height:40px!important;
+  padding:0!important;margin:0!important;border:0!important;background:transparent!important;
+  box-shadow:none!important;box-sizing:border-box!important;position:relative!important;
+  align-self:stretch!important;
+}
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-input {
+  padding-inline-start:38px!important;
+}
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-arrow {
+  top:50%!important;transform:translateY(-50%)!important;box-sizing:border-box!important;
+}
+
+
+/* v320 — Employee field must match order number exactly (no arrow, no combobox). */
+/* Apply the SAME computed geometry and surface to both real input elements. */
+#ordersPage #orderForm > .form-grid > #orderNumber {
+  display:block !important;
+  width:100% !important;
+  height:40px !important;
+  min-height:40px !important;
+  max-height:40px !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:12px 14px !important;
+  border:1px solid rgba(82,141,163,.6) !important;
+  border-radius:9px !important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%) !important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09) !important;
+  color:#f3fbff !important;
+  font:700 12px/normal Cairo,sans-serif !important;
+  text-align:right !important;
+  opacity:1 !important;
+  vertical-align:middle !important;
+}
+#ordersPage #orderForm > .form-grid > #employeeName[readonly] {
+  opacity:1 !important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%) !important;
+}
+
+/* v321 — Dashboard ONLY: match customer-name inner padding (12px vertical, 14px horizontal).
+   Doctor searchable control reserves extra inline-start space solely for its existing search icon. */
+#ordersPage #orderForm > .form-grid > #orderNumber,
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-input {
+  padding-top:12px!important;
+  padding-bottom:12px!important;
+  padding-left:14px!important;
+  padding-right:14px!important;
+}
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-input {
+  padding-inline-start:38px!important;
+}
+
+/* v322 — Match customerName natural height. Remove the obsolete forced 40px on ONLY the three requested first-row controls. */
+#ordersPage #orderForm > .form-grid > #orderNumber,
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-input {
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
+  padding:12px 14px!important;
+  font-family:'Cairo',Arial,sans-serif!important;
+  font-size:14px!important;
+  font-weight:400!important;
+  line-height:normal!important;
+  border-width:1px!important;
+  border-radius:10px!important;
+  box-sizing:border-box!important;
+}
+/* Keep doctor arrow inside its existing position without reducing the right-side spacing. */
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName > .order-search-input {
+  padding-inline-start:38px!important;
+}
+#ordersPage #orderForm > .form-grid > .order-search-select-doctorName {
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
+  padding:0!important;
+  align-self:stretch!important;
+}
+
+
+/* v323 — Match employeeName + order status + secretary proof to customerName geometry only. */
+#ordersPage #orderForm .dash-customer-support-fields > .dash-order-status-ticket-row > #status {
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:12px 14px !important;
+  border:1px solid rgba(82,141,163,.6) !important;
+  border-radius:10px !important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%) !important;
+  color:#f3fbff !important;
+  font-size:14px !important;
+  line-height:normal !important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09) !important;
+}
+#ordersPage #orderForm .dash-secretary-proof-field > .dash-proof-picker {
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:8px 12px !important;
+  border:1px solid rgba(82,141,163,.6) !important;
+  border-radius:10px !important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%) !important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09) !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  overflow:hidden !important;
+  direction:ltr !important;
+}
+#ordersPage #orderForm .dash-secretary-proof-field > .dash-proof-picker > #paymentImage {
+  flex:1 1 auto !important;
+  width:0 !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  color:#f3fbff !important;
+  font-size:14px !important;
+  line-height:normal !important;
+}
+#ordersPage #orderForm .dash-secretary-proof-field > .dash-proof-picker > #paymentImage::file-selector-button {
+  margin:0 8px 0 0 !important;
+  padding:7px 12px 7px 32px !important;
+  font-size:12px !important;
+  border-radius:8px !important;
+}
+#ordersPage #orderForm .dash-secretary-proof-field > .dash-proof-picker > .dash-proof-delete {
+  height:auto !important;
+  min-height:0 !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font-size:12px !important;
+}
+
+
+/* v326 — exact v324 employee appearance, applied to employee ONLY; v323 remains the base. */
+#ordersPage #orderForm > .form-grid > #employeeName,
+#ordersPage #orderForm > .form-grid > #employeeName[readonly] {
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:12px 14px !important;
+  border:1px solid rgba(82,141,163,.6) !important;
+  border-radius:10px !important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%) !important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09) !important;
+  color:#f3fbff !important;
+  font-family:'Cairo',Arial,sans-serif !important;
+  font-size:14px !important;
+  font-weight:400 !important;
+  line-height:normal !important;
+  text-align:right !important;
+  opacity:1 !important;
+}
+
+
+/* v327 — Mansoura Branch ONLY: Ocean Neon pilot. All other branches untouched. */
+#branchPage[data-ocean-neon-trial="mansoura"] {
+ background:linear-gradient(145deg,#081926 0%,#0e2a3e 45%,#071925 100%)!important;
+ border-radius:18px;
+ color:#e9faff;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(.card,.smart-products-box,.stat-card,.table-container,.panel,.filters-bar){
+ background:linear-gradient(145deg,rgba(18,49,69,.97),rgba(9,28,45,.98) 63%,rgba(12,40,55,.97))!important;
+ border:1px solid rgba(66,151,170,.45)!important;
+ box-shadow:inset 0 1px 0 rgba(161,248,253,.045),0 8px 24px rgba(1,11,22,.12)!important;
+ border-radius:15px;
+ color:#e9faff;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(h1,h2,h3,.smart-products-title){color:#f0fcff!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),select,textarea,.order-search-input){
+ background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%)!important;
+ border:1px solid rgba(82,141,163,.6)!important;
+ color:#f3fbff!important;
+ border-radius:10px!important;
+ box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),select,textarea,.order-search-input):focus{
+ border-color:#22cfd3!important;outline:none!important;box-shadow:0 0 0 2px rgba(34,207,211,.12)!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(input,textarea)::placeholder{color:#b7d2df!important;opacity:1;}
+#branchPage[data-ocean-neon-trial="mansoura"] select option{background:#254b5e;color:#f2fbff;}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(.order-search-dropdown,.order-search-list,.order-search-options,.order-search-item,.order-search-option){
+ background:linear-gradient(130deg,#24485b,#17384e)!important;color:#f0fbff!important;border-color:rgba(82,141,163,.55)!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(.order-search-item,.order-search-option):hover{background:#2c6071!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(button:not(:disabled):not(.danger):not(.error),.page-refresh-btn,.app-back-btn){
+ background:linear-gradient(135deg,#123449,#0b2336)!important;
+ color:#e5faff!important;
+ border:1px solid rgba(63,169,189,.48)!important;
+ text-shadow:none!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.04)!important;
+ transition:background .18s ease,color .18s ease,border-color .18s ease!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(button:not(:disabled):not(.danger):not(.error),.page-refresh-btn,.app-back-btn):is(:hover,:focus-visible){
+ background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;box-shadow:none!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(button.success,button.primary,button[type="submit"]){
+ background:linear-gradient(115deg,#36e2e4,#22cfd3 56%,#13b5c2)!important;
+ color:#002135!important;border-color:rgba(86,245,245,.75)!important;font-weight:800!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(.table-wrap,table,th,td){border-color:rgba(82,141,163,.3)!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] th{background:linear-gradient(120deg,#1c455a,#102e43)!important;color:#eafaff!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] tbody tr:hover{background:rgba(34,207,211,.08)!important;}
+
+
+/* v328 — Only Mansoura branch, reuse Dashboard geometry without touching operations. */
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm > .form-grid > .mansoura-customer-support-layout {
+  grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  column-gap:12px;row-gap:12px;align-items:start;min-width:0;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > #bStatus{
+  grid-column:1; width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
+  box-sizing:border-box!important;padding:12px 14px!important;font-size:14px!important;line-height:normal!important;
+  border-radius:10px!important;align-self:start!important;opacity:1!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage){
+  grid-column:2;min-width:0;margin:0!important;padding:0!important;background:none!important;border:0!important;
+  display:flex;align-items:center;position:relative;gap:0;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage) > label {display:none!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage)::before{content:none!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bPaymentImage {
+  width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
+  box-sizing:border-box!important;margin:0!important;padding:8px 10px!important;
+  color:#f3fbff!important;font-size:12px!important;line-height:normal!important;
+  border:1px solid rgba(82,141,163,.6)!important;border-radius:10px!important;
+  background:linear-gradient(120deg,#1d3f52,#17384e 58%,#112d41 100%)!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bPaymentImage::file-selector-button{
+  background:linear-gradient(125deg,#16516a,#0c344a)!important;
+  border:1px solid rgba(67,210,220,.55)!important;color:#e5fbff!important;
+  border-radius:8px!important;padding:7px 11px!important;margin-right:8px!important;
+  cursor:pointer;font-weight:700!important;font-size:12px!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-payment-delete{
+  display:none!important;position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:auto!important;padding:6px 9px!important;min-height:28px!important;
+  background:rgba(112,23,30,.8)!important;border:1px solid #f04454!important;color:white!important;
+  font-size:11px!important;font-weight:700!important;border-radius:7px!important;box-shadow:none!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage).has-file > .mansoura-payment-delete{display:inline-flex!important;align-items:center!important;justify-content:center!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage).has-file > #bPaymentImage{padding-right:68px!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage) > #bPaymentImagePreview{display:none!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(#bOrderNotes){
+  grid-column:3/span 2;min-width:0;margin:0!important;padding:0!important;display:block!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(#bOrderNotes) label{display:none!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bOrderNotes{
+  width:100%!important;box-sizing:border-box!important;min-height:70px!important;height:70px!important;
+  padding:12px 14px!important;font-size:14px!important;line-height:normal!important;
+  border-radius:10px!important;resize:vertical!important;
+}
+/* Same usable depth as Dashboard doctor search field, including its search icon. */
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm > .form-grid > .order-search-select-bDoctorName{
+  width:100%!important;min-width:0!important;height:auto!important;min-height:0!important;max-height:none!important;
+  margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm > .form-grid > .order-search-select-bDoctorName > .order-search-input{
+  width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
+  padding:12px 14px!important;padding-inline-start:38px!important;
+  box-sizing:border-box!important;font-size:14px!important;line-height:normal!important;font-weight:400!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm > .form-grid > .order-search-select-bDoctorName > .order-search-arrow{
+  top:50%!important;transform:translateY(-50%)!important;
+}
+/* Only requested fixed-turquoise action buttons; keep event handlers and disabled states. */
+#branchPage[data-ocean-neon-trial="mansoura"] :is(
+ #branchOrderForm button[type="submit"],
+ .smart-products-box[data-cart="branch"] .smart-add-btn,
+ .toolbar .btn-filter,.toolbar .btn-reset-date,.toolbar #bExportBtn,.toolbar #branchKhaznaBtn
+):not(:disabled){
+  background:linear-gradient(115deg,#36e2e4,#22cfd3 56%,#13b5c2)!important;
+  border:1px solid rgba(86,245,245,.75)!important;color:#002135!important;font-weight:800!important;
+  text-shadow:none!important;box-shadow:inset 0 1px 0 rgba(241,255,255,.25)!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(
+ #branchOrderForm button[type="submit"],
+ .smart-products-box[data-cart="branch"] .smart-add-btn,
+ .toolbar .btn-filter,.toolbar .btn-reset-date,.toolbar #bExportBtn,.toolbar #branchKhaznaBtn
+):not(:disabled):is(:hover,:focus-visible){
+  background:linear-gradient(115deg,#48eef0,#28dbe0 56%,#18c4ce)!important;
+  color:#002135!important;border-color:#88f8f8!important;box-shadow:none!important;
+}
+@media(max-width:760px){
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm > .form-grid > .mansoura-customer-support-layout{grid-template-columns:1fr;}
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > #bStatus,
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage),
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(#bOrderNotes){grid-column:1;}
+}
+
+/* v329 — Mansoura ONLY: explicit first-row grid placement avoids auto-flow wrapping
+   when notes precede the payment proof element in the original DOM. */
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > #bStatus {
+  grid-row:1 !important; grid-column:1 !important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage) {
+  grid-row:1 !important; grid-column:2 !important; align-self:start !important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(#bOrderNotes) {
+  grid-row:1 !important; grid-column:3 / span 2 !important;
+}
+@media(max-width:760px){
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > #bStatus {grid-row:1!important;grid-column:1!important;}
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage) {grid-row:2!important;grid-column:1!important;}
+  #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(#bOrderNotes) {grid-row:3!important;grid-column:1!important;}
+}
+
+
+/* v330 — Mansoura ONLY: hide number steppers while preserving number inputs and oninput calculations. */
+#branchPage[data-ocean-neon-trial="mansoura"] :is(
+  #branchDeliveryInput,#branchDiscountInput,#branchDepositInput,
+  #branchGrandTotal,#branchProductQtyInput
+){
+  appearance:textfield!important;
+  -moz-appearance:textfield!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] :is(
+  #branchDeliveryInput,#branchDiscountInput,#branchDepositInput,
+  #branchGrandTotal,#branchProductQtyInput
+)::-webkit-inner-spin-button,
+#branchPage[data-ocean-neon-trial="mansoura"] :is(
+  #branchDeliveryInput,#branchDiscountInput,#branchDepositInput,
+  #branchGrandTotal,#branchProductQtyInput
+)::-webkit-outer-spin-button{
+  -webkit-appearance:none!important;
+  appearance:none!important;
+  margin:0!important;
+  display:none!important;
+}
+/* v330 — Mansoura two read-only product summary tiles: dark Hard Refresh-style, turquoise on hover. */
+#branchPage[data-ocean-neon-trial="mansoura"] .smart-products-box[data-cart="branch"] .smart-cart-fixed-total{
+  background:linear-gradient(145deg,#102b3e 0%,#0a1b2c 100%)!important;
+  border:1px solid #315c76!important;
+  border-radius:10px!important;
+  color:#e7f7ff!important;
+  box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+  text-shadow:none!important;
+  transition:background .18s ease,color .18s ease,border-color .18s ease!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] .smart-products-box[data-cart="branch"] .smart-cart-fixed-total :is(span,b){
+  color:inherit!important;
+}
+#branchPage[data-ocean-neon-trial="mansoura"] .smart-products-box[data-cart="branch"] .smart-cart-fixed-total:hover{
+  background:#22cfd3!important;
+  border-color:#22cfd3!important;
+  color:#002135!important;
+  box-shadow:none!important;
+}
+
+/* v331 — Mansoura floating branch title only: Ocean Neon / Hard Refresh palette. */
+#branchFloatingSticky:is([data-floating-branch="المنصورة"],[data-floating-branch="مدينة نصر"],[data-floating-branch="اسكندرية"],[data-floating-branch="طنطا"]){
+  background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+  border:1px solid #315c76!important;
+  color:#e7f7ff!important;
+  box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+  transition:background .18s ease,border-color .18s ease,color .18s ease!important;
+}
+#branchFloatingSticky:is([data-floating-branch="المنصورة"],[data-floating-branch="مدينة نصر"],[data-floating-branch="اسكندرية"],[data-floating-branch="طنطا"]) .branch-floating-badge,
+#branchFloatingSticky:is([data-floating-branch="المنصورة"],[data-floating-branch="مدينة نصر"],[data-floating-branch="اسكندرية"],[data-floating-branch="طنطا"]) .branch-floating-message{color:inherit!important}
+#branchFloatingSticky:is([data-floating-branch="المنصورة"],[data-floating-branch="مدينة نصر"],[data-floating-branch="اسكندرية"],[data-floating-branch="طنطا"]):hover{
+  background:#22cfd3!important;border-color:#22cfd3!important;
+  color:#002135!important;box-shadow:none!important;
+}
+/* This decorative badge was non-interactive before; enable hover without adding click actions. */
+#branchFloatingSticky:is([data-floating-branch="المنصورة"],[data-floating-branch="مدينة نصر"],[data-floating-branch="اسكندرية"],[data-floating-branch="طنطا"]){pointer-events:auto!important}
+
+/* v333: Only hide inline account name/role next to page refresh controls.
+   IDs remain in DOM for session/UI code; account menu and form employees are untouched. */
+#ordersPage .page-user-refresh > .okb-hidden-inline-identity,
+#branchPage .page-user-refresh > .okb-hidden-inline-identity {
+  display:none!important;
+}
+/* Subscription USD directly adjacent to price; keep billing period and badge separate. */
+#subscriptionPage .subscription-price-box { gap:0!important; }
+#subscriptionPage .subscription-price-box .price { order:1; }
+#subscriptionPage .subscription-price-box .currency {
+  order:2;
+  font-size:21px!important;
+  font-weight:900!important;
+  line-height:1!important;
+  margin-inline-start:3px!important;
+  margin-bottom:3px!important;
+}
+#subscriptionPage .subscription-price-box .per {
+  order:3;
+  margin-inline-start:10px!important;
+}
+#subscriptionPage .subscription-price-box .subscription-most-popular { order:4; }

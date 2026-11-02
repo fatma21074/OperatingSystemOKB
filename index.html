@@ -57,7 +57,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20261013-customer-profile-notes-v265">
+  <link rel="stylesheet" href="css/style.css?v=20261102-v333-inline-label-usd">
 <style>
 /* v288: Login-page visual skin. All selectors scoped to #loginPage; auth logic unchanged. */
 #loginPage.login-page-new{direction:ltr;box-sizing:border-box;background:radial-gradient(ellipse at 52% 43%,#142e40 0%,#081723 65%,#06111b 100%);padding:clamp(16px,4vh,44px) clamp(14px,4vw,66px);font-family:Inter,Arial,sans-serif;color:#f7f9ff;overflow:auto}
@@ -561,6 +561,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <span class="user-account-arrow">▾</span>
 <div class="user-account-menu" id="userAccountMenu">
   <button data-okb-custom-button="b3" type="button" class="user-account-myaccount" onclick="event.stopPropagation();closeUserAccountMenu();openMyAccountModal()">👤 My Account</button>
+  <button data-okb-custom-button="b28" type="button" class="user-account-subscription" onclick="event.stopPropagation();closeUserAccountMenu();showSubscriptionPage()">👑 Subscription</button>
   <button data-okb-custom-button="b4" type="button" class="user-account-logout" onclick="event.stopPropagation();closeUserAccountMenu();logout()">🚪 Log out</button>
 </div>
 </div>
@@ -656,14 +657,8 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <span class="icon-moon">🌙</span>
 <span class="icon-sun">☀️</span>
 </button>
-<button data-okb-custom-button="b28" class="secretary-audit-header-btn" id="secretaryAuditHeaderBtn" type="button" onclick="openSecretaryAudit()" title="Secretary Audit">
-  <span class="secretary-audit-icon" aria-hidden="true">🛡️<span id="secretaryAuditNotification" class="secretary-audit-notification hidden">0</span></span>
-  <span>Secretary Audit</span>
-</button>
-<button data-okb-custom-button="b29" class="logout-header-btn okb-chat-header-btn chat-page-item hidden" id="chatHeaderBtn" type="button" onclick="showChatPage()" title="Chat">
-  <span class="logout-header-icon" aria-hidden="true">💬<b id="chatUnreadBadge" class="secretary-audit-notification hidden">0</b></span>
-  <span class="logout-header-label" id="okbChatHeaderLabel">Chat</span>
-</button>
+
+<span id="secretaryAuditNotification" class="hidden" style="display:none" aria-hidden="true">0</span>
 <!-- Preserve the Financial Audit notification target without exposing its old header button. -->
 <span id="financialAuditNotification" class="hidden" style="display:none" aria-hidden="true">0</span>
 </div>
@@ -708,7 +703,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1>إضافة أوردر جديد</h1>
-<div class="page-user-refresh"><button data-okb-custom-button="b36" id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><button data-okb-custom-button="b37" class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><span class="user-tag"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button data-okb-custom-button="b38" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
+<div class="page-user-refresh"><button data-okb-custom-button="b36" id="adminHardRefreshBtn" class="user-tag page-refresh-btn admin-hard-refresh-btn" type="button" onclick="hardRefreshAdmin(this)" style="display:none">⚡ Hard Refresh</button><button data-okb-custom-button="b37" class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><span class="user-tag okb-hidden-inline-identity"><span id="userNameInline">User</span> | <span id="userRoleInline">role</span></span><button data-okb-custom-button="b38" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div>
 </div>
 <form id="orderForm">
 <div class="form-grid">
@@ -724,17 +719,8 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <option value="">اختر شركة الشحن</option>
 </select>
 <input id="area" placeholder="المنطقة" required=""/>
-<div id="adminOrderDateWrap" style="display:none;">
-<label for="adminOrderDate" style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:5px;">تاريخ ووقت الأوردر — للأدمن فقط</label>
-<input id="adminOrderDate" type="datetime-local" style="width:100%;"/>
-</div>
-<input id="price" type="hidden"/>
-<input id="deposit" type="hidden"/>
-<input id="unitPrice" type="hidden"/>
-<input id="quantity" type="hidden" value="1"/>
-<input id="deliveryFee" type="hidden"/>
-<textarea id="productNames" class="hidden"></textarea>
-<div class="dash-order-status-ticket-row">
+<div class="dash-customer-support-fields">
+  <div class="dash-order-status-ticket-row">
 <select id="status" required="">
 <option value="">اختر حالة الأوردر</option>
 <option value="Transit">Transit</option>
@@ -752,6 +738,31 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <input id="adminManualTicketId" inputmode="numeric" maxlength="10" pattern="[0-9]+" placeholder="مثال: 17068" autocomplete="off" />
 </div>
 </div>
+  <div class="dash-secretary-proof-field">
+    <div class="dash-proof-picker" id="dashProofPicker">
+      <input accept="image/*" id="paymentImage" onchange="previewPaymentImage(this);this.closest('.dash-proof-picker').classList.toggle('has-file',!!this.files.length)" style="padding:8px;background:var(--bg-input);" type="file"/>
+      <button id="dashProofDelete" class="dash-proof-delete" type="button" onclick="clearPaymentImage();document.getElementById('dashProofPicker').classList.remove('has-file')" aria-label="Delete uploaded secretary proof">Delete</button>
+    </div>
+    <div id="paymentImagePreview" style="margin-top:8px;display:none;">
+      <img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)"/>
+      <button data-okb-custom-button="b41" onclick="clearPaymentImage()" style="background:#EF4444;padding:4px 8px;font-size:11px;margin-top:4px" type="button">🗑 إزالة</button>
+    </div>
+    <input id="existingPaymentImage" type="hidden"/>
+  </div>
+  <div class="dash-customer-notes-field">
+    <textarea id="orderNotes" placeholder="ملاحظات العميل (اختياري)..." rows="2"></textarea>
+  </div>
+</div>
+<div id="adminOrderDateWrap" style="display:none;">
+<label for="adminOrderDate" style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:5px;">تاريخ ووقت الأوردر — للأدمن فقط</label>
+<input id="adminOrderDate" type="datetime-local" style="width:100%;"/>
+</div>
+<input id="price" type="hidden"/>
+<input id="deposit" type="hidden"/>
+<input id="unitPrice" type="hidden"/>
+<input id="quantity" type="hidden" value="1"/>
+<input id="deliveryFee" type="hidden"/>
+<textarea id="productNames" class="hidden"></textarea>
 <div class="dash-order-flags">
 <label class="order-flag-check"><input id="dashUrgentOrder" type="checkbox"/><span>استعجال الأوردر</span></label>
 <label class="order-flag-check"><input id="dashReplacementOrder" type="checkbox"/><span>استبدال الأوردر</span></label>
@@ -788,18 +799,6 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 </div>
 <div id="depositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:8px;">
   ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
-</div>
-<div style="margin-top:10px;">
-<label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات السكرتارية (اختياري)</label>
-<input accept="image/*" id="paymentImage" onchange="previewPaymentImage(this)" style="padding:8px;background:var(--bg-input);" type="file"/>
-<div id="paymentImagePreview" style="margin-top:8px;display:none;">
-<img id="paymentPreviewImg" style="max-width:100px;max-height:100px;border-radius:8px;border:1px solid var(--border-color)"/>
-<button data-okb-custom-button="b41" onclick="clearPaymentImage()" style="background:#EF4444;padding:4px 8px;font-size:11px;margin-top:4px" type="button">🗑 إزالة</button>
-</div>
-<input id="existingPaymentImage" type="hidden"/>
-</div>
-<div style="margin-top:12px">
-<textarea id="orderNotes" placeholder="ملاحظات العميل (اختياري)..." rows="2"></textarea>
 </div>
 <div class="order-actions">
 <button data-okb-custom-button="b42" class="primary wide-btn" id="submitBtn" type="submit">إضافة الأوردر</button>
@@ -846,7 +845,6 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <div class="bulk-actions admin-only hidden" id="bulkDeleteBar">
 <span id="selectedOrdersCount">0 عميل محدد</span>
 <button data-okb-custom-button="b47" class="danger" onclick="deleteSelectedOrders()" type="button">🗑 حذف العملاء المحددين</button>
-<button data-okb-custom-button="b48" class="doctor-weekly-btn doctor-rank-smart-export-btn" id="dashboardAllocateBtn" onclick="openAllocateModal('dashboard')" type="button">Allocate</button>
 <button data-okb-custom-button="b49" class="soft" onclick="clearSelectedOrders()" type="button">إلغاء التحديد</button>
 </div>
 <div class="table-wrap">
@@ -1597,6 +1595,14 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
           <option value="المنصورة">فرع المنصورة</option>
         </select>
       </div>
+      <div class="sticky-note-badge-visibility">
+        <label for="stickyNoteBadgeVisible">ظهور اسم الفرع أسفل صفحة الفرع</label>
+        <select id="stickyNoteBadgeVisible" aria-label="إظهار أو إخفاء اسم الفرع أسفل الصفحة">
+          <option value="show">إظهار الزر</option>
+          <option value="hide">إخفاء الزر</option>
+        </select>
+        <button type="button" id="saveStickyNoteBadgeVisible" class="soft" onclick="saveStickyNoteBadgeVisibility()">حفظ ظهور الزر</button>
+      </div>
       <div>
         <label for="stickyNoteFrom">من — التاريخ والوقت</label>
         <input id="stickyNoteFrom" type="datetime-local" required />
@@ -1685,6 +1691,112 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
     </div>
   </form>
 </div>
+
+<div class="card hidden" id="subscriptionSettingsCard">
+  <div class="subscription-settings-head">
+    <div>
+      <h2>الاشتراكات - Subscription</h2>
+      <p>تحكم في أسماء الباقات وأسعارها بالعربي والإنجليزي داخل صفحة الاشتراكات، بدون أي تأثير على التشغيل أو المحرك المالي.</p>
+    </div>
+    <span class="sticky-note-admin-chip">Admin فقط</span>
+  </div>
+  <form id="subscriptionSettingsForm">
+    <div class="subscription-settings-grid">
+      <section class="subscription-settings-plan">
+        <h3>Starter</h3>
+        <input id="subscriptionStarterNameAr" placeholder="الاسم العربي" maxlength="70" required />
+        <input id="subscriptionStarterNameEn" placeholder="English Name" maxlength="70" required />
+        <div class="subscription-settings-price-row">
+          <input id="subscriptionStarterMonthly" type="number" min="0" step="1" placeholder="السعر الشهري" required />
+          <input id="subscriptionStarterYearly" type="number" min="0" step="1" placeholder="السعر السنوي" required />
+        </div>
+      </section>
+      <section class="subscription-settings-plan">
+        <h3>Growth</h3>
+        <input id="subscriptionGrowthNameAr" placeholder="الاسم العربي" maxlength="70" required />
+        <input id="subscriptionGrowthNameEn" placeholder="English Name" maxlength="70" required />
+        <div class="subscription-settings-price-row">
+          <input id="subscriptionGrowthMonthly" type="number" min="0" step="1" placeholder="السعر الشهري" required />
+          <input id="subscriptionGrowthYearly" type="number" min="0" step="1" placeholder="السعر السنوي" required />
+        </div>
+      </section>
+      <section class="subscription-settings-plan subscription-settings-plan--featured">
+        <h3>Professional</h3>
+        <input id="subscriptionProfessionalNameAr" placeholder="الاسم العربي" maxlength="70" required />
+        <input id="subscriptionProfessionalNameEn" placeholder="English Name" maxlength="70" required />
+        <div class="subscription-settings-price-row">
+          <input id="subscriptionProfessionalMonthly" type="number" min="0" step="1" placeholder="السعر الشهري" required />
+          <input id="subscriptionProfessionalYearly" type="number" min="0" step="1" placeholder="السعر السنوي" required />
+        </div>
+      </section>
+      <section class="subscription-settings-plan">
+        <h3>Enterprise</h3>
+        <input id="subscriptionEnterpriseNameAr" placeholder="الاسم العربي" maxlength="70" required />
+        <input id="subscriptionEnterpriseNameEn" placeholder="English Name" maxlength="70" required />
+        <div class="subscription-settings-price-row">
+          <input id="subscriptionEnterpriseMonthly" type="number" min="0" step="1" placeholder="السعر الشهري" required />
+          <input id="subscriptionEnterpriseYearly" type="number" min="0" step="1" placeholder="السعر السنوي" required />
+        </div>
+      </section>
+    </div>
+    <div class="subscription-content-admin">
+      <h3>الأسئلة الشائعة — FAQ</h3>
+      <p>تعديل السؤال والإجابة أو إضافة سؤال جديد أو حذفه.</p>
+      <div id="subscriptionFaqEditor" class="subscription-admin-rows"></div>
+      <button type="button" class="soft" onclick="addSubscriptionFaqRow()">＋ إضافة سؤال</button>
+      <h3>مقارنة المميزات بين الباقات</h3>
+      <p>أضف ميزة وحدد الباقات التي تشملها. يمكن أيضًا تسجيل قيمة مخصصة لكل باقة مثل عدد الفروع أو المستخدمين.</p>
+      <div id="subscriptionComparisonEditor" class="subscription-admin-rows"></div>
+      <button type="button" class="soft" onclick="addSubscriptionComparisonRow()">＋ إضافة ميزة</button>
+    </div>
+    <div class="subscription-settings-actions">
+      <button class="success" id="subscriptionSettingsSaveBtn" type="submit">💾 حفظ الاشتراكات</button>
+      <button class="soft" id="subscriptionSettingsResetBtn" type="button" onclick="resetSubscriptionSettingsForm()">↺ استعادة الافتراضي</button>
+      <span id="subscriptionSettingsStatus" role="status"></span>
+    </div>
+  </form>
+</div>
+</section>
+
+<!-- ===== Subscription Page ===== -->
+<section class="hidden" id="subscriptionPage">
+  <div class="subscription-page-wrap">
+    <div class="subscription-hero">
+      <div class="subscription-billing-card">
+        <div class="subscription-billing-toggle">
+          
+          <button type="button" id="subscriptionBillingYearlyBtn" class="subscription-billing-option active" onclick="changeSubscriptionBilling('yearly')">سنوي</button>
+          <button type="button" id="subscriptionBillingMonthlyBtn" class="subscription-billing-option" onclick="changeSubscriptionBilling('monthly')">شهري</button>
+        </div>
+        <p>احصل على خصم 20% عند الاشتراك السنوي</p>
+        <span class="subscription-discount-chip subscription-discount-below">وفر <b>20%</b></span>
+      </div>
+      <div class="subscription-page-title">
+        <h1>الاشتراكات والباقات</h1>
+        <p>اختر الباقة المناسبة لإدارة فروعك وعملياتك</p>
+      </div>
+    </div>
+
+    <div class="subscription-plans-grid" id="subscriptionPlansGrid"></div>
+
+    <div class="subscription-bottom-grid">
+      <div class="subscription-comparison-card">
+        <h2>مقارنة المميزات بين الباقات</h2>
+        <div class="subscription-table-wrap">
+          <table class="subscription-compare-table">
+            <thead>
+              <tr><th>المميزات</th><th id="subscriptionCompareStarter">Starter</th><th id="subscriptionCompareGrowth">Growth</th><th id="subscriptionCompareProfessional">Professional</th><th id="subscriptionCompareEnterprise">Enterprise</th></tr>
+            </thead>
+            <tbody id="subscriptionComparisonBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="subscription-faq-card">
+        <h2>الأسئلة الشائعة</h2>
+        <div id="subscriptionFaqList"></div>
+      </div>
+    </div>
+  </div>
 </section>
 <!-- ===== Role Permissions Page ===== -->
 <section class="hidden" id="permissionPage">
@@ -1762,7 +1874,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
 <h1 id="branchPageTitle">📦 Dashboard — فرع</h1>
-<div class="page-user-refresh"><span class="user-tag"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button data-okb-custom-button="b161" class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button data-okb-custom-button="b162" class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><button data-okb-custom-button="b163" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
+<div class="page-user-refresh"><span class="user-tag okb-hidden-inline-identity"><span id="branchUserNameInline">User</span> | <span id="branchUserRoleInline">role</span></span><div class="app-refresh-back"><button data-okb-custom-button="b161" class="user-tag page-refresh-btn" type="button" onclick="hardRefreshBranch(this)">⚡ Hard Refresh</button><button data-okb-custom-button="b162" class="user-tag page-refresh-btn hard-cache-sync-btn" type="button" onclick="hardCacheSync(this)">♻ Hard Cache</button><button data-okb-custom-button="b163" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button></div></div>
 </div>
 <form id="branchOrderForm">
 <div class="form-grid">
@@ -1843,6 +1955,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <div style="margin-top:12px;padding:10px;background:var(--bg-soft);border:1px solid var(--border-color);border-radius:10px;">
 <label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات السكرتارية <span style="color:#DC2626;">(إجباري لو فيه مدفوع)</span></label>
 <input accept="image/*" id="bPaymentImage" onchange="previewBranchPaymentImage(this);checkBranchDepositImageRequirement();" style="padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;width:100%;font-size:13px;" type="file"/>
+<button class="mansoura-payment-delete" type="button" onclick="clearBranchPaymentImage();this.parentElement.classList.remove('has-file')" aria-label="Delete secretary payment file">Delete</button>
 <div id="bPaymentImagePreview" style="margin-top:8px;display:none;align-items:center;gap:10px;">
 <img id="bPaymentPreviewImg" style="max-width:80px;max-height:80px;border-radius:8px;border:1px solid var(--border-color);"/>
 <button data-okb-custom-button="b166" onclick="clearBranchPaymentImage()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
@@ -1887,7 +2000,6 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <div class="branch-bulk-actions hidden" id="branchBulkActions">
   <strong id="branchSelectedCount">0 عميل محدد</strong>
   <button data-okb-custom-button="b172" class="branch-bulk-print" type="button" onclick="printSelectedBranchOrders()">🖨️ طباعة الكل</button>
-  <button data-okb-custom-button="b173" class="doctor-weekly-btn doctor-rank-smart-export-btn" id="branchAllocateBtn" type="button" onclick="openAllocateModal('branch')">Allocate</button>
   <button data-okb-custom-button="b174" class="branch-bulk-delete hidden" id="branchBulkDeleteBtn" type="button" onclick="deleteSelectedBranchOrders()">🗑️ حذف المحدد</button>
   <button data-okb-custom-button="b175" class="branch-bulk-edit hidden" id="branchBulkEditBtn" type="button" onclick="editSelectedBranchOrder()">✏️ تعديل</button>
   <button data-okb-custom-button="b176" class="branch-delete-proof-btn hidden" id="branchDeletePaymentProofBtn" type="button" onclick="deleteSelectedBranchPaymentProof()">🖼️ حذف إثبات السكرتارية</button>
@@ -2513,6 +2625,6 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v287.js?v=20261028-receipt-checkbox-labels-v287"></script>
+<script src="js/main.v287.js?v=20261102-four-branches-v332"></script>
 </body>
 </html>
