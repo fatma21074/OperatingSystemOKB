@@ -4876,34 +4876,15 @@ header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-
   box-sizing:border-box!important;padding:12px 14px!important;font-size:14px!important;line-height:normal!important;
   border-radius:10px!important;align-self:start!important;opacity:1!important;
 }
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage){
-  grid-column:2;min-width:0;margin:0!important;padding:0!important;background:none!important;border:0!important;
-  display:flex;align-items:center;position:relative;gap:0;
-}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage) > label {display:none!important;}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage)::before{content:none!important;}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bPaymentImage {
-  width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;
-  box-sizing:border-box!important;margin:0!important;padding:8px 10px!important;
-  color:#f3fbff!important;font-size:12px!important;line-height:normal!important;
-  border:1px solid rgba(82,141,163,.6)!important;border-radius:10px!important;
-  background:linear-gradient(120deg,#1d3f52,#17384e 58%,#112d41 100%)!important;
-}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bPaymentImage::file-selector-button{
-  background:linear-gradient(125deg,#16516a,#0c344a)!important;
-  border:1px solid rgba(67,210,220,.55)!important;color:#e5fbff!important;
-  border-radius:8px!important;padding:7px 11px!important;margin-right:8px!important;
-  cursor:pointer;font-weight:700!important;font-size:12px!important;
-}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-payment-delete{
-  display:none!important;position:absolute;right:6px;top:50%;transform:translateY(-50%);
-  width:auto!important;padding:6px 9px!important;min-height:28px!important;
-  background:rgba(112,23,30,.8)!important;border:1px solid #f04454!important;color:white!important;
-  font-size:11px!important;font-weight:700!important;border-radius:7px!important;box-shadow:none!important;
-}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage).has-file > .mansoura-payment-delete{display:inline-flex!important;align-items:center!important;justify-content:center!important;}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage).has-file > #bPaymentImage{padding-right:68px!important;}
-#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage) > #bPaymentImagePreview{display:none!important;}
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage){ /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage) > label { /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(> #bPaymentImage)::before{ /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bPaymentImage { /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm #bPaymentImage::file-selector-button{ /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-payment-delete{ /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage).has-file > .mansoura-payment-delete{ /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage).has-file > #bPaymentImage{ /* v342: superseded branch proof styling removed */ }
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm div:has(> #bPaymentImage) > #bPaymentImagePreview{ /* v342: superseded branch proof styling removed */ }
 #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm .mansoura-customer-support-layout > div:has(#bOrderNotes){
   grid-column:3/span 2;min-width:0;margin:0!important;padding:0!important;display:block!important;
 }
@@ -5128,4 +5109,336 @@ header :is(.header-okb-branches,.header-settings-menu) :is(.okb-branch-btn,.okb-
 }
 #pendingPage .pending-row .pending-open-btn:is(:hover,:focus-visible){
  background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;box-shadow:none!important;
+}
+
+/* v335 — OKB Abnormal ONLY | Ocean Neon visual styling; no order/report behavior changes */
+#okbStoresReportPage .stores-report-shell{
+ background:linear-gradient(143deg,#0a1d2d 0%,#123247 43%,#0b2435 75%,#081927 100%)!important;
+ border:1px solid rgba(75,151,172,.38)!important;
+ box-shadow:inset 0 1px 0 rgba(164,239,247,.045)!important;
+}
+#okbStoresReportPage .pending-head{
+ background:linear-gradient(115deg,rgba(23,63,84,.96),rgba(9,28,44,.94))!important;
+ border:1px solid rgba(66,156,176,.32)!important;border-radius:17px!important;
+}
+#okbStoresReportPage .pending-title-icon{
+ color:#22CFD3!important;border-color:#22CFD3!important;
+ background:linear-gradient(145deg,#1b485d,#10293e)!important;
+ box-shadow:inset 0 1px 0 rgba(175,251,255,.1)!important;
+}
+#okbStoresReportPage .pending-title-wrap h1{color:#f2fdff!important}
+#okbStoresReportPage .pending-title-wrap p{color:#bdd7e4!important}
+#okbStoresReportPage .pending-summary-card{
+ background:linear-gradient(127deg,#1b4053,#153649 60%,#102d42)!important;
+ border:1px solid rgba(88,159,179,.58)!important;
+ box-shadow:inset 0 1px 0 rgba(211,250,255,.07)!important;
+}
+#okbStoresReportPage .pending-summary-card>span,
+#okbStoresReportPage .pending-summary-card>small,
+#okbStoresReportPage .stores-report-rescued-title{color:#fff!important;font-size:14px!important;font-weight:800!important}
+#okbStoresReportPage .pending-summary-card>strong,
+#okbStoresReportPage .stores-report-rescued-branches strong,
+#okbStoresReportPage .stores-report-rescued-card strong{
+ color:#22CFD3!important;font-weight:900!important;
+}
+#okbStoresReportPage .stores-report-date-filter,
+#okbStoresReportPage .pending-toolbar{
+ background:linear-gradient(125deg,#173b50,#102d42)!important;
+ border-color:rgba(82,141,163,.52)!important;
+}
+#okbStoresReportPage .stores-report-date-filter input,
+#okbStoresReportPage .pending-toolbar :is(input,select){
+ background:linear-gradient(120deg,#1d3f52,#112d41)!important;
+ border:1px solid rgba(82,141,163,.6)!important;color:#f3fbff!important;
+ box-shadow:inset 0 1px 0 rgba(184,250,255,.04)!important;
+}
+#okbStoresReportPage .stores-report-head-actions :is(.btn-filter,.btn-reset-date,.pending-refresh-btn,.soft,.app-back-btn){
+ background:linear-gradient(115deg,#36e2e4,#22CFD3 56%,#13b5c2)!important;
+ color:#002135!important;border:1px solid #56f5f5!important;
+ border-radius:10px!important;font-size:13px!important;font-weight:800!important;
+ box-shadow:inset 0 1px 0 rgba(241,255,255,.25)!important;
+ text-shadow:none!important;
+}
+#okbStoresReportPage .stores-report-head-actions :is(.btn-filter,.btn-reset-date,.pending-refresh-btn,.soft,.app-back-btn):is(:hover,:focus-visible){
+ background:linear-gradient(115deg,#48eef0,#28dbe0 56%,#18c4ce)!important;
+ color:#002135!important;border-color:#88f8f8!important;box-shadow:none!important;
+}
+#okbStoresReportPage .stores-report-head-actions .app-back-btn{min-height:40px!important;min-width:92px!important;padding:9px 16px!important;border-radius:10px!important;width:auto!important;aspect-ratio:auto!important;display:inline-flex!important;gap:7px!important;align-items:center!important;justify-content:center!important}
+#okbStoresReportPage .stores-report-head-actions .app-back-btn svg{width:17px!important;height:17px!important;stroke:currentColor!important}
+#okbStoresReportPage #storesReportOrdersList .pending-row{
+ background:linear-gradient(120deg,#183749,#102b3e)!important;
+ border:1px solid rgba(65,126,149,.48)!important;
+ box-shadow:inset 0 1px 0 rgba(173,239,249,.04)!important;
+ transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease!important;
+}
+#okbStoresReportPage #storesReportOrdersList .pending-row:hover{
+ border-color:#22CFD3!important;
+ box-shadow:0 0 0 1px rgba(34,207,211,.28),inset 0 1px 0 rgba(175,249,251,.07)!important;
+}
+#okbStoresReportPage #storesReportOrdersList .pending-days{color:#22CFD3!important;font-weight:900!important}
+#okbStoresReportPage #storesReportOrdersList .pending-days small{color:#bcd8e5!important}
+#okbStoresReportPage #storesReportOrdersList .stores-report-status.returned{
+ background:rgba(34,207,211,.08)!important;color:#fff!important;
+ border:1px solid #22CFD3!important;box-shadow:none!important;
+}
+#okbStoresReportPage #storesReportOrdersList .pending-open-btn{
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ border:1px solid #315c76!important;color:#e7f7ff!important;
+ border-radius:10px!important;box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+}
+#okbStoresReportPage #storesReportOrdersList .pending-open-btn:is(:hover,:focus-visible){
+ background:#22CFD3!important;border-color:#22CFD3!important;
+ color:#002135!important;box-shadow:none!important;
+}
+
+/* v336 — Daily Report Ocean Neon UI. Decorative only; original button sizing preserved. */
+#branchRankPage{background:radial-gradient(circle at 12% 6%,rgba(34,207,211,.1),transparent 36%),linear-gradient(140deg,#102e42,#0b2437 60%,#081a2a)!important;color:#e8f7ff!important;}
+#branchRankPage :is(.daily-report-head-card,.daily-report-body-card,.report-card,.daily-report-financial-card){background:linear-gradient(135deg,#1b4053,#102d42 60%,#0a2537)!important;border-color:rgba(78,157,174,.55)!important;color:#f3fdff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;}
+#branchRankPage :is(h1,h2,h3,.report-card span,.daily-report-financial-card span){color:#f4fbff!important;}
+#branchRankPage :is(.report-card strong,.daily-report-financial-card strong){color:#22CFD3!important;}
+#branchRankPage :is(.analytics-date-bar .btn-filter,.analytics-date-bar .btn-reset-date,#refreshCurrentReportBtn,.analytics-date-bar .app-back-btn,.analytics-date-bar > button.success,.report-tabs button,.daily-report-search-wrap button,.daily-report-table button,.operation-manager-report-btn){
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;color:#e7f7ff!important;border:1px solid #315c76!important;box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;text-shadow:none!important;
+}
+#branchRankPage :is(.analytics-date-bar .btn-filter,.analytics-date-bar .btn-reset-date,#refreshCurrentReportBtn,.analytics-date-bar .app-back-btn,.analytics-date-bar > button.success,.report-tabs button,.daily-report-search-wrap button,.daily-report-table button,.operation-manager-report-btn):is(:hover,:focus-visible){background:#22CFD3!important;color:#002135!important;border-color:#22CFD3!important;box-shadow:none!important;}
+#branchRankPage .analytics-date-bar .app-back-btn{border-radius:9px!important;min-width:unset!important;width:auto!important;aspect-ratio:auto!important;}
+#branchRankPage :is(input,select){background:linear-gradient(120deg,#1d3f52,#112d41)!important;border-color:rgba(82,141,163,.55)!important;color:#f3fbff!important;}
+#branchRankPage .daily-report-table thead{background:linear-gradient(110deg,#1c4357,#102d42)!important;}
+#subscriptionPage .subscription-plan-card--featured .subscription-badge-row{display:flex;justify-content:flex-end;align-items:center;margin:4px 0 8px;min-height:28px;}
+#subscriptionPage .subscription-plan-card--featured .subscription-badge-row .subscription-most-popular{position:static!important;left:auto!important;top:auto!important;right:auto!important;transform:none!important;margin:0!important;}
+
+/* v336: exact Daily Report row-action class; no width/height change. */
+#branchRankPage .daily-report-open-btn{background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;color:#e7f7ff!important;border:1px solid #315c76!important;box-shadow:none!important;}
+#branchRankPage .daily-report-open-btn:hover,#branchRankPage .daily-report-open-btn:focus-visible{background:#22CFD3!important;color:#002135!important;border-color:#22CFD3!important;box-shadow:none!important;}
+
+/* v337: floating dashboard name — override legacy orange and black in every state. */
+body #branchFloatingSticky:not(.hidden),
+body #branchFloatingSticky:not(.hidden) .branch-floating-badge {
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ border-color:#315c76!important;color:#e7f7ff!important;
+ box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+ text-shadow:none!important;
+}
+body #branchFloatingSticky:not(.hidden):hover,
+body #branchFloatingSticky:not(.hidden):hover .branch-floating-badge {
+ background:#22cfd3!important;color:#002135!important;
+ border-color:#22cfd3!important;box-shadow:none!important;
+}
+body #branchFloatingSticky:not(.hidden){pointer-events:auto!important;}
+/* Branch proof: bring branch file chooser to the approved Dashboard Ocean Neon finish.
+   Keep original bPaymentImage and Delete event handlers, not a new uploader. */
+#branchPage #branchOrderForm div:has(> #bPaymentImage) { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm div:has(> #bPaymentImage) > #bPaymentImage { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm div:has(> #bPaymentImage) > #bPaymentImage::file-selector-button { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm div:has(> #bPaymentImage) > #bPaymentImage:hover::file-selector-button { /* v342: superseded branch proof styling removed */ }
+/* Badge alongside pricing, right edge in featured RTL plan, not above the price. */
+#subscriptionPage .subscription-plan-card--featured .subscription-price-box {display:flex!important;align-items:center!important;gap:0!important;min-height:48px!important;flex-wrap:nowrap!important;}
+#subscriptionPage .subscription-plan-card--featured .subscription-price-box > .subscription-most-popular {
+ position:static!important;inset:auto!important;transform:none!important;
+ flex:none!important;order:0!important;margin-inline-end:auto!important;margin-inline-start:0!important;
+ font-size:12px!important;line-height:1.3!important;white-space:nowrap!important;
+}
+#subscriptionPage .subscription-plan-card--featured .subscription-price-box > .price {order:1!important;}
+#subscriptionPage .subscription-plan-card--featured .subscription-price-box > .currency {order:2!important;}
+/* Pending: action buttons share Hard Refresh neutral default, turquoise on hover only. */
+#pendingPage .pending-head-actions :is(.pending-refresh-btn,.app-back-btn) {
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ color:#e7f7ff!important;border:1px solid #315c76!important;
+ box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;text-shadow:none!important;
+}
+#pendingPage .pending-head-actions :is(.pending-refresh-btn,.app-back-btn):is(:hover,:focus-visible) {
+ background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;box-shadow:none!important;
+}
+#pendingPage .pending-row {border-color:rgba(82,141,163,.35)!important;box-shadow:none!important;}
+#pendingPage .pending-row:hover {border-color:#22cfd3!important;box-shadow:0 0 0 1px rgba(34,207,211,.16)!important;}
+/* Abnormal header actions: same outer geometry as Filter / Reset, maintain flexible wrapping. */
+#okbStoresReportPage .pending-head-actions.stores-report-head-actions > :is(.pending-refresh-btn,.soft,.app-back-btn) {
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ color:#e7f7ff!important;border:1px solid #315c76!important;
+ border-radius:9px!important;min-height:34px!important;height:34px!important;
+ padding:5px 12px!important;line-height:22px!important;font-size:12px!important;
+ width:auto!important;min-width:0!important;aspect-ratio:auto!important;
+ box-sizing:border-box!important;box-shadow:none!important;text-shadow:none!important;
+}
+#okbStoresReportPage .pending-head-actions.stores-report-head-actions > :is(.pending-refresh-btn,.soft,.app-back-btn):is(:hover,:focus-visible){
+ background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;box-shadow:none!important;
+}
+/* Doctor Performance Dashboard: Ocean Neon visuals only, do not change data/table logic. */
+#doctorRankPage .doctor-rank-shell {
+ background:radial-gradient(ellipse at 5% 1%,rgba(34,207,211,.095),transparent 40%),linear-gradient(130deg,#0b2233,#102e42 48%,#081b2b)!important;
+ padding:18px!important;border:1px solid rgba(82,141,163,.36)!important;border-radius:20px!important;
+}
+#doctorRankPage .doctor-rank-shell :is(.card,.doctor-rank-kpi,.doctor-rank-table-card) {
+ background:linear-gradient(122deg,#1b4053 0%,#132f43 57%,#0d2538 100%)!important;
+ border-color:rgba(82,141,163,.55)!important;color:#f3fbff!important;
+ box-shadow:inset 0 1px 0 rgba(176,245,255,.04)!important;
+}
+#doctorRankPage :is(.doctor-rank-kpi span,.doctor-rank-head p,.doctor-rank-kpi small,.doctor-rank-toolbar label){color:#f3fbff!important;}
+#doctorRankPage .doctor-rank-kpi strong{color:#22cfd3!important;}
+#doctorRankPage .doctor-rank-kpi strong.red{color:#ef6b71!important;}
+#doctorRankPage :is(input:not([type=checkbox]),select){background:linear-gradient(120deg,#1d3f52,#112d41)!important;border-color:rgba(82,141,163,.6)!important;color:#f3fbff!important;}
+#doctorRankPage .doctor-rank-table thead{background:linear-gradient(120deg,#214c60,#103147)!important;color:#fff!important;}
+#doctorRankPage .doctor-rank-table tbody tr:hover{background:rgba(34,207,211,.08)!important;}
+#doctorRankPage .doctor-rank-head-actions :is(button),
+#doctorRankPage .doctor-rank-toolbar button {
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ color:#e7f7ff!important;border:1px solid #315c76!important;box-shadow:none!important;
+}
+#doctorRankPage .doctor-rank-head-actions :is(button):is(:hover,:focus-visible),
+#doctorRankPage .doctor-rank-toolbar button:is(:hover,:focus-visible){background:#22cfd3!important;color:#002135!important;border-color:#22cfd3!important;box-shadow:none!important;}
+#doctorRankPage .doctor-rank-head-actions .app-back-btn{border-radius:9px!important;aspect-ratio:auto!important;width:auto!important;}
+
+
+/* v338: exact OKB Abnormal action sizing + branch proof picker mirrors Dashboard visual reference. */
+#okbStoresReportPage .stores-report-head-actions > :is(.pending-refresh-btn,.soft,.app-back-btn){
+  min-height:40px!important;height:40px!important;
+  padding:9px 14px!important;font-size:13px!important;
+  border-radius:10px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  box-sizing:border-box!important;line-height:1!important;white-space:nowrap!important;
+}
+#okbStoresReportPage .stores-report-head-actions > .app-back-btn{gap:6px!important;}
+#okbStoresReportPage .stores-report-head-actions > .app-back-btn svg{width:15px!important;height:15px!important;}
+
+#branchPage #branchOrderForm .branch-proof-shell{
+  margin-top:12px!important;display:block!important;
+}
+#branchPage #branchOrderForm .branch-proof-picker{ /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-picker > #bPaymentImage{ /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-picker > #bPaymentImage::file-selector-button{ /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-delete{ /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-picker.has-file > .branch-proof-delete{ /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-delete:is(:hover,:focus-visible){ /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm #bPaymentImagePreview{ /* v342: superseded branch proof styling removed */ }
+
+
+/* v339 — The whole Branch payment proof shell is moved into the customer row.
+   Style the visible shell/picker, exactly like Dashboard; no upload logic changes. */
+#branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm
+.mansoura-customer-support-layout > .branch-proof-shell {
+  grid-column:2!important;grid-row:1!important;
+  align-self:start!important;min-width:0!important;width:100%!important;
+  display:block!important;margin:0!important;padding:0!important;
+  background:transparent!important;border:0!important;box-shadow:none!important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage::file-selector-button { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker.has-file > .branch-proof-delete { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete:hover { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > #bPaymentImagePreview { /* v342: superseded branch proof styling removed */ }
+@media(max-width:760px){
+ #branchPage[data-ocean-neon-trial="mansoura"] #branchOrderForm
+ .mansoura-customer-support-layout > .branch-proof-shell {
+   grid-row:2!important;grid-column:1!important;
+ }
+}
+
+/* v340 — Branch payment proof: copy v323 Dashboard's exact final geometry.
+   Scope to Branch proof only; keep original file input, Delete and upload behavior. */
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage::file-selector-button { /* v342: superseded branch proof styling removed */ }
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete { /* v342: superseded branch proof styling removed */ }
+
+/* v341 — Raise the branch proof picker outer height by 4px only. */
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker { /* v342: superseded branch proof styling removed */ }
+
+/* v342: one canonical set of Branch proof measurements. Declaration bodies copied from Dashboard v323. */
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker {
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:8px 12px !important;
+  border:1px solid rgba(82,141,163,.6) !important;
+  border-radius:10px !important;
+  background:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%) !important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09) !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  overflow:hidden !important;
+  direction:ltr !important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage {
+  flex:1 1 auto !important;
+  width:0 !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  color:#f3fbff !important;
+  font-size:14px !important;
+  line-height:normal !important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage::file-selector-button {
+  margin:0 8px 0 0 !important;
+  padding:7px 12px 7px 32px !important;
+  font-size:12px !important;
+  border-radius:8px !important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete {
+  height:auto !important;
+  min-height:0 !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font-size:12px !important;
+}
+
+#branchPage #branchOrderForm .branch-proof-shell{margin:0!important;padding:0!important;background:transparent!important;border:0!important;min-width:0!important;}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage{direction:ltr!important;}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete{
+ display:none!important;align-items:center!important;justify-content:center!important;flex:0 0 auto!important;
+ min-width:50px!important;color:#fff!important;font-weight:700!important;
+ background:rgba(112,23,30,.43)!important;border:1px solid #f04454!important;box-shadow:none!important;text-shadow:none!important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker.has-file > .branch-proof-delete{display:inline-flex!important;}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete:is(:hover,:focus-visible){background:#9f2533!important;border-color:#ff6270!important;color:#fff!important;}
+#branchPage #branchOrderForm #bPaymentImagePreview{display:none!important;}
+
+
+
+/* v345 — Branch payment proof: Dashboard-matched native Choose File, icon, and
+   inner filename rectangle terminating immediately behind the upload button.
+   The form/input IDs and file-selection/delete handlers are unchanged. */
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker {
+  position:relative!important;
+  overflow:hidden!important;
+}
+
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage,
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > .branch-proof-delete {
+  position:relative!important;z-index:1!important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage::file-selector-button {
+  margin:0 8px 0 0!important;
+  padding:7px 12px 7px 32px!important;
+  font-size:12px!important;
+  font-weight:700!important;
+  border-radius:8px!important;
+  border:1px solid rgba(67,210,220,.55)!important;
+  background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23aaf9fb%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%2016V3m0%200L7%208m5-5%205%205%22%2F%3E%3Cpath%20d%3D%22M4%2016v3a2%202%200%200%200%202%202h12a2%202%200%200%200%202-2v-3%22%2F%3E%3C%2Fsvg%3E")!important;
+  background-color:#16516a!important;
+  background-size:17px 17px!important;
+  background-position:9px center!important;
+  background-repeat:no-repeat!important;
+  color:#e5fbff!important;
+  box-shadow:inset 0 0 0 1px rgba(150,241,248,.35),inset 0 1px 0 rgba(255,255,255,.11)!important;
+  cursor:pointer!important;
+  transition:background-color .18s ease,color .18s ease,border-color .18s ease!important;
+}
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage:hover::file-selector-button,
+#branchPage #branchOrderForm .branch-proof-shell > .branch-proof-picker > #bPaymentImage:focus-visible::file-selector-button {
+  background-color:#22CFD3!important;
+  border-color:#56f3f6!important;
+  color:#082c38!important;
+  box-shadow:inset 0 0 0 1px rgba(5,92,105,.48),0 0 0 1px rgba(34,207,211,.18)!important;
 }

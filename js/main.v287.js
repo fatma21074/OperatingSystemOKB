@@ -40,57 +40,11 @@ function createOkbSupabaseClient(accessToken = "") {
 }
 
 
-// v286: Read-only report page switches. NEVER gate order writes, payments, core accounting or audit writes.
-const OKB_REPORT_CONTROL_PAGES = Object.freeze({
-  doctorRankPage:'doctor_rank_stores', productReportsPage:'product_reports',
-  shippingBranchPerformance:'shipping_rank', commissionPage:'commission',
-  branchRankPage:'daily_report', branchesTreasuryPage:'branches_treasury', pendingPage:'pending'
-});
-const OKB_REPORT_CONTROL_PREFIX='okb_report_manual_v286_';
-function okbReportIsActive(page){
-  try{return sessionStorage.getItem(OKB_REPORT_CONTROL_PREFIX+page)==='active';}catch(_){return false;}
-}
-function okbReportCanControl(page){
-  const feature=OKB_REPORT_CONTROL_PAGES[page];
-  return !!feature && typeof hasRoleFeature==='function' && hasRoleFeature(feature);
-}
-function okbReportUpdateUI(){
-  Object.keys(OKB_REPORT_CONTROL_PAGES).forEach(page=>{
-    const active=okbReportIsActive(page);
-    const container=document.getElementById(page==='shippingBranchPerformance'?'shippingBranchPerformanceCard':page);
-    container?.classList.toggle('okb-report-stopped',!active);
-    const node=document.querySelector('[data-okb-report-control="'+page+'"]');
-    if(!node)return;
-    node.querySelector('.okb-report-active')?.classList.toggle('okb-report-neon-green',active);
-    node.querySelector('.okb-report-stop')?.classList.toggle('okb-report-neon-red',!active);
-    const status=node.querySelector('.okb-report-status');
-    if(status)status.textContent=active?'ACTIVE':'STOPPED — لا تحميل لبيانات التقرير';
-  });
-}
-async function okbReportSetActive(page,active){
-  if(!okbReportCanControl(page)){alert('غير مسموح بالتحكم في التقرير');return;}
-  try{
-    sessionStorage.setItem(OKB_REPORT_CONTROL_PREFIX+page,active?'active':'stopped');
-    sessionStorage.setItem('okb_report_restore_v286',page);
-  }catch(error){console.warn('Report control storage failure',error);return;}
-  okbReportUpdateUI();
-  await hardCacheSync(null);
-}
-function okbReportRestorePage(){
-  let page='';try{page=sessionStorage.getItem('okb_report_restore_v286')||'';sessionStorage.removeItem('okb_report_restore_v286');}catch(_){ }
-  if(!page||!okbReportCanControl(page))return false;
-  switch(page){
-    case 'doctorRankPage':showDoctorRankPage();break;
-    case 'productReportsPage':showProductReportsPage();break;
-    case 'commissionPage':showCommissionPage();break;
-    case 'branchRankPage':showBranchRankPage();break;
-    case 'branchesTreasuryPage':showBranchesTreasuryPage();break;
-    case 'pendingPage':showPendingPage();break;
-    case 'shippingBranchPerformance':showShippingRankPage('branch');break;
-    default:return false;
-  }
-  return true;
-}
+// v336 — Retired manual Active/Stop switches. Report reads follow ordinary page permissions.
+// Core financial/order permissions and retired Secretary Audit remain unchanged.
+function okbReportIsActive(_page){return true;}
+function okbReportUpdateUI(){}
+function okbReportRestorePage(){return false;}
 
 // v285: Admin-only Secretary Audit manual engine switch. Default STOPPED per browser tab.
 const OKB_SECRETARY_AUDIT_SWITCH_KEY='okb_secretary_audit_engine_v285';
@@ -1886,6 +1840,7 @@ const ROLE_PERMISSION_ROLES = [
 const BUILTIN_PERMISSION_ROLE_KEYS = new Set(ROLE_PERMISSION_ROLES.map(role => role.key));
 const ROLE_PERMISSION_FEATURES = [
   { key:'dashboard', label:'Dashboard', group:'Main' },
+  { key:'subscription', label:'Subscription', group:'Subscription' },
   { key:'shipping_rank', label:'Shipping Rank', group:'Main' },
   { key:'company_rank', label:'Company Rank', group:'Main' },
   { key:'operation_manager_report', label:'Operation Manager Report', group:'Main' },
@@ -1976,6 +1931,7 @@ function getDefaultRolePermissions(role) {
   const doctor = key === 'doctor';
   const defaults = {
     dashboard:!doctor,
+    subscription:false, // Admin grants this explicitly per role.
     shipping_rank:operation || key === 'agent' || accounting || key === 'store_manager',
     company_rank:false,
     operation_manager_report:operation,
@@ -2923,7 +2879,8 @@ function renderSubscriptionPage(){
 }
 function applySubscriptionSettings(){renderSubscriptionPage();}
 function changeSubscriptionBilling(mode){subscriptionBillingMode=mode==='monthly'?'monthly':'yearly';renderSubscriptionPage();}
-function showSubscriptionPage(){hideAllPages();document.getElementById('subscriptionPage')?.classList.remove('hidden');setActiveMenu('subscriptionPage');renderSubscriptionPage();}
+function okbUpdateSubscriptionAccess(){const b=document.querySelector('.user-account-subscription');if(b)b.classList.toggle('hidden',!hasRoleFeature('subscription'));}
+function showSubscriptionPage(){if(!hasRoleFeature('subscription')){alert('غير مسموح بفتح الاشتراكات');return;}hideAllPages();document.getElementById('subscriptionPage')?.classList.remove('hidden');setActiveMenu('subscriptionPage');renderSubscriptionPage();}
 function renderSubscriptionSettingsForm(){
  if(!isAdmin())return;
  const cfg=getSubscriptionConfig();
@@ -3000,7 +2957,7 @@ function renderRolePermissionMatrix() {
   const grid = document.getElementById('permissionFeaturesGrid');
   if (!grid) return;
   const roleFeatures = ROLE_PERMISSION_FEATURES;
-  const groups = [...new Set(roleFeatures.map(feature => feature.group))];
+  const groups = [...new Set(roleFeatures.map(feature => feature.group))].filter(group=>group!=='Subscription');
   const cards = groups.map(group => `
     <section class="permission-table-group">
       <div class="permission-table-title"><h3>${escapeHTML(group)}</h3></div>
@@ -3024,7 +2981,8 @@ function renderRolePermissionMatrix() {
   `;
   // Commission is the final static group in v166; appending OKB Filter places
   // the new independent card directly beside it in the Permission grid.
-  grid.innerHTML = cards.join('') + okbFilterCard;
+  const subscriptionCard = `<section class="permission-table-group"><div class="permission-table-title"><h3>Subscription</h3></div><div class="permission-table-wrap"><table class="permission-matrix-table"><tbody><tr><td>👑 Subscription</td><td><input class="permission-compact-check" type="checkbox" data-permission-feature="subscription" ${permissions.subscription?'checked':''}></td></tr></tbody></table></div></section>`;
+  grid.innerHTML = cards.join('') + okbFilterCard + subscriptionCard;
 }
 
 async function showPermissionPage() {
@@ -4704,6 +4662,7 @@ function toggleUserAccountMenu(event) {
   const open = !menu.classList.contains('open');
   closeUserAccountMenu();
   if (open) {
+    okbUpdateSubscriptionAccess();
     menu.classList.add('open');
     trigger.setAttribute('aria-expanded', 'true');
     setTimeout(() => document.addEventListener('click', closeUserAccountMenu, { once:true }), 0);
@@ -21624,7 +21583,7 @@ function renderMobileMoreSheet(container){
   if(hasRoleFeature('branch_stock'))operations.push(['📦','Branch Stock','الجرد والمخزون',()=>showBranchStockPage(),mobileFoundationBadgeValue('branchStockNotification')]);
   if(hasRoleFeature('activity_log')&&quickTarget!=='activity')operations.push(['📈','Activity Log','سجل الحركات',()=>showActivityLogPage(),mobileFoundationBadgeValue('activityLogNotification')]);
   if(canViewProductReports())operations.push(['📊','Product Reports','تقارير المنتجات',()=>showProductReportsPage(),0]);
-  operations.push(['👑','Subscription','الاشتراكات والباقات',()=>showSubscriptionPage(),0]);
+  if(hasRoleFeature('subscription'))operations.push(['👑','Subscription','الاشتراكات والباقات',()=>showSubscriptionPage(),0]);
   if(hasButtonPermission('btn_financial_audit_main'))operations.push(['💰','Financial Audit','المراجعة المالية',()=>openFinancialAudit('branches','main'),mobileFoundationBadgeValue('financialAuditNotification')]);
   if(operations.length){
     mobileFoundationAddGroup(container,'التشغيل والمتابعة');
@@ -21789,7 +21748,7 @@ function setMansouraBranchFormVisualLayout(enabled) {
   const payment=document.getElementById('bPaymentImage');
   const area=document.getElementById('bArea');
   if(!grid||!status||!notes||!payment||!area)return;
-  const nodes=[status,notes.parentElement.parentElement,payment.parentElement];
+  const nodes=[status,notes.parentElement.parentElement,payment.closest('.branch-proof-shell')||payment.parentElement];
   if(!form._mansouraOriginalPositions){
     form._mansouraOriginalPositions=nodes.map((node)=>{
       const anchor=document.createComment('original mansoura dashboard form location');
@@ -21817,3 +21776,7 @@ function setMansouraBranchFormVisualLayout(enabled) {
     if(layout)layout.remove();
   }
 }
+
+// Subscription access label refresh on account menu interaction (no polling).
+document.querySelector('.user-account-menu')?.addEventListener('click',okbUpdateSubscriptionAccess,true);
+document.querySelector('.user-account-menu')?.addEventListener('mouseenter',okbUpdateSubscriptionAccess);

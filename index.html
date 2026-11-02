@@ -57,7 +57,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20261102-pending-ocean-v334">
+  <link rel="stylesheet" href="css/style.css?v=20261103-v347-remove-inner-rectangle">
 <style>
 /* v288: Login-page visual skin. All selectors scoped to #loginPage; auth logic unchanged. */
 #loginPage.login-page-new{direction:ltr;box-sizing:border-box;background:radial-gradient(ellipse at 52% 43%,#142e40 0%,#081723 65%,#06111b 100%);padding:clamp(16px,4vh,44px) clamp(14px,4vw,66px);font-family:Inter,Arial,sans-serif;color:#f7f9ff;overflow:auto}
@@ -961,7 +961,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 
 <!-- ===== Product Reports Page ===== -->
 <section class="hidden" id="productReportsPage">
-<div class="okb-report-manual-bar" data-okb-report-control="productReportsPage"><span class="okb-report-page-label">Product Reports</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('productReportsPage',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('productReportsPage',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
   <div class="product-reports-shell">
     <div class="product-reports-head">
       <div class="product-reports-title"><div class="product-reports-title-badge">📦</div><div><h1>Product Reports</h1><p>تحليل مبيعات ومرتجعات وحركة المنتجات المضافة من Settings</p></div></div>
@@ -1114,7 +1114,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <div id="globalShippingRankSections" style="margin-top:18px;">
     <div class="shipping-charts-grid" style="grid-template-columns:1fr 1fr;">
       <div class="shipping-chart-card" id="shippingBranchPerformanceCard">
-<div class="okb-report-manual-bar" data-okb-report-control="shippingBranchPerformance"><span class="okb-report-page-label">Branch Performance</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('shippingBranchPerformance',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('shippingBranchPerformance',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
         <div class="section-head" style="margin-bottom:12px;">
           <h2 style="margin:0!important;">🏪 Branch Performance</h2>
           <span id="branchPerformanceRankingSubtitle" style="font-size:12px;color:#94A3B8;">بيانات الأداء القياسية للفترة المحددة</span>
@@ -1192,7 +1192,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 </section>
 <!-- ===== Doctor Rank Page ===== -->
 <section class="hidden" id="doctorRankPage">
-<div class="okb-report-manual-bar" data-okb-report-control="doctorRankPage"><span class="okb-report-page-label">Doctor Performance Dashboard</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('doctorRankPage',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('doctorRankPage',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
 <div class="doctor-rank-shell">
   <div class="card doctor-rank-head">
     <div><h1>👨‍⚕️ Doctor Performance Dashboard</h1><p>تقرير دقيق لأداء جميع دكاترة OKB حسب التاريخ والفرع.</p><small class="doctor-rank-load-state" id="doctorRankLoadState" aria-live="polite"></small></div>
@@ -1256,7 +1256,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 </section>
 <!-- ===== Reports / Daily Report Page ===== -->
 <section class="hidden" id="branchRankPage">
-<div class="okb-report-manual-bar" data-okb-report-control="branchRankPage"><span class="okb-report-page-label">Daily Report</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('branchRankPage',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('branchRankPage',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
 <div class="card daily-report-head-card">
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
 <div>
@@ -1952,13 +1952,14 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 <div id="bDepositImageWarning" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:8px 12px; font-size:12px; color:#DC2626; margin-top:8px;">
   ⚠️ يجب رفع صورة إثبات الدفع لأن المبلغ المدفوع أكثر من 0
 </div>
-<div style="margin-top:12px;padding:10px;background:var(--bg-soft);border:1px solid var(--border-color);border-radius:10px;">
-<label style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:block;">📎 إثبات السكرتارية <span style="color:#DC2626;">(إجباري لو فيه مدفوع)</span></label>
-<input accept="image/*" id="bPaymentImage" onchange="previewBranchPaymentImage(this);checkBranchDepositImageRequirement();" style="padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:8px;width:100%;font-size:13px;" type="file"/>
-<button class="mansoura-payment-delete" type="button" onclick="clearBranchPaymentImage();this.parentElement.classList.remove('has-file')" aria-label="Delete secretary payment file">Delete</button>
+<div class="branch-proof-shell">
+<div class="branch-proof-picker" id="branchProofPicker">
+<input accept="image/*" id="bPaymentImage" onchange="previewBranchPaymentImage(this);checkBranchDepositImageRequirement();this.closest('.branch-proof-picker').classList.toggle('has-file',!!this.files.length)" type="file"/>
+<button class="branch-proof-delete" id="branchProofDelete" type="button" onclick="clearBranchPaymentImage();document.getElementById('branchProofPicker').classList.remove('has-file')" aria-label="Delete secretary payment file">Delete</button>
+</div>
 <div id="bPaymentImagePreview" style="margin-top:8px;display:none;align-items:center;gap:10px;">
 <img id="bPaymentPreviewImg" style="max-width:80px;max-height:80px;border-radius:8px;border:1px solid var(--border-color);"/>
-<button data-okb-custom-button="b166" onclick="clearBranchPaymentImage()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
+<button data-okb-custom-button="b166" onclick="clearBranchPaymentImage();document.getElementById('branchProofPicker').classList.remove('has-file')" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;" type="button">🗑 إزالة</button>
 </div>
 </div>
 <div class="order-actions">
@@ -2022,7 +2023,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 
 <!-- ===== Commission Dashboard ===== -->
 <section id="commissionPage" class="page hidden commission-page" dir="rtl">
-<div class="okb-report-manual-bar" data-okb-report-control="commissionPage"><span class="okb-report-page-label">Commission Reports</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('commissionPage',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('commissionPage',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
   <div class="commission-shell">
     <div class="commission-head">
       <div><span class="commission-eyebrow">الملخص المالي</span><h1>العمولات</h1><p>متابعة أداء ومستحقات الفروع ومدير الفروع طبقًا لنظام العمولات المعتمد</p></div>
@@ -2118,7 +2119,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 </section>
 <!-- ===== Pending Orders Page ===== -->
 <section class="hidden" id="pendingPage">
-<div class="okb-report-manual-bar" data-okb-report-control="pendingPage"><span class="okb-report-page-label">Pending Orders</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('pendingPage',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('pendingPage',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
   <div class="pending-shell">
     <div class="pending-head">
       <div class="pending-title-wrap"><div class="pending-title-icon">☠</div><div><h1>Pending Orders</h1><p>كل أوردرات Delivering التي مرّ عليها 3 أيام أو أكثر بدون تحديث، بغض النظر عن تاريخ إنشائها</p></div></div>
@@ -2145,7 +2146,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 
 <!-- ===== All Branches Treasury ===== -->
 <section class="hidden" id="branchesTreasuryPage">
-<div class="okb-report-manual-bar" data-okb-report-control="branchesTreasuryPage"><span class="okb-report-page-label">خزنة الفروع</span><button type="button" class="okb-report-active" onclick="okbReportSetActive('branchesTreasuryPage',true)">⚡ Active Page</button><button type="button" class="okb-report-stop" onclick="okbReportSetActive('branchesTreasuryPage',false)">⏹ Stop Page</button><span class="okb-report-status">STOPPED — لا تحميل لبيانات التقرير</span></div>
+
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <div><h1 style="margin:0;font-size:20px;">🏦 خزنة الفروع</h1><p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">مراجعة مالية موحدة ودقيقة للفروع الأربعة</p></div>
@@ -2301,8 +2302,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
       <div class="secretary-audit-head-actions">
         <input id="secretaryAuditSearch" class="secretary-audit-search" type="search" placeholder="بحث Ticket ID أو الموبايل أو العميل..." autocomplete="off" oninput="scheduleSecretaryAuditSearch()">
         <button data-okb-custom-button="b229" type="button" class="secretary-audit-head-reset" onclick="resetSecretaryAuditFilters()">Reset ✕</button>
-        <button id="secretaryAuditActivateBtn" type="button" class="okb-sa-toggle" onclick="setSecretaryAuditEngine(true)" aria-pressed="false">⚡ Active Page</button>
-        <button id="secretaryAuditStopBtn" type="button" class="okb-sa-toggle" onclick="setSecretaryAuditEngine(false)" aria-pressed="true">⏹ Stop Page</button>
+        
         <button data-okb-custom-button="b230" class="app-back-btn" type="button" data-app-back onclick="goBackToPreviousPage()" aria-label="الرجوع إلى الصفحة السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5 3 12l7 7M4 12h17"/></svg><span>Back</span></button>
       </div>
     </div>
@@ -2625,6 +2625,6 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v287.js?v=20261102-four-branches-v332"></script>
+<script src="js/main.v287.js?v=20261102-v337-badge"></script>
 </body>
 </html>
