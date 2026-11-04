@@ -1622,9 +1622,9 @@ body.doctor-readonly .branch-bulk-edit,body.doctor-readonly .branch-bulk-delete,
 @media(max-width:1050px){.pending-row{grid-template-columns:60px 1fr 1fr}.pending-row>*:nth-child(n+5){grid-column:auto}.pending-summary{grid-template-columns:1fr 1fr 1fr}}@media(max-width:720px){.dashboard-header-btn,.shipping-rank-header-btn,.header-okb-stores-btn,.pending-header-btn,.logout-header-btn,.settings-header-btn{padding:7px 10px}.dashboard-header-label,.shipping-rank-header-label,.header-okb-stores-label,.header-okb-stores-btn .okb-arrow,.pending-header-label,.logout-header-label,.settings-header-label,.settings-header-arrow{display:none}.pending-toolbar,.pending-summary{grid-template-columns:1fr}.pending-row{grid-template-columns:55px 1fr}.pending-row>*:not(:first-child){grid-column:2}}
 .activity-log-btn{position:relative}
 .activity-ticket-link{
-  border:1px solid rgba(255,138,31,.22);
-  background:rgba(255,138,31,.11);
-  color:#ff9d3d;
+  border:1px solid #22CFD3;
+  background:linear-gradient(125deg,#176475,#104254);
+  color:#ffffff;
   border-radius:999px;
   padding:7px 12px;
   font-family:inherit;
@@ -1635,9 +1635,10 @@ body.doctor-readonly .branch-bulk-edit,body.doctor-readonly .branch-bulk-delete,
   transition:.18s ease;
 }
 .activity-ticket-link:hover{
-  background:rgba(255,138,31,.19);
-  border-color:rgba(255,138,31,.48);
-  box-shadow:0 0 12px rgba(255,138,31,.2);
+  background:linear-gradient(125deg,#1b8190,#156071);
+  border-color:#5de9eb;
+  color:#ffffff;
+  box-shadow:0 0 12px rgba(34,207,211,.22);
   transform:translateY(-1px);
 }
 .activity-log-icon{position:relative}
@@ -5442,3 +5443,792 @@ body #branchFloatingSticky:not(.hidden){pointer-events:auto!important;}
   color:#082c38!important;
   box-shadow:inset 0 0 0 1px rgba(5,92,105,.48),0 0 0 1px rgba(34,207,211,.18)!important;
 }
+
+
+/* v348 — Shipping Rank Ocean Neon. Entirely scoped to the existing report. */
+#shippingRankPage {color:#eaf9ff!important;}
+#shippingRankPage .shipping-dashboard-shell {
+ background:linear-gradient(145deg,#0a1e2e 0%,#12344a 43%,#0c2335 72%,#081b29 100%)!important;
+ border:1px solid rgba(59,166,186,.53)!important;
+ box-shadow:inset 0 1px 0 rgba(180,248,255,.07),0 14px 42px rgba(0,7,17,.2)!important;
+}
+#shippingRankPage .shipping-dashboard-title h1{color:#f4fdff!important;}
+#shippingRankPage .shipping-dashboard-title .dash-icon {
+ background:linear-gradient(130deg,#184e63,#102d41)!important;
+ border:1px solid #22CFD3!important;color:#22CFD3!important;
+ box-shadow:0 0 12px rgba(34,207,211,.12)!important;
+}
+#shippingRankPage .shipping-dashboard-subtitle{color:#b9d5e2!important;}
+#shippingRankPage .analytics-date-bar {
+ background:linear-gradient(120deg,#183c51,#102b3d)!important;
+ border:1px solid rgba(75,157,178,.6)!important;
+ border-radius:11px!important;
+}
+#shippingRankPage .analytics-date-bar label{color:#eefbff!important;}
+#shippingRankPage .analytics-date-bar input[type="date"] {
+ background:linear-gradient(120deg,#1d4054,#102e42)!important;
+ border:1px solid rgba(81,152,173,.64)!important;
+ border-radius:8px!important;color:#f2fdff!important;
+ color-scheme:dark;
+}
+#shippingRankPage .shipping-target-card,
+#shippingRankPage .shipping-chart-card,
+#shippingRankPage .shipping-kpi-item {
+ background:linear-gradient(133deg,#1c4053 0%,#14354b 48%,#0e293e 100%)!important;
+ border:1px solid rgba(76,150,171,.48)!important;
+ box-shadow:inset 0 1px 0 rgba(175,248,253,.06),0 7px 20px rgba(0,11,22,.12)!important;
+}
+#shippingRankPage .shipping-target-card::after{background:rgba(34,207,211,.09)!important;}
+#shippingRankPage .shipping-target-card.good{border-top:2px solid rgba(83,218,171,.7)!important;}
+#shippingRankPage .shipping-target-card.bad{border-top:2px solid rgba(251,113,133,.7)!important;}
+#shippingRankPage .shipping-target-card.warn{border-top:2px solid rgba(250,204,111,.65)!important;}
+#shippingRankPage .shipping-target-card.blue{border-top:2px solid rgba(34,207,211,.8)!important;}
+#shippingRankPage .ship-card-label,
+#shippingRankPage .shipping-kpi-label{color:#f1fcff!important;font-weight:850!important;}
+#shippingRankPage .ship-card-note,
+#shippingRankPage .shipping-kpi-sub{color:#c0d8e5!important;}
+#shippingRankPage .ship-card-number,
+#shippingRankPage .shipping-kpi-value{color:#22CFD3!important;}
+/* Preserve actual semantic colors on alert/status cards rather than repainting status meaning. */
+#shippingRankPage #shipPerformanceStatus{color:#22CFD3!important;}
+#shippingRankPage .shipping-kpi-strip{
+ background:linear-gradient(120deg,#102f42,#0a2233)!important;
+ border:1px solid rgba(75,155,176,.55)!important;
+ gap:7px!important;padding:7px!important;
+}
+#shippingRankPage .shipping-kpi-item{border-radius:11px!important;min-width:0!important;}
+#shippingRankPage .shipping-kpi-icon{background:rgba(34,207,211,.12)!important;border:1px solid rgba(34,207,211,.28)!important;}
+#shippingRankPage .shipping-chart-card h2,
+#shippingRankPage .section-head h2{color:#f1fcff!important;}
+#shippingRankPage .shipping-chart-card .table-wrap,
+#shippingRankPage #branchPerformanceTableWrap{
+ background:linear-gradient(120deg,#102f42,#0c263a)!important;
+ border:1px solid rgba(72,144,167,.55)!important;
+ border-radius:12px!important;
+}
+#shippingRankPage .shipping-chart-card th{
+ background:#133b4e!important;color:#edfbff!important;
+ border-bottom:1px solid rgba(73,166,187,.5)!important;
+}
+#shippingRankPage .shipping-chart-card td{
+ color:#e1f2fa!important;border-bottom:1px solid rgba(75,144,164,.19)!important;
+}
+#shippingRankPage .shipping-chart-card tr:hover td{background:rgba(34,207,211,.08)!important;}
+#shippingRankPage .branch-ranking-row{
+ background:linear-gradient(125deg,#15364b,#0c293d)!important;
+ border-color:rgba(75,151,174,.48)!important;
+}
+#shippingRankPage .branch-ranking-row:hover{border-color:#22CFD3!important;}
+#shippingRankPage .branch-ranking-row:first-child{border-color:rgba(34,207,211,.68)!important;box-shadow:0 0 14px rgba(34,207,211,.1)!important;}
+#shippingRankPage .branch-ranking-position{color:#22CFD3!important;}
+#shippingRankPage .branch-ranking-fill{background:linear-gradient(90deg,#126578,#22CFD3)!important;}
+#shippingRankPage .branch-ranking-fill.current{background:linear-gradient(90deg,#158e91,#50e5da)!important;}
+#shippingRankPage .shipping-note-card{
+ background:linear-gradient(125deg,#15384c,#0e293d)!important;
+ border:1px solid rgba(75,159,180,.47)!important;color:#dceef6!important;
+}
+#shippingRankPage .shipping-note-icon{background:#16516a!important;border:1px solid #22CFD3!important;color:#22CFD3!important;}
+/* Hard Refresh button palette, preserving existing dimensions and click logic. */
+#shippingRankPage .analytics-date-bar :is(.btn-filter,.btn-reset-date),
+#shippingRankPage .shipping-dashboard-header > div:last-child > button.success,
+#shippingRankPage #refreshShippingRankBtn,
+#shippingRankPage .branch-performance-tabs > .branch-performance-tab {
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ color:#e7f7ff!important;
+ border:1px solid #315c76!important;
+ box-shadow:none!important;
+ text-shadow:none!important;
+ transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease!important;
+}
+#shippingRankPage .analytics-date-bar :is(.btn-filter,.btn-reset-date):is(:hover,:focus-visible),
+#shippingRankPage .shipping-dashboard-header > div:last-child > button.success:is(:hover,:focus-visible),
+#shippingRankPage #refreshShippingRankBtn:is(:hover,:focus-visible),
+#shippingRankPage .branch-performance-tabs > .branch-performance-tab:is(:hover,:focus-visible){
+ background:#22CFD3!important;color:#002135!important;
+ border-color:#22CFD3!important;box-shadow:none!important;filter:none!important;
+}
+#shippingRankPage .branch-performance-tabs > .branch-performance-tab.active:not(:hover):not(:focus-visible){
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ color:#eaf9ff!important;border-color:#22CFD3!important;
+ box-shadow:inset 0 -2px 0 #22CFD3!important;
+}
+#shippingRankPage .branch-performance-tabs > .branch-performance-tab.active:is(:hover,:focus-visible){box-shadow:inset 0 -2px 0 #083743!important;}
+@media (max-width:720px){
+ #shippingRankPage .shipping-dashboard-shell{padding:14px!important;}
+ #shippingRankPage .shipping-kpi-strip{gap:7px!important;}
+}
+
+
+/* v349 — Shipping Rank: semantic rate colors override v348 global turquoise cells. */
+#shippingRankPage .shipping-chart-card td.shipping-rate-cell { color:inherit; }
+#shippingRankPage .shipping-target-card .ship-card-number.shipping-rate-semantic,
+#shippingRankPage .shipping-kpi-item .shipping-kpi-value.shipping-rate-semantic,
+#shippingRankPage .shipping-rate-semantic { color:inherit; } /* inline !important carries threshold tone */
+/* Same top border as adjacent Ocean Neon cards: remove the decorative cyan stripe. */
+#shippingRankPage .shipping-target-card.blue { border-top:1px solid rgba(76,150,171,.48)!important; }
+
+
+/* v350 — Shipping Rank surgical visual fixes. The generic `.blue` class sets
+   a button-style background: remove it from this numeric display only. */
+#shippingRankPage #shipTargetRemainingBig.blue {
+  background:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+  border:0!important;
+  outline:0!important;
+}
+/* Current-period comparison in both branch ranking modes. Keep previous-period
+   bars untouched and make current-period bars/text clearly amber. */
+#shippingRankPage .branch-ranking-bar-line .branch-ranking-fill.current {
+  background:linear-gradient(90deg,#D99B18,#FACC15)!important;
+}
+#shippingRankPage .branch-ranking-bar-line:has(.branch-ranking-fill.current) > span,
+#shippingRankPage .branch-ranking-bar-line:has(.branch-ranking-fill.current) > b {
+  color:#FACC15!important;
+}
+
+
+/* v351 — All Branches Treasury + Commission Ocean Neon visual scope only.
+   Financial logic, report state, permissions and all behavioral handlers untouched. */
+#branchesTreasuryPage {
+ color:#e9faff!important;
+ background:linear-gradient(145deg,#081926 0%,#0e2a3e 45%,#071925 100%)!important;
+ padding:12px!important;border-radius:18px!important;
+}
+#branchesTreasuryPage > .card,
+#branchesTreasuryPage .branches-treasury-stats > .card {
+ background:linear-gradient(145deg,#17394e 0%,#102c40 58%,#0b2537 100%)!important;
+ border:1px solid rgba(69,151,172,.50)!important;
+ border-radius:14px!important;
+ box-shadow:inset 0 1px 0 rgba(178,248,255,.07),0 8px 22px rgba(0,11,22,.13)!important;
+ color:#eafaff!important;
+}
+#branchesTreasuryPage h1,#branchesTreasuryPage h2,#branchesTreasuryPage h3,
+#branchesTreasuryPage .branches-treasury-stats small,
+#branchesTreasuryPage .branches-treasury-stats span {color:#f1fcff!important;}
+#branchesTreasuryPage .branches-treasury-stats strong,
+#branchesTreasuryPage .branches-treasury-stats span b {color:#22CFD3!important;}
+#branchesTreasuryPage .date-filter-group,
+#branchesTreasuryPage :is(input[type=date],input[type=text],select) {
+ background:linear-gradient(120deg,#1d4054,#102e42)!important;
+ border:1px solid rgba(82,151,173,.6)!important;
+ color:#f2fdff!important;
+ border-radius:9px!important;
+ box-shadow:none!important;
+}
+#branchesTreasuryPage :is(input[type=date],select){color-scheme:dark!important;}
+#branchesTreasuryPage .date-filter-group label{color:#d0e7f3!important;}
+#branchesTreasuryPage .table-wrap{
+ border:1px solid rgba(75,153,173,.55)!important;
+ border-radius:12px!important;
+ background:linear-gradient(120deg,#102f42,#0c263a)!important;
+}
+#branchesTreasuryPage table thead th{
+ background:#133b4e!important;color:#f1fcff!important;
+ border-bottom:1px solid rgba(73,166,187,.50)!important;
+}
+#branchesTreasuryPage table tbody td{color:#e0f2fa!important;border-bottom-color:rgba(77,146,167,.22)!important;}
+#branchesTreasuryPage table tbody tr:hover td{background:rgba(34,207,211,.09)!important;}
+/* Hard Refresh style; retain button widths, padding, IDs and click actions. */
+#branchesTreasuryPage :is(.branches-treasury-header-actions > button,.branches-treasury-toolbar > button) {
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ border:1px solid #315c76!important;color:#e7f7ff!important;
+ box-shadow:none!important;text-shadow:none!important;
+ transition:background .18s ease,color .18s ease,border-color .18s ease!important;
+}
+#branchesTreasuryPage :is(.branches-treasury-header-actions > button,.branches-treasury-toolbar > button):is(:hover,:focus-visible){
+ background:#22CFD3!important;border-color:#22CFD3!important;color:#002135!important;
+ box-shadow:none!important;filter:none!important;
+}
+#branchesTreasuryPage .branches-treasury-header-actions .app-back-btn svg{stroke:currentColor!important;}
+
+/* Commission — preserve semantic green/red for rewards, penalties and approval warnings. */
+#commissionPage .commission-shell{
+ background:linear-gradient(145deg,#091f30 0%,#10334a 45%,#081b2b 100%)!important;
+ border:1px solid rgba(61,163,184,.55)!important;
+ box-shadow:inset 0 1px 0 rgba(175,248,253,.06),0 20px 54px rgba(0,10,22,.23)!important;
+}
+#commissionPage .commission-head{border-bottom-color:rgba(75,155,176,.42)!important;}
+#commissionPage .commission-eyebrow{color:#22CFD3!important;}
+#commissionPage .commission-head h1{color:#f3fdff!important;}
+#commissionPage .commission-head p{color:#bdd7e5!important;}
+#commissionPage .commission-date-field,
+#commissionPage .commission-comparison-range,
+#commissionPage .commission-controls > select{
+ background:linear-gradient(120deg,#1b4054,#102b40)!important;
+ border:1px solid rgba(79,157,177,.62)!important;
+ color:#e9faff!important;
+ box-shadow:none!important;
+}
+#commissionPage .commission-date-field span,
+#commissionPage .commission-auto-compare{color:#e4f5fc!important;}
+#commissionPage .commission-date-field input{background:transparent!important;color:#f2fdff!important;color-scheme:dark!important;}
+#commissionPage .commission-comparison-range .commission-date-field{background:linear-gradient(120deg,#1b4054,#102b40)!important;}
+#commissionPage .commission-kpi,
+#commissionPage .commission-panel{
+ background:linear-gradient(130deg,#1a4053 0%,#123247 57%,#0b2639 100%)!important;
+ border:1px solid rgba(74,155,175,.5)!important;
+ border-radius:13px!important;
+ box-shadow:inset 0 1px 0 rgba(180,248,255,.06),0 8px 22px rgba(0,11,22,.12)!important;
+}
+#commissionPage .commission-kpi.featured{border-color:rgba(34,207,211,.78)!important;box-shadow:0 0 16px rgba(34,207,211,.10),inset 0 1px 0 rgba(180,248,255,.06)!important;}
+#commissionPage .commission-kpi > span{color:#f1fcff!important;}
+#commissionPage .commission-kpi > strong,
+#commissionPage .commission-kpi.featured > strong{color:#22CFD3!important;}
+/* Never repaint the signed growth signal, reward green or penalty red. */
+#commissionPage .commission-growth-kpi strong.positive,
+#commissionPage .commission-positive{color:#39d98a!important;}
+#commissionPage .commission-growth-kpi strong.negative,
+#commissionPage .commission-negative{color:#ff5c68!important;}
+#commissionPage .commission-kpi small{color:#b7d4e2!important;}
+#commissionPage .commission-panel h2{color:#f0fcff!important;}
+#commissionPage .commission-legend{color:#d0e5ee!important;}
+#commissionPage .commission-table-panel .table-wrap{
+ background:#0c283a!important;border:1px solid rgba(70,154,175,.5)!important;
+ border-radius:11px!important;
+}
+#commissionPage .commission-table,
+#commissionPage .commission-table tbody{background:#0c283a!important;}
+#commissionPage .commission-table thead,
+#commissionPage .commission-table th{
+ background:#133b4e!important;color:#f3fdff!important;
+ border-top-color:rgba(80,165,187,.5)!important;
+ border-bottom-color:rgba(80,165,187,.5)!important;
+}
+#commissionPage .commission-table tbody tr{background:#102c3f!important;}
+#commissionPage .commission-table tbody tr:nth-child(even){background:#153449!important;}
+#commissionPage .commission-table tbody tr:hover{background:#1b4354!important;}
+#commissionPage .commission-table td{color:#dceff8!important;border-bottom-color:rgba(75,152,170,.22)!important;}
+#commissionPage .commission-table-title button{color:#22CFD3!important;}
+#commissionPage .commission-controls .commission-primary-actions .commission-nav-action,
+#commissionPage .commission-report-tabs > button:not(.commission-approve-btn){
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ border:1px solid #315c76!important;color:#e7f7ff!important;
+ box-shadow:none!important;text-shadow:none!important;
+ transition:background .18s ease,color .18s ease,border-color .18s ease!important;
+}
+#commissionPage .commission-controls .commission-primary-actions .commission-nav-action:is(:hover,:focus-visible),
+#commissionPage .commission-report-tabs > button:not(.commission-approve-btn):is(:hover,:focus-visible){
+ background:#22CFD3!important;border-color:#22CFD3!important;color:#002135!important;
+ box-shadow:none!important;filter:none!important;
+}
+#commissionPage .commission-report-tabs > button.active:not(:hover):not(:focus-visible){
+ background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+ border-color:#22CFD3!important;color:#e7f7ff!important;
+ box-shadow:inset 0 -2px 0 #22CFD3!important;
+}
+#commissionPage .commission-controls .commission-primary-actions .app-back-btn svg{stroke:currentColor!important;}
+@media(max-width:760px){
+ #branchesTreasuryPage{padding:8px!important;}
+ #commissionPage .commission-shell{padding:12px!important;}
+}
+
+
+/* v352 — Ocean Neon finish for every Commission report summary card. */
+#commissionPage .commission-report-summary > .commission-mini-card {
+  background:linear-gradient(130deg,#1b4054 0%,#123247 58%,#0b2639 100%)!important;
+  border:1px solid rgba(74,155,175,.53)!important;
+  border-radius:11px!important;
+  box-shadow:inset 0 1px 0 rgba(180,248,255,.06),0 8px 22px rgba(0,11,22,.1)!important;
+}
+#commissionPage .commission-report-summary > .commission-mini-card > span {
+  color:#f0fbff!important;
+}
+#commissionPage .commission-report-summary > .commission-mini-card > strong {
+  color:#22CFD3!important;
+}
+#commissionPage .commission-report-summary > .commission-mini-card > strong.good {
+  color:#39d98a!important;
+}
+#commissionPage .commission-report-summary > .commission-mini-card > strong.bad {
+  color:#ff5c68!important;
+}
+/* Existing report renderer already assigns good/bad by numeric sign; these
+   higher-specificity rules stop the generic td color from masking the signal. */
+#commissionPage .commission-table tbody td.good {color:#39d98a!important;font-weight:900!important;}
+#commissionPage .commission-table tbody td.bad {color:#ff5c68!important;font-weight:900!important;}
+#commissionPage .commission-table tbody td.neutral {color:#b7d4e2!important;font-weight:800!important;}
+
+
+/* v353 — commission layout wider on desktop, retaining responsive mobile rules. */
+@media screen and (min-width: 761px){
+  #commissionPage.commission-page{padding:12px 14px!important;width:100%!important;max-width:none!important;box-sizing:border-box!important;}
+  #commissionPage > .commission-shell{width:100%!important;max-width:none!important;margin:0!important;box-sizing:border-box!important;}
+}
+/* v353 — Commission Back is the design reference for all app-back navigation buttons.
+   Keep each button's original HTML, click handler, sizing/layout, and accessibility. */
+#app .app-back-btn,
+#app button.app-back-btn,
+#commissionPage .commission-primary-actions .app-back-btn--gold{
+  background:linear-gradient(145deg,#102b3e 0%,#0a1b2c 100%)!important;
+  border:1px solid #315c76!important;
+  color:#e7f7ff!important;
+  border-radius:9px!important;
+  box-shadow:inset 0 1px 0 rgba(180,248,255,.06)!important;
+  text-shadow:none!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:6px!important;
+  aspect-ratio:auto!important;
+  font-weight:800!important;
+  transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease!important;
+}
+#app .app-back-btn svg,
+#app button.app-back-btn svg{
+  width:15px!important;height:15px!important;stroke:currentColor!important;flex:0 0 15px!important;
+}
+#app .app-back-btn:is(:hover,:focus-visible),
+#app button.app-back-btn:is(:hover,:focus-visible),
+#commissionPage .commission-primary-actions .app-back-btn--gold:is(:hover,:focus-visible){
+  background:#22CFD3!important;color:#002135!important;
+  border-color:#22CFD3!important;box-shadow:none!important;
+}
+@media print{#commissionPage > .commission-shell{border:0!important;max-width:none!important;box-shadow:none!important;background:#fff!important;}}
+
+
+/* v354 — Ocean Neon design pass: Product Reports and Branch Stock ONLY.
+   Presentation only — no report, stock, permission or financial logic changes. */
+#productReportsPage, #branchStockPage{
+  --okb-ocean-ink:#e9f8ff;
+  --okb-ocean-muted:#accbd9;
+  --okb-ocean-accent:#22cfd3;
+  --okb-ocean-edge:rgba(73,155,179,.52);
+  --okb-ocean-field:linear-gradient(120deg,#1d3f52 0%,#17384e 58%,#112d41 100%);
+  --okb-ocean-card:linear-gradient(145deg,#1a4053 0%,#102d42 62%,#102638 100%);
+  color:var(--okb-ocean-ink);
+}
+#productReportsPage .product-reports-shell,
+#branchStockPage .branch-stock-shell{
+  background:radial-gradient(circle at 14% 4%,rgba(34,207,211,.075),transparent 35%),
+    linear-gradient(145deg,#081926 0%,#0e293d 46%,#071b2b 100%)!important;
+  border:1px solid rgba(51,140,163,.62)!important;
+  box-shadow:inset 0 1px 0 rgba(194,253,255,.07),0 15px 38px rgba(0,8,20,.19)!important;
+}
+#productReportsPage .product-reports-shell::before,
+#branchStockPage .branch-stock-shell::before{
+  color:rgba(34,207,211,.025)!important;
+}
+#productReportsPage .product-reports-title h1,
+#branchStockPage .branch-stock-title h1{
+  color:#f2fdff!important;
+  text-shadow:none!important;
+}
+#productReportsPage .product-reports-title p,
+#branchStockPage .branch-stock-title p{
+  color:var(--okb-ocean-muted)!important;
+}
+#productReportsPage .product-reports-title-badge,
+#branchStockPage .branch-stock-title-badge{
+  color:#35dfe4!important;
+  background:linear-gradient(145deg,#19465a,#0c293c)!important;
+  border:1px solid #22cfd3!important;
+  box-shadow:0 0 16px rgba(34,207,211,.12),inset 0 1px 0 rgba(190,250,255,.09)!important;
+}
+#productReportsPage .product-report-filters,
+#productReportsPage .product-report-card,
+#branchStockPage .stock-control-bar,
+#branchStockPage .stock-variance-panel,
+#branchStockPage .stock-add-product-card,
+#branchStockPage .stock-filter-bar,
+#branchStockPage .stock-access-note:not(.manager):not(.counter){
+  background:var(--okb-ocean-card)!important;
+  border:1px solid var(--okb-ocean-edge)!important;
+  color:var(--okb-ocean-ink)!important;
+  box-shadow:inset 0 1px 0 rgba(190,251,255,.055)!important;
+}
+#productReportsPage .product-kpi,
+#branchStockPage .stock-kpi,
+#branchStockPage .stock-variance-summary > div{
+  background:var(--okb-ocean-card)!important;
+  border:1px solid var(--okb-ocean-edge)!important;
+  border-radius:13px!important;
+  box-shadow:inset 0 1px 0 rgba(190,251,255,.05)!important;
+}
+#productReportsPage .product-kpi :is(.pk-label,.pk-name),
+#branchStockPage .stock-kpi > span,
+#branchStockPage .stock-variance-summary > div > span{
+  color:#f3fbff!important;
+}
+#productReportsPage .product-kpi .pk-value,
+#branchStockPage .stock-kpi > strong,
+#branchStockPage .stock-variance-summary > div:not(.stock-variance-loss-card) > strong{
+  color:#22cfd3!important;
+  text-shadow:none!important;
+}
+#branchStockPage .stock-variance-loss-card > strong{
+  color:#ff636b!important;
+}
+#productReportsPage .product-kpi .pk-sub,
+#branchStockPage .stock-variance-panel h2,
+#branchStockPage .stock-add-product-head p{
+  color:#c3deeb!important;
+}
+#productReportsPage .product-report-filters :is(input,select),
+#branchStockPage :is(.stock-control-bar,.stock-add-product-grid,.stock-filter-bar) :is(input:not([type=radio]):not([type=checkbox]),select,textarea),
+#branchStockPage .stock-table-input{
+  background:var(--okb-ocean-field)!important;
+  border:1px solid rgba(82,141,163,.64)!important;
+  border-radius:9px!important;
+  color:#effbff!important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+}
+#productReportsPage .product-report-filters :is(input,select):focus,
+#branchStockPage :is(.stock-control-bar,.stock-add-product-grid,.stock-filter-bar) :is(input,select,textarea):focus{
+  outline:1px solid #22cfd3!important;
+  border-color:#22cfd3!important;
+}
+#productReportsPage .product-report-filters label,
+#branchStockPage :is(.stock-control-bar,.stock-add-product-grid,.stock-filter-bar) label{
+  color:#c7dfeb!important;
+}
+#productReportsPage .product-report-tab,
+#productReportsPage .product-report-filters :is(.btn-filter,.btn-reset-date),
+#productReportsPage .product-report-actions .product-action-btn,
+#branchStockPage :is(.stock-save-btn,.stock-export-btn,.stock-print-btn,.stock-refresh-btn,.stock-bulk-add-btn,.stock-add-primary,.stock-add-secondary),
+#branchStockPage .stock-filter-bar > .btn-reset-date{
+  background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+  border:1px solid #315c76!important;
+  color:#e7f7ff!important;
+  box-shadow:none!important;
+  text-shadow:none!important;
+  transition:background .18s,border-color .18s,color .18s!important;
+}
+#productReportsPage .product-report-tab:is(:hover,:focus-visible),
+#productReportsPage .product-report-filters :is(.btn-filter,.btn-reset-date):is(:hover,:focus-visible),
+#productReportsPage .product-report-actions .product-action-btn:is(:hover,:focus-visible),
+#branchStockPage :is(.stock-save-btn,.stock-export-btn,.stock-print-btn,.stock-refresh-btn,.stock-bulk-add-btn,.stock-add-primary,.stock-add-secondary):not(:disabled):is(:hover,:focus-visible),
+#branchStockPage .stock-filter-bar > .btn-reset-date:is(:hover,:focus-visible){
+  background:#22cfd3!important;
+  border-color:#22cfd3!important;
+  color:#002135!important;
+  box-shadow:none!important;
+}
+#productReportsPage .product-report-tab.active{
+  background:linear-gradient(145deg,#164b61,#103447)!important;
+  border:1px solid #22cfd3!important;
+  color:#57f0f0!important;
+  box-shadow:inset 0 0 0 1px rgba(34,207,211,.14)!important;
+}
+#productReportsPage .product-report-tab.active:is(:hover,:focus-visible){
+  background:#22cfd3!important;color:#002135!important;
+}
+#productReportsPage .product-report-note{
+  background:rgba(34,207,211,.055)!important;
+  border:1px solid rgba(34,207,211,.23)!important;
+  color:#bcd9e7!important;
+}
+#productReportsPage .product-report-card > h2,
+#productReportsPage .product-chart-box,
+#branchStockPage .stock-variance-panel > h2,
+#branchStockPage .stock-add-product-head h2{color:#f3fcff!important;}
+#productReportsPage .table-wrap,
+#branchStockPage .table-wrap{
+  background:linear-gradient(145deg,#102b3f,#0c2436)!important;
+  border:1px solid rgba(75,156,178,.46)!important;
+  border-radius:11px!important;
+}
+#productReportsPage :is(#productReportTable th,#productReportTable thead),
+#branchStockPage .stock-take-table thead th{
+  background:#173c50!important;
+  color:#eefaff!important;
+  border-bottom:1px solid rgba(80,165,184,.4)!important;
+}
+#productReportsPage #productReportTable tbody td,
+#branchStockPage .stock-take-table tbody td{
+  color:#e1f2f8!important;
+  border-bottom:1px solid rgba(75,153,176,.18)!important;
+}
+#productReportsPage #productReportTable tbody tr:hover td,
+#branchStockPage .stock-take-table tbody tr:hover td{
+  background:rgba(34,207,211,.085)!important;
+}
+#branchStockPage .stock-take-table .stock-diff-positive{color:#4ade80!important;}
+#branchStockPage .stock-take-table .stock-diff-negative{color:#ff717a!important;}
+#branchStockPage .stock-take-table .stock-diff-zero{color:#9fbcca!important;}
+#branchStockPage .stock-take-table .stock-row-btn:not(.danger){
+  background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+  border:1px solid #315c76!important;color:#e7f7ff!important;
+}
+#branchStockPage .stock-take-table .stock-row-btn:not(.danger):hover{
+  background:#22cfd3!important;border-color:#22cfd3!important;color:#002135!important;
+}
+/* Preserve danger, signed-deduction controls and alert severity; no behavioral changes. */
+#branchStockPage .stock-signed-bypass-banner,
+#branchStockPage .stock-signed-toggle,
+#branchStockPage .stock-row-btn.danger{
+  isolation:isolate;
+}
+@media(max-width:720px){
+  #productReportsPage .product-reports-shell,
+  #branchStockPage .branch-stock-shell{padding:14px!important;}
+}
+
+
+/* v355 — Activity Log Ocean Neon: presentation-only, admin audit functionality unchanged. */
+#activityLogPage .activity-log-shell{
+  background:radial-gradient(ellipse at 12% 5%,rgba(34,207,211,.095),transparent 37%),
+    radial-gradient(ellipse at 94% 90%,rgba(23,113,154,.12),transparent 39%),
+    linear-gradient(145deg,#081926 0%,#0d2b40 49%,#071925 100%)!important;
+  border:1px solid rgba(51,150,174,.52)!important;
+  box-shadow:inset 0 1px 0 rgba(175,247,255,.07),0 12px 35px rgba(0,10,22,.12)!important;
+  color:#e9faff!important;
+}
+#activityLogPage .activity-log-shell::before{color:rgba(113,223,230,.035)!important;}
+#activityLogPage .activity-log-title-badge{
+  color:#22cfd3!important;background:linear-gradient(135deg,#19485b,#0a283b)!important;
+  border:1px solid rgba(34,207,211,.62)!important;
+  box-shadow:inset 0 1px 0 rgba(199,255,255,.09),0 0 14px rgba(34,207,211,.1)!important;
+}
+#activityLogPage .activity-log-title h1{color:#f2fdff!important;}
+#activityLogPage .activity-log-title p{color:#b9d3e2!important;}
+#activityLogPage .activity-log-stat{
+  background:linear-gradient(128deg,#1c4458 0%,#12354a 52%,#0d293c 100%)!important;
+  border:1px solid rgba(72,153,178,.55)!important;
+  box-shadow:inset 0 1px 0 rgba(200,250,255,.065)!important;
+}
+#activityLogPage .activity-log-stat span{
+  color:#f2fbff!important;font-size:12px!important;font-weight:800!important;
+}
+#activityLogPage .activity-log-stat strong{
+  color:#22cfd3!important;font-size:24px!important;font-variant-numeric:tabular-nums!important;
+}
+/* Financial activity remains identifiable by title; totals use the same Ocean Neon palette. */
+#activityLogPage .activity-log-toolbar{
+  background:linear-gradient(125deg,#13374b,#0b2639)!important;
+  border:1px solid rgba(69,147,169,.53)!important;
+  box-shadow:inset 0 1px 0 rgba(178,240,255,.05)!important;
+  overflow:visible!important;
+}
+#activityLogPage .activity-log-toolbar label{color:#d7edf6!important;}
+#activityLogPage .activity-log-toolbar :is(input,select){
+  background:linear-gradient(120deg,#1d4054,#112e42)!important;
+  color:#eefaff!important;border:1px solid rgba(82,141,163,.65)!important;
+  border-radius:9px!important;box-shadow:inset 0 1px 1px rgba(0,0,0,.09)!important;
+}
+#activityLogPage .activity-log-toolbar :is(input,select):focus-visible{
+  outline:1px solid #22cfd3!important;outline-offset:1px!important;border-color:#22cfd3!important;
+}
+#activityLogPage .activity-log-toolbar input::placeholder{color:#a6c5d4!important;}
+#activityLogPage .activity-log-toolbar :is(input[type=date],select){color-scheme:dark;}
+/* Keep custom employee/type smart-select popup stacking inherited from the existing system. */
+#activityLogPage .activity-log-toolbar .order-search-select.dashboard-allocate-filter{
+  background:linear-gradient(120deg,#1d4054,#112e42)!important;
+  border:1px solid rgba(82,141,163,.65)!important;border-radius:9px!important;
+}
+#activityLogPage .activity-log-toolbar .order-search-select.dashboard-allocate-filter :is(button,input){color:#eefaff!important;}
+#activityLogPage .activity-log-list .activity-log-row{
+  background:linear-gradient(132deg,#163b50 0%,#102f43 60%,#0c2638 100%)!important;
+  border:1px solid rgba(68,142,162,.49)!important;
+  box-shadow:inset 0 1px 0 rgba(198,249,255,.035)!important;
+}
+#activityLogPage .activity-log-list .activity-log-row:hover{
+  background:linear-gradient(132deg,#1a465b,#12364b)!important;
+  border-color:#22cfd3!important;box-shadow:0 8px 22px rgba(0,12,23,.18)!important;
+}
+#activityLogPage .activity-log-action-icon{
+  background:linear-gradient(135deg,rgba(34,207,211,.16),rgba(20,81,111,.18))!important;
+  border:1px solid rgba(70,179,193,.48)!important;
+}
+#activityLogPage .activity-log-user strong,
+#activityLogPage .activity-log-main strong,
+#activityLogPage .activity-log-time{color:#f1fbff!important;}
+#activityLogPage .activity-log-user small,
+#activityLogPage .activity-log-main small,
+#activityLogPage .activity-log-meta{color:#b7d1de!important;}
+/* Do not replace event-specific badges: a dangerous action must remain distinguishable. */
+#activityLogPage .activity-log-tag:not([style]){
+  background:rgba(34,207,211,.095)!important;
+  border:1px solid rgba(34,207,211,.35)!important;color:#81edf0!important;
+}
+#activityLogPage .activity-log-loading{color:#70e7eb!important;}
+#activityLogPage .activity-log-empty{
+  border-color:rgba(82,151,173,.56)!important;color:#b9d6e1!important;
+  background:rgba(12,39,57,.48)!important;
+}
+/* Match Hard Refresh; Back keeps the unified design from v353. */
+#activityLogPage .activity-log-head button.soft,
+#activityLogPage .activity-log-toolbar :is(.btn-filter,.btn-reset-date),
+#activityLogPage .activity-log-pagination button{
+  background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+  color:#e7f7ff!important;border:1px solid #315c76!important;
+  box-shadow:none!important;text-shadow:none!important;
+}
+#activityLogPage .activity-log-head button.soft:is(:hover,:focus-visible),
+#activityLogPage .activity-log-toolbar :is(.btn-filter,.btn-reset-date):is(:hover,:focus-visible),
+#activityLogPage .activity-log-pagination button:not(:disabled):is(:hover,:focus-visible){
+  background:#22cfd3!important;border-color:#22cfd3!important;color:#002135!important;
+  box-shadow:none!important;
+}
+#activityLogPage .activity-log-pagination button.active{
+  background:linear-gradient(145deg,#17485c,#103548)!important;
+  border:1px solid #22cfd3!important;color:#55f0f0!important;
+}
+#activityLogPage .activity-log-pagination button:disabled{opacity:.43!important;cursor:not-allowed!important;}
+#activityLogPage .activity-log-page-info{color:#b9d4e0!important;}
+@media(max-width:720px){
+  #activityLogPage .activity-log-shell{padding:14px!important;}
+  #activityLogPage .activity-log-stat strong{font-size:21px!important;}
+}
+
+
+/* v357 — Activity Log dropdown PANELS ONLY: apply branch product-name Ocean Neon option-card presentation.
+   Closed employee/action fields, their arrows, Ticket ID, JS selectors and event handlers are unchanged from v355. */
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) > .order-search-options {
+  right:0!important;left:auto!important;
+  width:360px!important;min-width:100%!important;max-width:min(360px,calc(100vw - 24px))!important;
+  max-height:360px!important;overflow-y:auto!important;
+  padding:7px!important;gap:6px!important;
+  border:1px solid rgba(82,141,163,.65)!important;border-radius:14px!important;
+  background:linear-gradient(145deg,#24485b 0%,#17384e 100%)!important;
+  color:#f0fbff!important;
+  box-shadow:0 22px 55px rgba(0,0,0,.37),inset 0 1px 0 rgba(186,255,255,.07)!important;
+  z-index:12100!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType).open > .order-search-options {
+  display:grid!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options > .dashboard-allocate-option {
+  display:flex!important;align-items:center!important;gap:9px!important;
+  min-height:50px!important;padding:8px 9px!important;
+  border:1px solid rgba(82,141,163,.55)!important;border-radius:11px!important;
+  background:linear-gradient(130deg,#24485b,#17384e)!important;
+  color:#f0fbff!important;text-align:right!important;
+  box-shadow:none!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options > .dashboard-allocate-option:is(:hover,.active) {
+  transform:translateY(-1px)!important;
+  background:#2c6071!important;border-color:#22cfd3!important;color:#fff!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options > .dashboard-allocate-option.selected {
+  background:linear-gradient(135deg,#24576b,#1b455b)!important;
+  border-color:#22cfd3!important;color:#fff!important;
+  box-shadow:inset 0 0 0 1px rgba(34,207,211,.08)!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options .dashboard-filter-avatar {
+  width:32px!important;height:32px!important;flex:none!important;
+  background:linear-gradient(140deg,#23687c,#0e5063)!important;
+  border:1px solid rgba(89,206,217,.55)!important;color:#fff!important;
+  box-shadow:none!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options .dashboard-filter-option-meta strong {
+  color:#f0fbff!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options .dashboard-filter-option-meta small {
+  color:#bad8e4!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options .dashboard-filter-option-check {
+  border:1px solid rgba(103,186,198,.55)!important;background:rgba(14,54,71,.45)!important;
+  color:transparent!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options > .dashboard-allocate-option.selected .dashboard-filter-option-check {
+  background:#167d89!important;border-color:#55cbd2!important;color:#fff!important;
+}
+#activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) .order-search-options .order-search-empty {
+  color:#bad8e4!important;
+}
+@media(max-width:700px){
+  #activityLogPage .activity-log-toolbar :is(.order-search-select-activityLogEmployee,.order-search-select-activityLogType) > .order-search-options {
+    position:fixed!important;top:auto!important;right:10px!important;left:10px!important;bottom:12px!important;
+    width:auto!important;min-width:0!important;max-width:none!important;max-height:52vh!important;
+  }
+}
+
+
+/* v359 — Settings, Users and Permission: isolated Ocean Neon visual layer.
+   No table/report logic or financial controls are changed. */
+#branchsPage,#usersPage,#permissionPage{
+  color:#eafaff!important;
+  background:linear-gradient(142deg,#081926 0%,#0d2b3e 50%,#071925 100%)!important;
+  border-radius:17px;
+}
+:is(#branchsPage,#usersPage,#permissionPage) > .card,
+#permissionPage :is(.okb-customization-card,.okb-permission-tabs-card),
+#usersPage .app-users-heading{
+  background:linear-gradient(136deg,#183d52 0%,#102e43 57%,#0a2436 100%)!important;
+  border:1px solid rgba(78,154,176,.52)!important;
+  border-radius:14px!important;
+  box-shadow:inset 0 1px 0 rgba(200,255,255,.055),0 9px 24px rgba(0,12,24,.13)!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) :is(h1,h2,h3){color:#f1fcff!important;}
+:is(#branchsPage,#usersPage,#permissionPage) p{color:#b9d7e4!important;}
+:is(#branchsPage,#usersPage,#permissionPage) :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]),select,textarea){
+  background:linear-gradient(120deg,#1e465b 0%,#15374c 64%,#102d41 100%)!important;
+  border:1px solid rgba(86,158,180,.65)!important;
+  color:#edfaff!important;
+  border-radius:9px!important;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.10)!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) input::placeholder,
+:is(#branchsPage,#usersPage,#permissionPage) textarea::placeholder{color:#adcad8!important;}
+:is(#branchsPage,#usersPage,#permissionPage) :is(input:not([type=checkbox]),select,textarea):focus-visible{
+  outline:1px solid #22cfd3!important;
+  outline-offset:1px!important;
+  border-color:#22cfd3!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) select{color-scheme:dark;}
+:is(#branchsPage,#usersPage,#permissionPage) :is(.table-wrap,.permission-table-group){
+  background:linear-gradient(145deg,#17394e,#0b283b)!important;
+  border:1px solid rgba(69,150,174,.51)!important;
+  border-radius:12px!important;
+  box-shadow:inset 0 1px 0 rgba(178,244,255,.035)!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) table th{
+  background:linear-gradient(135deg,#20485c,#123346)!important;
+  color:#e8f9ff!important;
+  border-bottom:1px solid rgba(85,168,188,.38)!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) table td{
+  color:#d9eef7!important;
+  border-bottom-color:rgba(77,151,170,.23)!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) table tbody tr:hover td{
+  background:rgba(34,207,211,.065)!important;
+}
+/* Normal navigation/actions look like Hard Refresh; destructive actions retain red. */
+:is(#branchsPage,#usersPage,#permissionPage) :is(button.soft,button.success,button.primary,.okb-permission-tab,.pagination button,.permission-actions button:not(.danger),.users-edit-save){
+  background:linear-gradient(145deg,#102b3e,#0a1b2c)!important;
+  color:#e7f7ff!important;
+  border:1px solid #315c76!important;
+  box-shadow:none!important;text-shadow:none!important;
+}
+:is(#branchsPage,#usersPage,#permissionPage) :is(button.soft,button.success,button.primary,.okb-permission-tab,.pagination button,.permission-actions button:not(.danger),.users-edit-save):not(:disabled):is(:hover,:focus-visible){
+  background:#22cfd3!important;
+  border-color:#22cfd3!important;
+  color:#002135!important;
+  box-shadow:none!important;
+}
+#permissionPage .okb-permission-tab.active,
+:is(#branchsPage,#usersPage,#permissionPage) .pagination button.active{
+  background:linear-gradient(140deg,#1d566a,#10394e)!important;
+  border-color:#22cfd3!important;
+  color:#69eff0!important;
+}
+#permissionPage .permission-role-picker,
+#permissionPage :is(.permission-table-title,.permission-feature-card,.permission-buttons-group .permission-feature){
+  background:linear-gradient(125deg,#1c4257,#102e42)!important;
+  border-color:rgba(82,154,173,.48)!important;
+  color:#eafaff!important;
+}
+#permissionPage .permission-table-title h3{color:#f3fdff!important;}
+#permissionPage .permission-matrix-table td{color:#e0f2f8!important;}
+#permissionPage :is(.permission-compact-check,.permission-feature-card input[type=checkbox]){accent-color:#22cfd3!important;}
+#permissionPage .permission-table-group:hover,
+#permissionPage .permission-feature-card:hover{border-color:rgba(34,207,211,.75)!important;}
+#usersPage :is(.users-edit-dialog){
+  background:linear-gradient(145deg,#1b4156,#0b273b)!important;
+  border:1px solid rgba(79,160,180,.7)!important;
+}
+#usersPage :is(.current-users-header,.users-role-creator-layout){color:#edfaff!important;}
+/* The edit-user and edit-role modals live OUTSIDE the Users section in the DOM. */
+#editUserModal .users-edit-dialog,#editRoleModal > div{
+  background:linear-gradient(145deg,#1b4156,#0b273b)!important;
+  border:1px solid rgba(79,160,180,.7)!important;
+  color:#eafaff!important;
+}
+#editUserModal input,#editRoleModal select{
+  background:linear-gradient(130deg,#1f475b,#113147)!important;
+  border-color:rgba(79,160,180,.7)!important;
+  color:#edfaff!important;
+}
+#branchsPage #shippingSettingsCard.hidden{display:none!important;}

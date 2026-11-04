@@ -4759,7 +4759,9 @@ if (okbFilterSettingsCard) okbFilterSettingsCard.classList.toggle('hidden', !isA
 const standardSettingsAccess = hasRoleFeature('settings_page');
 ['okbItemsCard','doctorSettingsCard','shippingSettingsCard'].forEach(id=>{
   const card=document.getElementById(id);
-  if(card)card.classList.toggle('hidden', !standardSettingsAccess);
+  // Executive Assistant retains Settings access but never sees Shipping System.
+  const blockShippingForExecutive=(id==='shippingSettingsCard' && isExecutiveAssistant() && !isAdmin());
+  if(card)card.classList.toggle('hidden', !standardSettingsAccess || blockShippingForExecutive);
 });
 const commissionSettingsCard = document.getElementById('commissionSettingsCard');
 if (commissionSettingsCard) commissionSettingsCard.classList.toggle('hidden', !canOpenCommissionSettingsRoom);
@@ -6096,11 +6098,14 @@ function showBranchsPage() {
   }
   hideAllPages();
   $("branchsPage").classList.remove("hidden");
+  // Reapply card visibility when entering Settings, including after role changes.
+  const shippingCard=document.getElementById('shippingSettingsCard');
+  if(shippingCard) shippingCard.classList.toggle('hidden', !canOpenStandardSettings || (isExecutiveAssistant() && !isAdmin()));
   setActiveMenu("branchsPage");
   if(canOpenStandardSettings){
     loadOKBItems();
     loadDoctors();
-    loadShippingSystems();
+    if(!isExecutiveAssistant() || isAdmin()) loadShippingSystems();
     loadOKBFilters({ silent:true });
   }
   if (isAdmin()) { loadStickyNoteSetting(); renderSubscriptionSettingsForm(); }
@@ -6112,7 +6117,10 @@ async function refreshSettingsPage(button) {
   if (button) { button.disabled = true; button.textContent = 'جاري التحديث...'; }
   try {
     const jobs=[];
-    if(hasRoleFeature('settings_page'))jobs.push(loadOKBItems(),loadDoctors(),loadShippingSystems(),loadOKBFilters({ silent:true }));
+    if(hasRoleFeature('settings_page')){
+      jobs.push(loadOKBItems(),loadDoctors(),loadOKBFilters({ silent:true }));
+      if(!isExecutiveAssistant() || isAdmin())jobs.push(loadShippingSystems());
+    }
     if(isAdmin())jobs.push(loadStickyNoteSetting());
     if(hasRoleFeature('commission_settings_room'))jobs.push(loadCommissionSettingsRoom());
     await Promise.all(jobs);
@@ -8414,6 +8422,15 @@ function updateShippingMiniDashboard() {
   setText("shipTargetCancelRate", cancelNum.toFixed(1) + "%");
   setText("shipTargetCancelRateInline", cancelNum.toFixed(1) + "%");
   setText("shipTargetCancelRateBig", cancelNum.toFixed(1) + "%");
+  // Apply semantic colors after setting the values; threshold at 10% is on-target.
+  for (const id of ['shipTargetCurrentConversionBig','shipMiniConversionRate','shipTargetCurrentConversion','shipTargetCurrentConversionInline']) {
+    const el = document.getElementById(id);
+    if (el) { el.style.setProperty('color', shippingDeliveryRateColor(conversionNum), 'important'); el.classList.add('shipping-rate-semantic'); }
+  }
+  for (const id of ['shipTargetCancelRateBig','shipMiniCancelRate','shipTargetCancelRate','shipTargetCancelRateInline']) {
+    const el = document.getElementById(id);
+    if (el) { el.style.setProperty('color', shippingReturnRateColor(cancelNum), 'important'); el.classList.add('shipping-rate-semantic'); }
+  }
   setWidth("shipDeliveryProgress", conversionNum);
   setWidth("shipRemainingProgress", (conversionNum / DELIVERY_TARGET) * 100);
   setWidth("shipReturnProgress", cancelNum);
@@ -8900,6 +8917,15 @@ function getShippingCompanyPerformanceRows() {
     .sort((a, b) => b.score - a.score);
 }
 
+/* Shipping Rank only: presentation thresholds (no scoring or financial calculation changes). */
+function shippingDeliveryRateColor(rate) {
+  const value = Number(rate) || 0;
+  return value < 80 ? '#EF4444' : (value < 86 ? '#FACC15' : '#22C55E');
+}
+function shippingReturnRateColor(rate) {
+  const value = Number(rate) || 0;
+  return value <= 10 ? '#22C55E' : '#EF4444';
+}
 function renderPerformanceRows(tbodyId, rows, emptyText) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
@@ -8914,8 +8940,8 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
   tbody.innerHTML = activeRows.map((r, i) => {
     const returnValue = Number(String(r.returnRate || "0").replace("%", "")) || 0;
     const conversionValue = Number(String(r.conversionRate || "0").replace("%", "")) || 0;
-    const returnColor = returnValue > 10 ? "#EF4444" : "#57D85A";
-    const conversionColor = conversionValue >= 90 ? "#57D85A" : "#F59E0B";
+    const returnColor = shippingReturnRateColor(returnValue);
+    const conversionColor = shippingDeliveryRateColor(conversionValue);
     const displayRank = isBranchPerformance ? getBranchPerformanceDisplayRank(r, i + 1) : i + 1;
     const displayRankText = displayRank === null ? '—' : num(displayRank);
     return `<tr>
@@ -8925,8 +8951,8 @@ function renderPerformanceRows(tbodyId, rows, emptyText) {
       <td>${num(r.signed)}</td>
       <td>${num(r.delivering || 0)}</td>
       <td>${num(r.returned)}</td>
-      <td style="color:${conversionColor};font-weight:900">${r.conversionRate}</td>
-      <td style="color:${returnColor};font-weight:900">${r.returnRate}</td>
+      <td class="shipping-rate-cell" style="color:${conversionColor}!important;font-weight:900">${r.conversionRate}</td>
+      <td class="shipping-rate-cell" style="color:${returnColor}!important;font-weight:900">${r.returnRate}</td>
       ${isBranchPerformance ? '' : `<td>${Number(r.score || 0).toFixed(1)}</td>`}
     </tr>`;
   }).join("");
@@ -9880,7 +9906,7 @@ function renderShippingCharts() {
   const convCtx = document.getElementById('shippingConversionLineChart');
   if (convCtx) charts['shippingConversionLineChart'] = new Chart(convCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل التسليم', data: conversionData, borderColor: '#57D85A', backgroundColor: 'rgba(87,216,90,.15)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 90%', data: labels.map(() => 90), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(100) });
   const doughnutCtx = document.getElementById('shippingStatusDoughnutChart');
-  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#D946EF','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, chartTotal)})` } } } } });
+  if (doughnutCtx) charts['shippingStatusDoughnutChart'] = new Chart(doughnutCtx, { type: 'doughnut', data: { labels: ['Signed','Delivering','Returned','Others'], datasets: [{ data: [signed, delivering, returned, others], backgroundColor: ['#57D85A','#F59E0B','#EF4444','#334155'], borderColor: isDark ? '#0B1220' : '#FFFFFF', borderWidth: 2, hoverOffset: 8 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: textColor, padding: 18, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${percent(ctx.parsed, chartTotal)})` } } } } });
   const returnCtx = document.getElementById('shippingReturnLineChart');
   if (returnCtx) charts['shippingReturnLineChart'] = new Chart(returnCtx, { type: 'line', data: { labels, datasets: [ { label: 'معدل المرتجعات', data: returnData, borderColor: '#FF5555', backgroundColor: 'rgba(239,68,68,.12)', fill: true, tension: .42, pointRadius: 4, pointHoverRadius: 6 }, { label: 'Target 10%', data: labels.map(() => 10), borderColor: '#E5E7EB', borderDash: [6,6], pointRadius: 0, fill: false, tension: 0 } ] }, options: baseLineOptions(25) });
   shippingRankRenderedChartKey = chartKey;
@@ -21090,7 +21116,7 @@ async function fetchCommissionOrdersForRange(from,to,branches,force=false){
 async function loadCommissionDashboard(force=false){
   if(!okbReportIsActive('commissionPage'))return; // v286: report read gate
   const from=document.getElementById('commissionFromDate')?.value,to=document.getElementById('commissionToDate')?.value,compareFrom=document.getElementById('commissionCompareFromDate')?.value,compareTo=document.getElementById('commissionCompareToDate')?.value,range=commissionDateRange(from,to,compareFrom,compareTo);if(!range)return;
-  const notice=document.getElementById('commissionNotice');if(notice){notice.textContent='جاري تحميل ومراجعة بيانات العمولة...';notice.classList.remove('hidden');}
+  const notice=document.getElementById('commissionNotice');if(notice){notice.textContent='';notice.classList.add('hidden');}
   try{
     const branches=commissionAccessibleBranches();if(!branches.length)throw new Error('لا يوجد فرع مسند إلى حسابك');
     commissionCurrentApproval=canApproveCommission()?await loadCommissionApprovalRecord(range):null;
@@ -21156,7 +21182,7 @@ async function loadCommissionAnnualComparison(force=false){
   if(!okbReportIsActive('commissionPage'))return; // v286: report read gate
   if(!commissionData)return;
   const range=commissionData.range,previousFrom=commissionShiftYear(range.from,-1),previousTo=commissionShiftYear(range.to,-1),annualRange=commissionDateRange(range.from,range.to,previousFrom,previousTo);if(!annualRange)return;
-  const notice=document.getElementById('commissionNotice');if(notice){notice.textContent='جاري تحميل المقارنة السنوية...';notice.classList.remove('hidden');}
+  const notice=document.getElementById('commissionNotice');if(notice){notice.textContent='';notice.classList.add('hidden');}
   try{
     const branches=commissionAccessibleBranches(),scope=(isAdmin()||canApproveCommission())?'all':branches.join('|'),settings=await fetchCommissionSettingsForDate(annualRange.from),key=`annual:${annualRange.from}:${annualRange.to}:${annualRange.previousFrom}:${annualRange.previousTo}:${scope}:${commissionSettingsSignature(settings)}`;let data=!force?commissionRangeCache.get(key):null;
     if(data && (!commissionComputedCacheTime.has(data) || Date.now()-commissionComputedCacheTime.get(data)>COMMISSION_RAW_CACHE_MS)){commissionRangeCache.delete(key);data=null;}
@@ -21187,12 +21213,12 @@ function renderCommissionDashboard(){
     if(period)period.textContent=`الفترة الحالية: ${annual.range.from} → ${annual.range.to} • نفس الفترة من السنة السابقة: ${annual.range.previousFrom} → ${annual.range.previousTo}`;
     if(title)title.textContent='المقارنة السنوية — نفس الفترة من السنة السابقة';if(head)head.innerHTML=`<th>الفرع / المسؤول</th><th>${escapeHTML(commissionAnnualPeriodLabel(annual.range.previousFrom,annual.range.previousTo))}</th><th>${escapeHTML(commissionAnnualPeriodLabel(annual.range.from,annual.range.to))}</th><th>التطور السنوي</th><th>البونص الحالي</th><th>الاتجاه</th>`;
     if(summary)summary.innerHTML=commissionMiniCard('متوسط السنة السابقة',commissionFmtPct(annual.manager.previousDelivery))+commissionMiniCard('متوسط الفترة الحالية',commissionFmtPct(annual.manager.delivery))+commissionMiniCard(isAdmin()?'تطور مدير الفروع':'تطور نطاق حسابك',`${annual.manager.development>=0?'+':''}${commissionFmtPct(annual.manager.development)}`,annual.manager.development>=0?'good':'bad')+commissionMiniCard('البونص الأساسي الحالي',commissionFmtMoney(annualTotal('base')));
-    if(body)body.innerHTML=annualRows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>0?'تحسن':row.development<0?'تراجع':'ثابت'}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>';return;
+    if(body)body.innerHTML=annualRows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>0?'تحسن':row.development<0?'تراجع':'ثابت'}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>';return;
   }
   if(commissionActiveView==='total'){
     if(title)title.textContent='إجمالي العمولات — القرار النهائي';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>تسليم السابق</th><th>تسليم الحالي</th><th>تطوير التسليم</th><th>RTD السابق</th><th>RTD الحالي</th><th>فرق RTD</th><th>الشريحة الحالية</th><th>البونص الأساسي</th><th>RTD ±</th><th>التطوير ±</th><th>الإجمالي</th>';
     if(summary)summary.innerHTML=commissionMiniCard('إجمالي الاستحقاق',commissionFmtMoney(net))+commissionMiniCard('العمولة الأساسية',commissionFmtMoney(base))+commissionMiniCard('إجمالي المكافآت',commissionFmtMoney(rewards),'good')+commissionMiniCard('إجمالي الخصومات',commissionFmtMoney(penalties),'bad');
-    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td>${commissionFmtPct(row.previousRtd)}</td><td>${commissionFmtPct(row.rtdRate)}</td><td class="${row.rtdDifference>=0?'good':'bad'}">${row.rtdDifference>=0?'+':''}${commissionFmtPct(row.rtdDifference)}</td><td>${escapeHTML(row.tier)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="${row.rtdAdjustment>=0?'good':'bad'}">${commissionSigned(row.rtdAdjustment)}</td><td class="${row.developmentAdjustment>=0?'good':'bad'}">${commissionSigned(row.developmentAdjustment)}</td><td class="${row.net<0?'bad':'gold'}">${commissionFmtMoney(row.net)}</td></tr>`).join('')||'<tr><td colspan="12">لا توجد بيانات</td></tr>';return;
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td>${commissionFmtPct(row.previousRtd)}</td><td>${commissionFmtPct(row.rtdRate)}</td><td class="${row.rtdDifference>0?'good':row.rtdDifference<0?'bad':'neutral'}">${row.rtdDifference>=0?'+':''}${commissionFmtPct(row.rtdDifference)}</td><td>${escapeHTML(row.tier)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="${row.rtdAdjustment>0?'good':row.rtdAdjustment<0?'bad':'neutral'}">${commissionSigned(row.rtdAdjustment)}</td><td class="${row.developmentAdjustment>0?'good':row.developmentAdjustment<0?'bad':'neutral'}">${commissionSigned(row.developmentAdjustment)}</td><td class="${row.net>0?'good':row.net<0?'bad':'neutral'}">${commissionFmtMoney(row.net)}</td></tr>`).join('')||'<tr><td colspan="12">لا توجد بيانات</td></tr>';return;
   }
   if(commissionActiveView==='dashboard'){
     if(title)title.textContent='لوحة العرض — الأداء والبونص';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>إجمالي الطلبات</th><th>Signed</th><th>RTD</th><th>Pending</th><th>نسبة التسليم</th><th>الشريحة الحالية</th><th>البونص المستحق</th>';
@@ -21203,16 +21229,16 @@ function renderCommissionDashboard(){
   if(commissionActiveView==='comparison'){
     if(title)title.textContent='المقارنة الشهرية — الأداء والبونص';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>نسبة الفترة السابقة</th><th>نسبة الفترة الحالية</th><th>التطور</th><th>البونص الحالي</th><th>الاتجاه</th>';
     if(summary)summary.innerHTML=commissionMiniCard('متوسط الفترة السابقة',commissionFmtPct(commissionData.manager.previousDelivery))+commissionMiniCard('متوسط الفترة الحالية',commissionFmtPct(commissionData.manager.delivery))+commissionMiniCard(isAdmin()?'تطور مدير الفروع':'تطور نطاق حسابك',`${commissionData.manager.development>=0?'+':''}${commissionFmtPct(commissionData.manager.development)}`,commissionData.manager.development>=0?'good':'bad')+commissionMiniCard('البونص الأساسي الحالي',commissionFmtMoney(total('base')));
-    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>0?'تحسن':row.development<0?'تراجع':'ثابت'}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>';return;
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td class="gold">${commissionFmtMoney(row.base)}</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>0?'تحسن':row.development<0?'تراجع':'ثابت'}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>';return;
   }
   if(commissionActiveView==='rtd'){
     const branchRtd=commissionData.rows.reduce((s,r)=>s+r.rtdAdjustment,0);if(title)title.textContent='مكافأة / خصم RTD — مقارنة الفترة السابقة';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>RTD السابق</th><th>RTD الحالي</th><th>فرق RTD (+ تحسن / - ارتفاع)</th><th>قيمة 1%</th><th>مكافأة / خصم RTD</th><th>الحالة</th>';
     if(summary)summary.innerHTML=commissionMiniCard('قيمة 1% للموظف',commissionFmtMoney(settings.rtd_employee_per_point))+(branch==='all'&&isAdmin()?commissionMiniCard('قيمة 1% للمدير',commissionFmtMoney(settings.rtd_manager_per_point)):'')+commissionMiniCard('صافي الفروع',commissionFmtMoney(branchRtd),branchRtd>=0?'good':'bad')+(isAdmin()?commissionMiniCard('صافي مدير الفروع',commissionFmtMoney(commissionData.manager.rtdAdjustment),commissionData.manager.rtdAdjustment>=0?'good':'bad')+commissionMiniCard('إجمالي تعديل RTD',commissionFmtMoney(branchRtd+commissionData.manager.rtdAdjustment)):'');
-    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousRtd)}</td><td>${commissionFmtPct(row.rtdRate)}</td><td class="${row.rtdDifference>=0?'good':'bad'}">${row.rtdDifference>=0?'+':''}${commissionFmtPct(row.rtdDifference)}</td><td>${commissionFmtMoney(commissionRowPointValue(row,'rtd'))}</td><td class="${row.rtdAdjustment>=0?'good':'bad'}">${commissionSigned(row.rtdAdjustment)} ج.م</td><td class="status-text ${row.rtdDifference>0?'good':row.rtdDifference<0?'bad':'neutral'}">${commissionStatus(row.rtdDifference,'تحسن RTD — مستحق مكافأة','ارتفاع RTD — مستحق خصم')}</td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>';return;
+    if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousRtd)}</td><td>${commissionFmtPct(row.rtdRate)}</td><td class="${row.rtdDifference>0?'good':row.rtdDifference<0?'bad':'neutral'}">${row.rtdDifference>=0?'+':''}${commissionFmtPct(row.rtdDifference)}</td><td>${commissionFmtMoney(commissionRowPointValue(row,'rtd'))}</td><td class="${row.rtdAdjustment>0?'good':row.rtdAdjustment<0?'bad':'neutral'}">${commissionSigned(row.rtdAdjustment)} ج.م</td><td class="status-text ${row.rtdDifference>0?'good':row.rtdDifference<0?'bad':'neutral'}">${commissionStatus(row.rtdDifference,'تحسن RTD — مستحق مكافأة','ارتفاع RTD — مستحق خصم')}</td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>';return;
   }
   const branchDevelopment=commissionData.rows.reduce((s,r)=>s+r.developmentAdjustment,0);if(title)title.textContent='مكافأة / خصم التطوير — مقارنة نسبة التسليم';if(head)head.innerHTML='<th>الفرع / المسؤول</th><th>نسبة الفترة السابقة</th><th>نسبة الفترة الحالية</th><th>فرق التسليم (+ تحسن / - تراجع)</th><th>قيمة 1%</th><th>مكافأة / خصم التطوير</th><th>الحالة</th>';
   if(summary)summary.innerHTML=commissionMiniCard('قيمة 1% للموظف',commissionFmtMoney(settings.development_employee_per_point))+(branch==='all'&&isAdmin()?commissionMiniCard('قيمة 1% للمدير',commissionFmtMoney(settings.development_manager_per_point)):'')+commissionMiniCard('صافي الفروع',commissionFmtMoney(branchDevelopment),branchDevelopment>=0?'good':'bad')+(isAdmin()?commissionMiniCard('صافي مدير الفروع',commissionFmtMoney(commissionData.manager.developmentAdjustment),commissionData.manager.developmentAdjustment>=0?'good':'bad')+commissionMiniCard('إجمالي تعديل التطوير',commissionFmtMoney(branchDevelopment+commissionData.manager.developmentAdjustment)):'');
-  if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>=0?'good':'bad'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td>${commissionFmtMoney(commissionRowPointValue(row,'development'))}</td><td class="${row.developmentAdjustment>=0?'good':'bad'}">${commissionSigned(row.developmentAdjustment)} ج.م</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${commissionStatus(row.development)}</td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>';
+  if(body)body.innerHTML=rows.map(row=>`<tr class="${rowClass(row)}"><td>${escapeHTML(row.branch)}</td><td>${commissionFmtPct(row.previousDelivery)}</td><td>${commissionFmtPct(row.delivery)}</td><td class="${row.development>0?'good':row.development<0?'bad':'neutral'}">${row.development>=0?'+':''}${commissionFmtPct(row.development)}</td><td>${commissionFmtMoney(commissionRowPointValue(row,'development'))}</td><td class="${row.developmentAdjustment>0?'good':row.developmentAdjustment<0?'bad':'neutral'}">${commissionSigned(row.developmentAdjustment)} ج.م</td><td class="status-text ${row.development>0?'good':row.development<0?'bad':'neutral'}">${commissionStatus(row.development)}</td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>';
 }
 function renderCommissionCharts(rows){
   if(typeof Chart==='undefined')return;['commissionMonthlyChart','commissionDistributionChart'].forEach(id=>{if(charts[id]){charts[id].destroy();delete charts[id];}});

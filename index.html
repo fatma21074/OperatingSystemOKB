@@ -57,7 +57,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20261103-v347-remove-inner-rectangle">
+  <link rel="stylesheet" href="css/style.css?v=20261104-v359-settings-users-permissions">
 <style>
 /* v288: Login-page visual skin. All selectors scoped to #loginPage; auth logic unchanged. */
 #loginPage.login-page-new{direction:ltr;box-sizing:border-box;background:radial-gradient(ellipse at 52% 43%,#142e40 0%,#081723 65%,#06111b 100%);padding:clamp(16px,4vh,44px) clamp(14px,4vw,66px);font-family:Inter,Arial,sans-serif;color:#f7f9ff;overflow:auto}
@@ -1165,7 +1165,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 
   <div class="shipping-target-grid">
     <div class="shipping-target-card good"><div class="ship-card-label">🎯 معدل التسليم الحالي</div><div class="ship-card-number green" id="shipTargetCurrentConversionBig">0%</div><div class="ship-card-note">تارجت التسليمات: <b>90%</b></div><div class="ship-progress"><span id="shipDeliveryProgress"></span></div><div class="ship-card-note">فاضل على التارجت: <b id="shipTargetRemaining">90%</b></div></div>
-    <div class="shipping-target-card blue"><div class="ship-card-label">📈 فاضل على التارجت</div><div class="ship-card-number blue" id="shipTargetRemainingBig">90%</div><div class="ship-card-note">للوصول إلى 90%</div><div class="ship-progress blue"><span id="shipRemainingProgress"></span></div><div class="ship-card-note" id="shipDeliveryStatusText">تحتاج إلى تحسين</div></div>
+    <div class="shipping-target-card blue"><div class="ship-card-label">📈 المتبقي على التارجت</div><div class="ship-card-number blue" id="shipTargetRemainingBig">90%</div><div class="ship-card-note">للوصول إلى 90%</div><div class="ship-progress blue"><span id="shipRemainingProgress"></span></div><div class="ship-card-note" id="shipDeliveryStatusText">تحتاج إلى تحسين</div></div>
     <div class="shipping-target-card bad"><div class="ship-card-label">⚠️ معدل المرتجعات الحالي</div><div class="ship-card-number red" id="shipTargetCancelRateBig">0%</div><div class="ship-card-note">تارجت المرتجعات: <b>10%</b></div><div class="ship-progress red"><span id="shipReturnProgress"></span></div><div class="ship-card-note">الحالة: <b id="shipReturnStatusText">آمن</b></div></div>
     <div class="shipping-target-card warn" id="shipPerformanceCard"><div class="ship-card-label">✅ حالة الأداء</div><div class="ship-card-number green" id="shipPerformanceStatus">جيد</div><div class="ship-card-note" id="shipPerformanceNote">مؤشراتك تحت السيطرة</div><div class="ship-progress"><span id="shipPerformanceProgress"></span></div></div>
   </div>
@@ -2164,7 +2164,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
       <button data-okb-custom-button="b207" class="btn-reset-date" type="button" onclick="resetBranchesTreasury()">Reset ✕</button>
       <button data-okb-custom-button="b208" id="btSummaryBtn" type="button" onclick="printBranchesTreasurySummary()" style="padding:8px 14px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;font-weight:900;cursor:pointer;">📊 Summary Report</button>
       <button data-okb-custom-button="b209" id="btPrintBtn" type="button" onclick="printBranchesTreasuryReport()" style="padding:8px 14px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:800;cursor:pointer;">🖨️ طباعة التقرير</button>
-      <button data-okb-custom-button="b210" type="button" onclick="openFinancialAudit('branches','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
+      
     </div>
   </div>
   <div class="branches-treasury-stats">
@@ -2208,7 +2208,7 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
 </select>
 <button data-okb-custom-button="b215" id="khaznaSummaryReportBtn" onclick="printBranchSummaryReportForCashier()" style="padding:8px 16px;border-radius:8px;border:1px solid #f59e0b;background:#facc15;color:#dc2626;cursor:pointer;font-size:13px;font-weight:900;min-height:40px;white-space:nowrap;box-shadow:0 4px 12px rgba(250,204,21,.25);">📊 Summary Report</button>
 <button data-okb-custom-button="b216" id="khaznaPrintReportBtn" onclick="printKhaznaReport()" style="padding:8px 16px;border-radius:8px;border:none;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;min-height:40px;white-space:nowrap;">🖨️ طباعة التقرير</button>
-<button data-okb-custom-button="b217" type="button" onclick="openFinancialAudit('branch','treasury')" class="treasury-financial-audit-action hidden financial-audit-btn">🛡️ Financial Audit</button>
+
 <button data-okb-custom-button="b218" id="lockDailyBtn" onclick="lockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔒 قفل اليومية</button>
 <button data-okb-custom-button="b219" id="unlockDailyBtn" onclick="unlockKhaznaDay()" style="display:none;padding:8px 16px;border-radius:8px;border:none;background:#10b981;color:#fff;cursor:pointer;font-size:13px;font-weight:700;min-height:40px;white-space:nowrap;">🔓 فتح القفل</button>
 <span id="khaznaBadge" style="display:none;background:#6366f1;color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;"></span>
@@ -2625,6 +2625,6 @@ html.okb-exact-order-boot #okbExactOrderBoot .okb-boot-title { margin: 0; font-s
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="js/page-navigation.js?v=20260917-branch-chat-back-v159"></script>
-<script src="js/main.v287.js?v=20261102-v337-badge"></script>
+<script src="js/main.v287.js?v=20261104-v359-settings-access"></script>
 </body>
 </html>
